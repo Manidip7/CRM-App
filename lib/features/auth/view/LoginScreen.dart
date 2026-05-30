@@ -144,8 +144,8 @@ class _LoginScreenState extends State<LoginScreen>
 
   Widget _buildLogo() {
     return Container(
-      width: 62,
-      height: 62,
+      width: 70,
+      height: 70,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -164,9 +164,9 @@ class _LoginScreenState extends State<LoginScreen>
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
         child: Padding(
-          padding: const EdgeInsets.all(4),
+          padding: const EdgeInsets.all(0),
           child: Image.asset(
-            'assets/images/logo.png',
+            'assets/images/logo1.png',
             fit: BoxFit.contain,
           ),
         ),

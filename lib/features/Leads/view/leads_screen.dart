@@ -195,40 +195,6 @@ class _LeadsScreenState extends State<LeadsScreen>
             ],
           ),
           const Spacer(),
-          // View toggle
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.divider),
-            ),
-            child: Row(
-              children: [
-                _ViewToggleBtn(
-                  icon: Icons.view_list_rounded,
-                  selected: _viewMode == 0,
-                  onTap: () => setState(() => _viewMode = 0),
-                ),
-                _ViewToggleBtn(
-                  icon: Icons.view_column_rounded,
-                  selected: _viewMode == 1,
-                  onTap: () => setState(() => _viewMode = 1),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.divider),
-            ),
-            child: const Icon(Icons.more_horiz,
-                color: AppColors.textSecondary, size: 20),
-          ),
         ],
       ),
     );
@@ -316,9 +282,18 @@ class _LeadsScreenState extends State<LeadsScreen>
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(
         children: [
-          const Icon(Icons.tune_rounded,
-              color: AppColors.textSecondary, size: 16),
-          const SizedBox(width: 8),
+          Container(
+            width: 36,
+            height: 36,
+            margin: const EdgeInsets.only(right: 10),
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.divider),
+            ),
+            child: const Icon(Icons.tune_rounded,
+                color: AppColors.textSecondary, size: 18),
+          ),
           _FilterChip(
             label: 'All',
             isSelected: _filterStatus == null && _filterSource == null,
@@ -327,7 +302,7 @@ class _LeadsScreenState extends State<LeadsScreen>
               _filterSource = null;
             }),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           _FilterChip(
             label: 'New',
             isSelected: _filterStatus == LeadStatus.newLead,
@@ -337,7 +312,7 @@ class _LeadsScreenState extends State<LeadsScreen>
                     ? null
                     : LeadStatus.newLead),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           _FilterChip(
             label: 'Contacted',
             isSelected: _filterStatus == LeadStatus.contacted,
@@ -347,7 +322,7 @@ class _LeadsScreenState extends State<LeadsScreen>
                     ? null
                     : LeadStatus.contacted),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           _FilterChip(
             label: 'Qualified',
             isSelected: _filterStatus == LeadStatus.qualified,
@@ -357,7 +332,7 @@ class _LeadsScreenState extends State<LeadsScreen>
                     ? null
                     : LeadStatus.qualified),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           _FilterChip(
             label: 'Won',
             isSelected: _filterStatus == LeadStatus.won,
@@ -365,7 +340,7 @@ class _LeadsScreenState extends State<LeadsScreen>
             onTap: () => setState(() => _filterStatus =
                 _filterStatus == LeadStatus.won ? null : LeadStatus.won),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           _FilterChip(
             label: 'Facebook',
             isSelected: _filterSource == LeadSource.facebook,
@@ -375,7 +350,7 @@ class _LeadsScreenState extends State<LeadsScreen>
                     ? null
                     : LeadSource.facebook),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           _FilterChip(
             label: 'Referral',
             isSelected: _filterSource == LeadSource.referral,
@@ -515,7 +490,16 @@ class _LeadCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Left status accent strip
+                Container(width: 4, color: _statusColor(lead.status)),
+                Expanded(
+                  child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
@@ -685,9 +669,29 @@ class _LeadCard extends StatelessWidget {
               ),
             ),
           ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
+  }
+
+  Color _statusColor(LeadStatus s) {
+    switch (s) {
+      case LeadStatus.newLead:
+        return AppColors.leadFunnelNew;
+      case LeadStatus.contacted:
+        return AppColors.leadFunnelContacted;
+      case LeadStatus.qualified:
+        return AppColors.green;
+      case LeadStatus.won:
+        return const Color(0xFFFFB547);
+      case LeadStatus.lost:
+        return AppColors.red;
+    }
   }
 
   PopupMenuItem<String> _menuItem(
@@ -856,7 +860,7 @@ class _MiniStat extends StatelessWidget {
           ],
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
               value,
@@ -905,7 +909,7 @@ class _FilterChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? c.withOpacity(0.12) : AppColors.cardBackground,
           borderRadius: BorderRadius.circular(20),
@@ -917,7 +921,7 @@ class _FilterChip extends StatelessWidget {
         child: Text(
           label,
           style: GoogleFonts.poppins(
-            fontSize: 12,
+            fontSize: 13,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
             color: isSelected ? c : AppColors.textSecondary,
           ),

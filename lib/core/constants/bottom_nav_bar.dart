@@ -19,7 +19,7 @@ class BottomNavBar extends StatelessWidget {
       _NavItem(icon: Icons.grid_view_rounded, label: 'Overview'),
       _NavItem(icon: Icons.filter_list_rounded, label: 'Leads'),
       _NavItem(icon: Icons.task_alt_rounded, label: 'Tasks'),
-      _NavItem(icon: Icons.people_outline_rounded, label: 'Team'),
+      _NavItem(icon: Icons.trending_up_rounded, label: 'Opportunities'),
     ];
 
     return Container(
@@ -64,6 +64,8 @@ class BottomNavBar extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     items[i].label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
                       fontSize: 10,
                       fontWeight:

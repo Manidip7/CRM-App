@@ -1,6 +1,7 @@
 import 'package:crm_app/features/Leads/view/leads_screen.dart';
 import 'package:flutter/material.dart';
 
+import '../../Opportunities/view/OpportunitiesScreen.dart';
 import '../widgets/LeadsSummaryCard.dart';
 import '../widgets/lead_funnel_card.dart';
 import '../widgets/lead_to_won_trend_card.dart';
@@ -103,7 +104,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         body = const TaskScreen();
         break;
       case 3:
-        body = _buildPlaceholder('Team', Icons.people_outline_rounded);
+        body = OpportunitiesScreen();
         break;
       default:
         body = _buildOverviewBody();
