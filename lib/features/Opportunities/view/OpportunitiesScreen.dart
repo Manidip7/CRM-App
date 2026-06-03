@@ -139,7 +139,11 @@ class OpportunityModel {
 // ─────────────────────────────────────────────
 
 class OpportunitiesScreen extends StatefulWidget {
-  const OpportunitiesScreen({super.key});
+  /// Optional opportunity created by converting a lead. When provided it is
+  /// inserted at the top of the list and briefly highlighted.
+  final OpportunityModel? convertedLead;
+
+  const OpportunitiesScreen({super.key, this.convertedLead});
 
   @override
   State<OpportunitiesScreen> createState() => _OpportunitiesScreenState();
@@ -156,7 +160,12 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
   late Animation<Offset> _slideAnim;
 
   // ── Sample data ──
-  final List<OpportunityModel> _allOpportunities = const [
+  late final List<OpportunityModel> _allOpportunities = [
+    if (widget.convertedLead != null) widget.convertedLead!,
+    ..._seedOpportunities,
+  ];
+
+  static const List<OpportunityModel> _seedOpportunities = [
     OpportunityModel(
       id: '1',
       title: 'Website Opportunity',

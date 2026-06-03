@@ -16,11 +16,18 @@ class _LeadsScreenState extends State<LeadsScreen>
   final TextEditingController _searchController = TextEditingController();
   late AnimationController _animController;
 
-  final List<LeadModel> _allLeads = LeadModel.sampleLeads();
   String _searchQuery = '';
   LeadStatus? _filterStatus;
   LeadSource? _filterSource;
   int _viewMode = 0; // 0 = list, 1 = kanban (placeholder)
+  bool _showBacklog = false; // false = leads, true = backlog leads
+
+  // Current data source — swaps between normal leads and backlog leads
+  List<LeadModel> get _allLeads =>
+      _showBacklog ? LeadModel.backlogLeads() : LeadModel.sampleLeads();
+
+  // Accent color — red theme when viewing backlog leads
+  Color get _accent => _showBacklog ? AppColors.red : AppColors.primary;
 
   // Avatar colors matching your brand palette
   static const List<Color> _avatarColors = [
@@ -120,6 +127,7 @@ class _LeadsScreenState extends State<LeadsScreen>
                                 avatarColor:
                                     _avatarColors[lead.avatarColorIndex %
                                         _avatarColors.length],
+                                accent: _accent,
                                 onTap: () => _openDetail(lead),
                                 onMenuAction: (action) =>
                                     _handleAction(action, lead),
@@ -138,7 +146,7 @@ class _LeadsScreenState extends State<LeadsScreen>
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addLead,
-        backgroundColor: AppColors.primary,
+        backgroundColor: _accent,
         elevation: 4,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -159,7 +167,7 @@ class _LeadsScreenState extends State<LeadsScreen>
               Row(
                 children: [
                   Text(
-                    'Leads',
+                    _showBacklog ? 'Backlog Leads' : 'Leads',
                     style: GoogleFonts.poppins(
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
@@ -171,7 +179,7 @@ class _LeadsScreenState extends State<LeadsScreen>
                     padding: const EdgeInsets.symmetric(
                         horizontal: 9, vertical: 3),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
+                      color: _accent.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -179,14 +187,16 @@ class _LeadsScreenState extends State<LeadsScreen>
                       style: GoogleFonts.poppins(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
+                        color: _accent,
                       ),
                     ),
                   ),
                 ],
               ),
               Text(
-                'Track and manage your pipeline',
+                _showBacklog
+                    ? 'Overdue leads needing follow-up'
+                    : 'Track and manage your pipeline',
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   color: AppColors.textSecondary,
@@ -195,7 +205,50 @@ class _LeadsScreenState extends State<LeadsScreen>
             ],
           ),
           const Spacer(),
+          _buildBacklogButton(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBacklogButton() {
+    final active = _showBacklog;
+    return GestureDetector(
+      onTap: () => setState(() {
+        _showBacklog = !_showBacklog;
+        // Reset filters/search so the swapped data is fully visible
+        _filterStatus = null;
+        _filterSource = null;
+        _searchController.clear();
+        _searchQuery = '';
+      }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? AppColors.red : AppColors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.red, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              active ? Icons.list_alt_rounded : Icons.history_rounded,
+              size: 16,
+              color: active ? Colors.white : AppColors.red,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              active ? 'Leads' : 'Backlog',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: active ? Colors.white : AppColors.red,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -205,7 +258,7 @@ class _LeadsScreenState extends State<LeadsScreen>
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Row(
         children: [
-          _MiniStat(label: 'Total', value: '$_totalLeads', color: AppColors.primary),
+          _MiniStat(label: 'Total', value: '$_totalLeads', color: _accent),
           const SizedBox(width: 8),
           _MiniStat(label: 'New', value: '$_newCount', color: AppColors.leadFunnelNew),
           const SizedBox(width: 8),
@@ -462,12 +515,14 @@ class _LeadsScreenState extends State<LeadsScreen>
 class _LeadCard extends StatelessWidget {
   final LeadModel lead;
   final Color avatarColor;
+  final Color accent;
   final VoidCallback onTap;
   final ValueChanged<String> onMenuAction;
 
   const _LeadCard({
     required this.lead,
     required this.avatarColor,
+    required this.accent,
     required this.onTap,
     required this.onMenuAction,
   });
@@ -643,14 +698,14 @@ class _LeadCard extends StatelessWidget {
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
               child: Row(
                 children: [
-                  const Icon(Icons.access_time_rounded,
-                      size: 13, color: AppColors.primary),
+                  Icon(Icons.access_time_rounded,
+                      size: 13, color: accent),
                   const SizedBox(width: 5),
                   Text(
                     'Next: ${_formatDate(lead.nextFollowUp)}',
                     style: GoogleFonts.poppins(
                       fontSize: 11,
-                      color: AppColors.primary,
+                      color: accent,
                       fontWeight: FontWeight.w500,
                     ),
                   ),

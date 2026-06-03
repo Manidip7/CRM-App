@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/utils/AppColors.dart';
 import '../model/lead_model.dart';
+import '../../Opportunities/view/OpportunitiesScreen.dart';
 
 class LeadDetailScreen extends StatefulWidget {
   final LeadModel lead;
@@ -17,6 +18,11 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late LeadDetailModel _detail;
+
+  // Editable pipeline status & temperature for this lead
+  LeadPipelineStatus _pipelineStatus = LeadPipelineStatus.newLead;
+  LeadTemperature _temperature = LeadTemperature.warm;
+  bool _converted = false;
 
   static const List<Color> _avatarColors = [
     Color(0xFF4B3FC7),
@@ -58,6 +64,8 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
                   children: [
                     const SizedBox(height: 12),
                     _buildHeroCard(),
+                    const SizedBox(height: 12),
+                    _buildStatusCard(),
                     const SizedBox(height: 12),
                     _buildQuickActions(),
                     const SizedBox(height: 12),
@@ -116,21 +124,86 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
             ),
           ),
           const Spacer(),
-          GestureDetector(
-            onTap: () {},
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: AppColors.cardBackground,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: const Icon(Icons.more_horiz,
-                  color: AppColors.textPrimary, size: 20),
-            ),
-          ),
+          _buildStatusDropdown(),
         ],
+      ),
+    );
+  }
+
+  // Status dropdown shown on the top bar (header) right side
+  Widget _buildStatusDropdown() {
+    final cfg = _pipelineConfig(_pipelineStatus);
+    return PopupMenuButton<LeadPipelineStatus>(
+      tooltip: 'Change status',
+      offset: const Offset(0, 46),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12)),
+      color: AppColors.cardBackground,
+      onSelected: (s) => setState(() => _pipelineStatus = s),
+      itemBuilder: (_) => LeadPipelineStatus.values.map((s) {
+        final c = _pipelineConfig(s);
+        final selected = s == _pipelineStatus;
+        return PopupMenuItem<LeadPipelineStatus>(
+          value: s,
+          height: 42,
+          child: Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: c.$1,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                c.$2,
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              if (selected)
+                Icon(Icons.check_rounded, size: 16, color: c.$1),
+            ],
+          ),
+        );
+      }).toList(),
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: cfg.$1.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: cfg.$1, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: cfg.$1,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              cfg.$2,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: cfg.$1,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: cfg.$1),
+          ],
+        ),
       ),
     );
   }
@@ -276,6 +349,197 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
         ),
       ),
     );
+  }
+
+  // ── Status / Temperature / Convert Card ───────────────────────────────────────
+  Widget _buildStatusCard() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.divider, width: 0.8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Lead Temperature ──
+          Text(
+            'LEAD TEMPERATURE',
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textSecondary,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: LeadTemperature.values.map((t) {
+              final cfg = _temperatureConfig(t);
+              final selected = _temperature == t;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _temperature = t),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? cfg.$1.withOpacity(0.12)
+                            : AppColors.background,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selected ? cfg.$1 : AppColors.divider,
+                          width: selected ? 1.5 : 0.8,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(cfg.$3,
+                              size: 22,
+                              color: selected
+                                  ? cfg.$1
+                                  : AppColors.textSecondary),
+                          const SizedBox(height: 4),
+                          Text(
+                            cfg.$2,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: selected
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                              color: selected
+                                  ? cfg.$1
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 18),
+          // ── Convert to Opportunity ──
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: _converted ? null : _convertToOpportunity,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.green,
+                disabledBackgroundColor: AppColors.green.withOpacity(0.5),
+                foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: Icon(
+                _converted
+                    ? Icons.check_circle_rounded
+                    : Icons.swap_horiz_rounded,
+                size: 19,
+              ),
+              label: Text(
+                _converted
+                    ? 'Converted to Opportunity'
+                    : 'Convert to Opportunity',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // (Color, label) for pipeline status
+  (Color, String) _pipelineConfig(LeadPipelineStatus s) {
+    switch (s) {
+      case LeadPipelineStatus.newLead:
+        return (AppColors.leadFunnelNew, 'New');
+      case LeadPipelineStatus.inProgress:
+        return (AppColors.primary, 'In Progress');
+      case LeadPipelineStatus.interested:
+        return (AppColors.green, 'Interested');
+      case LeadPipelineStatus.lost:
+        return (AppColors.red, 'Lost');
+    }
+  }
+
+  // (Color, label, icon) for temperature
+  (Color, String, IconData) _temperatureConfig(LeadTemperature t) {
+    switch (t) {
+      case LeadTemperature.hot:
+        return (AppColors.red, 'Hot Lead', Icons.local_fire_department_rounded);
+      case LeadTemperature.warm:
+        return (const Color(0xFFFFB547), 'Warm Lead', Icons.wb_sunny_rounded);
+      case LeadTemperature.cold:
+        return (const Color(0xFF42A5F5), 'Cold Lead', Icons.ac_unit_rounded);
+    }
+  }
+
+  void _convertToOpportunity() {
+    final lead = widget.lead;
+    final opp = OpportunityModel(
+      id: 'OPP-${lead.id}',
+      title: lead.companyName != null
+          ? '${lead.companyName} Deal'
+          : '${lead.contactName} Opportunity',
+      contactName: lead.contactName,
+      value: lead.dealValue ?? 0,
+      probability: _pipelineStatus == LeadPipelineStatus.interested ? 70 : 50,
+      stage: OpportunityStage.qualified,
+      source: _mapSource(lead.source),
+      timeAgo: 'now',
+      nextFollowUp: _fmtDate(lead.nextFollowUp),
+      phone: lead.phone ?? '—',
+      avatarInitials: lead.displayInitials,
+      avatarColor: _avatarColor,
+    );
+
+    setState(() => _converted = true);
+    _showSnack('Lead converted to opportunity');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OpportunitiesScreen(convertedLead: opp),
+      ),
+    );
+  }
+
+  SourceType _mapSource(LeadSource s) {
+    switch (s) {
+      case LeadSource.facebook:
+        return SourceType.facebook;
+      case LeadSource.manual:
+        return SourceType.manual;
+      case LeadSource.referral:
+        return SourceType.referral;
+      case LeadSource.email:
+        return SourceType.email;
+      case LeadSource.website:
+        return SourceType.website;
+      case LeadSource.cold:
+        return SourceType.manual;
+    }
   }
 
   // ── Quick Actions ─────────────────────────────────────────────────────────────

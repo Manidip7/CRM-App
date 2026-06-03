@@ -22,8 +22,11 @@ class BottomNavBar extends StatelessWidget {
       _NavItem(icon: Icons.trending_up_rounded, label: 'Opportunities'),
     ];
 
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
     return Container(
-      height: 72,
+      height: 72 + bottomInset,
+      padding: EdgeInsets.only(bottom: bottomInset),
       decoration: BoxDecoration(
         color: AppColors.navBackground,
         boxShadow: [

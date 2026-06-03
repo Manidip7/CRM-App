@@ -1,6 +1,12 @@
 enum LeadStatus { newLead, contacted, qualified, won, lost }
 enum LeadSource { facebook, manual, referral, email, website, cold }
 
+// Pipeline status shown/edited on the detail screen
+enum LeadPipelineStatus { newLead, inProgress, interested, lost }
+
+// Temperature classification (engagement level)
+enum LeadTemperature { hot, warm, cold }
+
 class LeadModel {
   final String id;
   final String title;
@@ -126,6 +132,83 @@ class LeadModel {
         nextFollowUp: now.add(const Duration(days: 1)),
         createdAt: now.subtract(const Duration(days: 3)),
         dealValue: 38000,
+        avatarColorIndex: 5,
+      ),
+    ];
+  }
+
+  // Backlog leads — overdue / stale leads that need urgent follow-up
+  static List<LeadModel> backlogLeads() {
+    final now = DateTime.now();
+    return [
+      LeadModel(
+        id: 'B1',
+        title: 'Acme Corp - Stale Lead',
+        companyName: 'Acme Corp',
+        contactName: 'Rohan Gupta',
+        phone: '+91 99887 76655',
+        email: 'rohan@acmecorp.com',
+        status: LeadStatus.contacted,
+        source: LeadSource.facebook,
+        nextFollowUp: now.subtract(const Duration(days: 5)),
+        createdAt: now.subtract(const Duration(days: 32)),
+        dealValue: 52000,
+        avatarColorIndex: 2,
+      ),
+      LeadModel(
+        id: 'B2',
+        title: 'NovaTech - No Response',
+        companyName: 'NovaTech',
+        contactName: 'Kavya Nair',
+        phone: '+91 88776 65544',
+        email: 'kavya@novatech.io',
+        status: LeadStatus.newLead,
+        source: LeadSource.website,
+        nextFollowUp: now.subtract(const Duration(days: 8)),
+        createdAt: now.subtract(const Duration(days: 40)),
+        dealValue: 30000,
+        avatarColorIndex: 0,
+      ),
+      LeadModel(
+        id: 'B3',
+        title: 'Overdue Follow-up',
+        companyName: 'Skyline Ventures',
+        contactName: 'Aditya Rao',
+        phone: '+91 77665 54433',
+        email: 'aditya@skyline.vc',
+        status: LeadStatus.qualified,
+        source: LeadSource.referral,
+        nextFollowUp: now.subtract(const Duration(days: 12)),
+        createdAt: now.subtract(const Duration(days: 55)),
+        dealValue: 88000,
+        avatarColorIndex: 3,
+      ),
+      LeadModel(
+        id: 'B4',
+        title: 'Cold Lead - Reactivate',
+        companyName: 'Pixel Labs',
+        contactName: 'Meera Joshi',
+        phone: '+91 66554 43322',
+        email: 'meera@pixellabs.in',
+        status: LeadStatus.contacted,
+        source: LeadSource.cold,
+        nextFollowUp: now.subtract(const Duration(days: 3)),
+        createdAt: now.subtract(const Duration(days: 28)),
+        dealValue: 21000,
+        avatarColorIndex: 1,
+      ),
+      LeadModel(
+        id: 'B5',
+        title: 'Dropped Lead',
+        companyName: 'Quantum Soft',
+        contactName: 'Sahil Khan',
+        phone: '+91 55443 32211',
+        email: 'sahil@quantumsoft.com',
+        status: LeadStatus.lost,
+        source: LeadSource.email,
+        nextFollowUp: now.subtract(const Duration(days: 20)),
+        createdAt: now.subtract(const Duration(days: 60)),
+        dealValue: 47000,
         avatarColorIndex: 5,
       ),
     ];
