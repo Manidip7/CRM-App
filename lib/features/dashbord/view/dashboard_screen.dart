@@ -1,6 +1,8 @@
 import 'package:crm_app/features/Leads/view/leads_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../provider/dashboard_provider.dart';
 import '../../Opportunities/view/OpportunitiesScreen.dart';
 import '../widgets/LeadsSummaryCard.dart';
 import '../widgets/lead_funnel_card.dart';
@@ -16,16 +18,8 @@ import '../../task/view/TaskScreen.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../core/constants/bottom_nav_bar.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
-
-  @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
-}
-
-class _DashboardScreenState extends State<DashboardScreen> {
-  int _selectedNavIndex = 0;
-  int _selectedTimeFilter = 0;
 
   Widget _buildOverviewBody() {
     return Column(
@@ -91,9 +85,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedNavIndex = ref.watch(dashboardNavProvider);
     Widget body;
-    switch (_selectedNavIndex) {
+    switch (selectedNavIndex) {
       case 0:
         body = _buildOverviewBody();
         break;
@@ -114,8 +109,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       backgroundColor: AppColors.background,
       body: SafeArea(child: body),
       bottomNavigationBar: BottomNavBar(
-        selectedIndex: _selectedNavIndex,
-        onTap: (i) => setState(() => _selectedNavIndex = i),
+        selectedIndex: selectedNavIndex,
+        onTap: (i) => ref.read(dashboardNavProvider.notifier).select(i),
       ),
     );
   }

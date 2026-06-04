@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
 import '../model/TaskStatus.dart';
+import '../provider/task_provider.dart';
 
 
-class TaskScreen extends StatefulWidget {
+class TaskScreen extends ConsumerStatefulWidget {
   const TaskScreen({super.key});
 
   @override
-  State<TaskScreen> createState() => _TaskScreenState();
+  ConsumerState<TaskScreen> createState() => _TaskScreenState();
 }
 
-class _TaskScreenState extends State<TaskScreen> {
-  int _selectedTab = 0; // 0 = My Tasks, 1 = Team View
-  List<TaskModel> _tasks = TaskModel.sampleTasks();
+class _TaskScreenState extends ConsumerState<TaskScreen> {
+  List<TaskModel> get _tasks => ref.read(taskListProvider).tasks;
 
   List<TaskModel> get _overdue =>
       _tasks.where((t) => t.status == TaskStatus.overdue).toList();
@@ -27,26 +28,28 @@ class _TaskScreenState extends State<TaskScreen> {
 
   int get _total => _tasks.length;
 
+  int get _selectedTab => ref.read(taskListProvider).selectedTab;
+
   void _openCreateTask() async {
     // final result = await Navigator.push<TaskModel>(
     //   context,
     //   MaterialPageRoute(builder: (_) => const CreateTaskScreen()),
     // );
     // if (result != null) {
-    //   setState(() => _tasks.add(result));
+    //   ref.read(taskListProvider.notifier).addTask(result);
     // }
   }
 
-  void _markComplete(TaskModel task) {
-    setState(() => task.status = TaskStatus.completed);
-  }
+  void _markComplete(TaskModel task) =>
+      ref.read(taskListProvider.notifier).markComplete(task);
 
-  void _deleteTask(TaskModel task) {
-    setState(() => _tasks.remove(task));
-  }
+  void _deleteTask(TaskModel task) =>
+      ref.read(taskListProvider.notifier).deleteTask(task);
 
   @override
   Widget build(BuildContext context) {
+    // Watch so the whole subtree rebuilds when tasks/tab change.
+    ref.watch(taskListProvider);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -190,12 +193,12 @@ class _TaskScreenState extends State<TaskScreen> {
           _TabButton(
             label: 'My Tasks',
             isSelected: _selectedTab == 0,
-            onTap: () => setState(() => _selectedTab = 0),
+            onTap: () => ref.read(taskListProvider.notifier).selectTab(0),
           ),
           _TabButton(
             label: 'Team View',
             isSelected: _selectedTab == 1,
-            onTap: () => setState(() => _selectedTab = 1),
+            onTap: () => ref.read(taskListProvider.notifier).selectTab(1),
           ),
         ],
       ),

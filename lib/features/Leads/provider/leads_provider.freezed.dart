@@ -1,0 +1,280 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// coverage:ignore-file
+// ignore_for_file: type=lint
+// ignore_for_file: unused_element, deprecated_member_use, deprecated_member_use_from_same_package, use_function_type_syntax_for_parameters, unnecessary_const, avoid_init_to_null, invalid_override_different_default_values_named, prefer_expression_function_bodies, annotate_overrides, invalid_annotation_target, unnecessary_question_mark
+
+part of 'leads_provider.dart';
+
+// **************************************************************************
+// FreezedGenerator
+// **************************************************************************
+
+// dart format off
+T _$identity<T>(T value) => value;
+/// @nodoc
+mixin _$LeadsFilterState {
+
+ String get searchQuery; LeadStatus? get filterStatus; LeadSource? get filterSource; bool get showBacklog;
+/// Create a copy of LeadsFilterState
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$LeadsFilterStateCopyWith<LeadsFilterState> get copyWith => _$LeadsFilterStateCopyWithImpl<LeadsFilterState>(this as LeadsFilterState, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LeadsFilterState&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.filterStatus, filterStatus) || other.filterStatus == filterStatus)&&(identical(other.filterSource, filterSource) || other.filterSource == filterSource)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,searchQuery,filterStatus,filterSource,showBacklog);
+
+@override
+String toString() {
+  return 'LeadsFilterState(searchQuery: $searchQuery, filterStatus: $filterStatus, filterSource: $filterSource, showBacklog: $showBacklog)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $LeadsFilterStateCopyWith<$Res>  {
+  factory $LeadsFilterStateCopyWith(LeadsFilterState value, $Res Function(LeadsFilterState) _then) = _$LeadsFilterStateCopyWithImpl;
+@useResult
+$Res call({
+ String searchQuery, LeadStatus? filterStatus, LeadSource? filterSource, bool showBacklog
+});
+
+
+
+
+}
+/// @nodoc
+class _$LeadsFilterStateCopyWithImpl<$Res>
+    implements $LeadsFilterStateCopyWith<$Res> {
+  _$LeadsFilterStateCopyWithImpl(this._self, this._then);
+
+  final LeadsFilterState _self;
+  final $Res Function(LeadsFilterState) _then;
+
+/// Create a copy of LeadsFilterState
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? searchQuery = null,Object? filterStatus = freezed,Object? filterSource = freezed,Object? showBacklog = null,}) {
+  return _then(_self.copyWith(
+searchQuery: null == searchQuery ? _self.searchQuery : searchQuery // ignore: cast_nullable_to_non_nullable
+as String,filterStatus: freezed == filterStatus ? _self.filterStatus : filterStatus // ignore: cast_nullable_to_non_nullable
+as LeadStatus?,filterSource: freezed == filterSource ? _self.filterSource : filterSource // ignore: cast_nullable_to_non_nullable
+as LeadSource?,showBacklog: null == showBacklog ? _self.showBacklog : showBacklog // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [LeadsFilterState].
+extension LeadsFilterStatePatterns on LeadsFilterState {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _LeadsFilterState value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _LeadsFilterState() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _LeadsFilterState value)  $default,){
+final _that = this;
+switch (_that) {
+case _LeadsFilterState():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _LeadsFilterState value)?  $default,){
+final _that = this;
+switch (_that) {
+case _LeadsFilterState() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  bool showBacklog)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _LeadsFilterState() when $default != null:
+return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.showBacklog);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  bool showBacklog)  $default,) {final _that = this;
+switch (_that) {
+case _LeadsFilterState():
+return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.showBacklog);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  bool showBacklog)?  $default,) {final _that = this;
+switch (_that) {
+case _LeadsFilterState() when $default != null:
+return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.showBacklog);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class _LeadsFilterState implements LeadsFilterState {
+  const _LeadsFilterState({this.searchQuery = '', this.filterStatus, this.filterSource, this.showBacklog = false});
+  
+
+@override@JsonKey() final  String searchQuery;
+@override final  LeadStatus? filterStatus;
+@override final  LeadSource? filterSource;
+@override@JsonKey() final  bool showBacklog;
+
+/// Create a copy of LeadsFilterState
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$LeadsFilterStateCopyWith<_LeadsFilterState> get copyWith => __$LeadsFilterStateCopyWithImpl<_LeadsFilterState>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LeadsFilterState&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.filterStatus, filterStatus) || other.filterStatus == filterStatus)&&(identical(other.filterSource, filterSource) || other.filterSource == filterSource)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,searchQuery,filterStatus,filterSource,showBacklog);
+
+@override
+String toString() {
+  return 'LeadsFilterState(searchQuery: $searchQuery, filterStatus: $filterStatus, filterSource: $filterSource, showBacklog: $showBacklog)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$LeadsFilterStateCopyWith<$Res> implements $LeadsFilterStateCopyWith<$Res> {
+  factory _$LeadsFilterStateCopyWith(_LeadsFilterState value, $Res Function(_LeadsFilterState) _then) = __$LeadsFilterStateCopyWithImpl;
+@override @useResult
+$Res call({
+ String searchQuery, LeadStatus? filterStatus, LeadSource? filterSource, bool showBacklog
+});
+
+
+
+
+}
+/// @nodoc
+class __$LeadsFilterStateCopyWithImpl<$Res>
+    implements _$LeadsFilterStateCopyWith<$Res> {
+  __$LeadsFilterStateCopyWithImpl(this._self, this._then);
+
+  final _LeadsFilterState _self;
+  final $Res Function(_LeadsFilterState) _then;
+
+/// Create a copy of LeadsFilterState
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? searchQuery = null,Object? filterStatus = freezed,Object? filterSource = freezed,Object? showBacklog = null,}) {
+  return _then(_LeadsFilterState(
+searchQuery: null == searchQuery ? _self.searchQuery : searchQuery // ignore: cast_nullable_to_non_nullable
+as String,filterStatus: freezed == filterStatus ? _self.filterStatus : filterStatus // ignore: cast_nullable_to_non_nullable
+as LeadStatus?,filterSource: freezed == filterSource ? _self.filterSource : filterSource // ignore: cast_nullable_to_non_nullable
+as LeadSource?,showBacklog: null == showBacklog ? _self.showBacklog : showBacklog // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
+// dart format on

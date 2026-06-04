@@ -1,28 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/utils/AppColors.dart';
 import '../model/lead_model.dart';
+import '../provider/lead_detail_provider.dart';
+import '../../Opportunities/model/opportunity_model.dart';
+import '../../Opportunities/provider/opportunities_provider.dart';
 import '../../Opportunities/view/OpportunitiesScreen.dart';
 
-class LeadDetailScreen extends StatefulWidget {
+class LeadDetailScreen extends ConsumerStatefulWidget {
   final LeadModel lead;
 
   const LeadDetailScreen({super.key, required this.lead});
 
   @override
-  State<LeadDetailScreen> createState() => _LeadDetailScreenState();
+  ConsumerState<LeadDetailScreen> createState() => _LeadDetailScreenState();
 }
 
-class _LeadDetailScreenState extends State<LeadDetailScreen>
+class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late LeadDetailModel _detail;
 
-  // Editable pipeline status & temperature for this lead
-  LeadPipelineStatus _pipelineStatus = LeadPipelineStatus.newLead;
-  LeadTemperature _temperature = LeadTemperature.warm;
-  bool _converted = false;
+  // Provider keyed by this lead's id
+  LeadDetailControllerProvider get _detailProvider =>
+      leadDetailControllerProvider(widget.lead.id);
 
   static const List<Color> _avatarColors = [
     Color(0xFF4B3FC7),
@@ -132,17 +135,20 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
 
   // Status dropdown shown on the top bar (header) right side
   Widget _buildStatusDropdown() {
-    final cfg = _pipelineConfig(_pipelineStatus);
+    final pipelineStatus =
+        ref.watch(_detailProvider.select((s) => s.pipelineStatus));
+    final cfg = _pipelineConfig(pipelineStatus);
     return PopupMenuButton<LeadPipelineStatus>(
       tooltip: 'Change status',
       offset: const Offset(0, 46),
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12)),
       color: AppColors.cardBackground,
-      onSelected: (s) => setState(() => _pipelineStatus = s),
+      onSelected: (s) =>
+          ref.read(_detailProvider.notifier).setStatus(s),
       itemBuilder: (_) => LeadPipelineStatus.values.map((s) {
         final c = _pipelineConfig(s);
-        final selected = s == _pipelineStatus;
+        final selected = s == pipelineStatus;
         return PopupMenuItem<LeadPipelineStatus>(
           value: s,
           height: 42,
@@ -353,6 +359,9 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
 
   // ── Status / Temperature / Convert Card ───────────────────────────────────────
   Widget _buildStatusCard() {
+    final temperature =
+        ref.watch(_detailProvider.select((s) => s.temperature));
+    final converted = ref.watch(_detailProvider.select((s) => s.converted));
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -385,12 +394,13 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
           Row(
             children: LeadTemperature.values.map((t) {
               final cfg = _temperatureConfig(t);
-              final selected = _temperature == t;
+              final selected = temperature == t;
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: GestureDetector(
-                    onTap: () => setState(() => _temperature = t),
+                    onTap: () =>
+                        ref.read(_detailProvider.notifier).setTemperature(t),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -438,7 +448,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
             width: double.infinity,
             height: 48,
             child: ElevatedButton.icon(
-              onPressed: _converted ? null : _convertToOpportunity,
+              onPressed: converted ? null : _convertToOpportunity,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.green,
                 disabledBackgroundColor: AppColors.green.withOpacity(0.5),
@@ -449,13 +459,13 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
                     borderRadius: BorderRadius.circular(12)),
               ),
               icon: Icon(
-                _converted
+                converted
                     ? Icons.check_circle_rounded
                     : Icons.swap_horiz_rounded,
                 size: 19,
               ),
               label: Text(
-                _converted
+                converted
                     ? 'Converted to Opportunity'
                     : 'Convert to Opportunity',
                 style: GoogleFonts.poppins(
@@ -498,6 +508,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
 
   void _convertToOpportunity() {
     final lead = widget.lead;
+    final pipelineStatus = ref.read(_detailProvider).pipelineStatus;
     final opp = OpportunityModel(
       id: 'OPP-${lead.id}',
       title: lead.companyName != null
@@ -505,7 +516,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
           : '${lead.contactName} Opportunity',
       contactName: lead.contactName,
       value: lead.dealValue ?? 0,
-      probability: _pipelineStatus == LeadPipelineStatus.interested ? 70 : 50,
+      probability: pipelineStatus == LeadPipelineStatus.interested ? 70 : 50,
       stage: OpportunityStage.qualified,
       source: _mapSource(lead.source),
       timeAgo: 'now',
@@ -515,12 +526,14 @@ class _LeadDetailScreenState extends State<LeadDetailScreen>
       avatarColor: _avatarColor,
     );
 
-    setState(() => _converted = true);
+    // Add to the shared opportunities store and mark this lead converted.
+    ref.read(opportunitiesProvider.notifier).addOpportunity(opp);
+    ref.read(_detailProvider.notifier).markConverted();
     _showSnack('Lead converted to opportunity');
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => OpportunitiesScreen(convertedLead: opp),
+        builder: (_) => const OpportunitiesScreen(),
       ),
     );
   }

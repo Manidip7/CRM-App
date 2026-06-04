@@ -1,33 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/utils/AppColors.dart';
 import '../model/lead_model.dart';
+import '../provider/leads_provider.dart';
 import 'lead_detail_screen.dart';
 
-class LeadsScreen extends StatefulWidget {
+class LeadsScreen extends ConsumerStatefulWidget {
   const LeadsScreen({super.key});
 
   @override
-  State<LeadsScreen> createState() => _LeadsScreenState();
+  ConsumerState<LeadsScreen> createState() => _LeadsScreenState();
 }
 
-class _LeadsScreenState extends State<LeadsScreen>
+class _LeadsScreenState extends ConsumerState<LeadsScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   late AnimationController _animController;
 
-  String _searchQuery = '';
-  LeadStatus? _filterStatus;
-  LeadSource? _filterSource;
-  int _viewMode = 0; // 0 = list, 1 = kanban (placeholder)
-  bool _showBacklog = false; // false = leads, true = backlog leads
-
-  // Current data source — swaps between normal leads and backlog leads
-  List<LeadModel> get _allLeads =>
-      _showBacklog ? LeadModel.backlogLeads() : LeadModel.sampleLeads();
-
   // Accent color — red theme when viewing backlog leads
-  Color get _accent => _showBacklog ? AppColors.red : AppColors.primary;
+  Color get _accent =>
+      ref.watch(leadsFilterProvider.select((s) => s.showBacklog))
+          ? AppColors.red
+          : AppColors.primary;
 
   // Avatar colors matching your brand palette
   static const List<Color> _avatarColors = [
@@ -47,7 +42,8 @@ class _LeadsScreenState extends State<LeadsScreen>
       duration: const Duration(milliseconds: 400),
     )..forward();
     _searchController.addListener(
-        () => setState(() => _searchQuery = _searchController.text));
+        () => ref.read(leadsFilterProvider.notifier)
+            .setSearch(_searchController.text));
   }
 
   @override
@@ -57,35 +53,9 @@ class _LeadsScreenState extends State<LeadsScreen>
     super.dispose();
   }
 
-  List<LeadModel> get _filteredLeads {
-    return _allLeads.where((lead) {
-      final q = _searchQuery.toLowerCase();
-      final matchSearch = q.isEmpty ||
-          lead.title.toLowerCase().contains(q) ||
-          lead.contactName.toLowerCase().contains(q) ||
-          (lead.companyName?.toLowerCase().contains(q) ?? false) ||
-          (lead.phone?.contains(q) ?? false) ||
-          (lead.email?.toLowerCase().contains(q) ?? false);
-      final matchStatus =
-          _filterStatus == null || lead.status == _filterStatus;
-      final matchSource =
-          _filterSource == null || lead.source == _filterSource;
-      return matchSearch && matchStatus && matchSource;
-    }).toList();
-  }
-
-  // Stats
-  int get _totalLeads => _allLeads.length;
-  int get _newCount =>
-      _allLeads.where((l) => l.status == LeadStatus.newLead).length;
-  int get _qualifiedCount =>
-      _allLeads.where((l) => l.status == LeadStatus.qualified).length;
-  int get _wonCount =>
-      _allLeads.where((l) => l.status == LeadStatus.won).length;
-
   @override
   Widget build(BuildContext context) {
-    final leads = _filteredLeads;
+    final leads = ref.watch(filteredLeadsProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -156,6 +126,9 @@ class _LeadsScreenState extends State<LeadsScreen>
   }
 
   Widget _buildHeader() {
+    final showBacklog =
+        ref.watch(leadsFilterProvider.select((s) => s.showBacklog));
+    final totalLeads = ref.watch(leadsSourceProvider).length;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       color: AppColors.background,
@@ -167,7 +140,7 @@ class _LeadsScreenState extends State<LeadsScreen>
               Row(
                 children: [
                   Text(
-                    _showBacklog ? 'Backlog Leads' : 'Leads',
+                    showBacklog ? 'Backlog Leads' : 'Leads',
                     style: GoogleFonts.poppins(
                       fontSize: 26,
                       fontWeight: FontWeight.w800,
@@ -183,7 +156,7 @@ class _LeadsScreenState extends State<LeadsScreen>
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      '$_totalLeads',
+                      '$totalLeads',
                       style: GoogleFonts.poppins(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -194,7 +167,7 @@ class _LeadsScreenState extends State<LeadsScreen>
                 ],
               ),
               Text(
-                _showBacklog
+                showBacklog
                     ? 'Overdue leads needing follow-up'
                     : 'Track and manage your pipeline',
                 style: GoogleFonts.poppins(
@@ -205,23 +178,19 @@ class _LeadsScreenState extends State<LeadsScreen>
             ],
           ),
           const Spacer(),
-          _buildBacklogButton(),
+          _buildBacklogButton(showBacklog),
         ],
       ),
     );
   }
 
-  Widget _buildBacklogButton() {
-    final active = _showBacklog;
+  Widget _buildBacklogButton(bool active) {
     return GestureDetector(
-      onTap: () => setState(() {
-        _showBacklog = !_showBacklog;
-        // Reset filters/search so the swapped data is fully visible
-        _filterStatus = null;
-        _filterSource = null;
+      onTap: () {
+        // Toggle resets search/filters in the provider; clear the controller too.
         _searchController.clear();
-        _searchQuery = '';
-      }),
+        ref.read(leadsFilterProvider.notifier).toggleBacklog();
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -254,17 +223,24 @@ class _LeadsScreenState extends State<LeadsScreen>
   }
 
   Widget _buildStatsRow() {
+    final source = ref.watch(leadsSourceProvider);
+    final total = source.length;
+    final newCount =
+        source.where((l) => l.status == LeadStatus.newLead).length;
+    final qualifiedCount =
+        source.where((l) => l.status == LeadStatus.qualified).length;
+    final wonCount = source.where((l) => l.status == LeadStatus.won).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Row(
         children: [
-          _MiniStat(label: 'Total', value: '$_totalLeads', color: _accent),
+          _MiniStat(label: 'Total', value: '$total', color: _accent),
           const SizedBox(width: 8),
-          _MiniStat(label: 'New', value: '$_newCount', color: AppColors.leadFunnelNew),
+          _MiniStat(label: 'New', value: '$newCount', color: AppColors.leadFunnelNew),
           const SizedBox(width: 8),
-          _MiniStat(label: 'Qualified', value: '$_qualifiedCount', color: AppColors.green),
+          _MiniStat(label: 'Qualified', value: '$qualifiedCount', color: AppColors.green),
           const SizedBox(width: 8),
-          _MiniStat(label: 'Won', value: '$_wonCount', color: Color(0xFFFFB547)),
+          _MiniStat(label: 'Won', value: '$wonCount', color: Color(0xFFFFB547)),
         ],
       ),
     );
@@ -311,11 +287,12 @@ class _LeadsScreenState extends State<LeadsScreen>
                 ),
               ),
             ),
-            if (_searchQuery.isNotEmpty)
+            if (ref.watch(
+                leadsFilterProvider.select((s) => s.searchQuery)).isNotEmpty)
               GestureDetector(
                 onTap: () {
                   _searchController.clear();
-                  setState(() => _searchQuery = '');
+                  ref.read(leadsFilterProvider.notifier).clearSearch();
                 },
                 child: const Padding(
                   padding: EdgeInsets.only(right: 12),
@@ -330,6 +307,8 @@ class _LeadsScreenState extends State<LeadsScreen>
   }
 
   Widget _buildFilterChips() {
+    final filter = ref.watch(leadsFilterProvider);
+    final notifier = ref.read(leadsFilterProvider.notifier);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -349,69 +328,51 @@ class _LeadsScreenState extends State<LeadsScreen>
           ),
           _FilterChip(
             label: 'All',
-            isSelected: _filterStatus == null && _filterSource == null,
-            onTap: () => setState(() {
-              _filterStatus = null;
-              _filterSource = null;
-            }),
+            isSelected:
+                filter.filterStatus == null && filter.filterSource == null,
+            onTap: () => notifier.clearFilters(),
           ),
           const SizedBox(width: 8),
           _FilterChip(
             label: 'New',
-            isSelected: _filterStatus == LeadStatus.newLead,
+            isSelected: filter.filterStatus == LeadStatus.newLead,
             color: AppColors.leadFunnelNew,
-            onTap: () => setState(() => _filterStatus =
-                _filterStatus == LeadStatus.newLead
-                    ? null
-                    : LeadStatus.newLead),
+            onTap: () => notifier.toggleStatus(LeadStatus.newLead),
           ),
           const SizedBox(width: 8),
           _FilterChip(
             label: 'Contacted',
-            isSelected: _filterStatus == LeadStatus.contacted,
+            isSelected: filter.filterStatus == LeadStatus.contacted,
             color: AppColors.leadFunnelContacted,
-            onTap: () => setState(() => _filterStatus =
-                _filterStatus == LeadStatus.contacted
-                    ? null
-                    : LeadStatus.contacted),
+            onTap: () => notifier.toggleStatus(LeadStatus.contacted),
           ),
           const SizedBox(width: 8),
           _FilterChip(
             label: 'Qualified',
-            isSelected: _filterStatus == LeadStatus.qualified,
+            isSelected: filter.filterStatus == LeadStatus.qualified,
             color: AppColors.green,
-            onTap: () => setState(() => _filterStatus =
-                _filterStatus == LeadStatus.qualified
-                    ? null
-                    : LeadStatus.qualified),
+            onTap: () => notifier.toggleStatus(LeadStatus.qualified),
           ),
           const SizedBox(width: 8),
           _FilterChip(
             label: 'Won',
-            isSelected: _filterStatus == LeadStatus.won,
+            isSelected: filter.filterStatus == LeadStatus.won,
             color: const Color(0xFFFFB547),
-            onTap: () => setState(() => _filterStatus =
-                _filterStatus == LeadStatus.won ? null : LeadStatus.won),
+            onTap: () => notifier.toggleStatus(LeadStatus.won),
           ),
           const SizedBox(width: 8),
           _FilterChip(
             label: 'Facebook',
-            isSelected: _filterSource == LeadSource.facebook,
+            isSelected: filter.filterSource == LeadSource.facebook,
             color: const Color(0xFF1877F2),
-            onTap: () => setState(() => _filterSource =
-                _filterSource == LeadSource.facebook
-                    ? null
-                    : LeadSource.facebook),
+            onTap: () => notifier.toggleSource(LeadSource.facebook),
           ),
           const SizedBox(width: 8),
           _FilterChip(
             label: 'Referral',
-            isSelected: _filterSource == LeadSource.referral,
+            isSelected: filter.filterSource == LeadSource.referral,
             color: AppColors.leadFunnelQualified,
-            onTap: () => setState(() => _filterSource =
-                _filterSource == LeadSource.referral
-                    ? null
-                    : LeadSource.referral),
+            onTap: () => notifier.toggleSource(LeadSource.referral),
           ),
         ],
       ),

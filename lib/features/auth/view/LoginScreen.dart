@@ -1,22 +1,22 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/AppColors.dart';
 import '../../dashbord/view/dashboard_screen.dart';
+import '../provider/login_provider.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
+class _LoginScreenState extends ConsumerState<LoginScreen>
     with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _obscurePassword = true;
-  bool _isLoading = false;
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
@@ -60,13 +60,11 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _handleLogin() async {
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) setState(() => _isLoading = false);
-
+    await ref.read(loginControllerProvider.notifier).login();
+    if (!mounted) return;
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => DashboardScreen()),
+      MaterialPageRoute(builder: (context) => const DashboardScreen()),
     );
   }
 
@@ -295,9 +293,11 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildPasswordField() {
+    final obscurePassword =
+        ref.watch(loginControllerProvider.select((s) => s.obscurePassword));
     return TextFormField(
       controller: _passwordController,
-      obscureText: _obscurePassword,
+      obscureText: obscurePassword,
       style: const TextStyle(
         fontSize: 14,
         color: AppColors.textPrimary,
@@ -317,9 +317,10 @@ class _LoginScreenState extends State<LoginScreen>
           size: 20,
         ),
         suffixIcon: GestureDetector(
-          onTap: () => setState(() => _obscurePassword = !_obscurePassword),
+          onTap: () =>
+              ref.read(loginControllerProvider.notifier).toggleObscure(),
           child: Icon(
-            _obscurePassword
+            obscurePassword
                 ? Icons.visibility_outlined
                 : Icons.visibility_off_outlined,
             color: AppColors.textLight,
@@ -355,11 +356,13 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildLoginButton() {
+    final isLoading =
+        ref.watch(loginControllerProvider.select((s) => s.isLoading));
     return SizedBox(
       width: double.infinity,
       height: 52,
       child: ElevatedButton(
-        onPressed: _isLoading ? null : _handleLogin,
+        onPressed: isLoading ? null : _handleLogin,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
@@ -376,7 +379,7 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         child: Container(
           decoration: BoxDecoration(
-            gradient: _isLoading
+            gradient: isLoading
                 ? null
                 : const LinearGradient(
               colors: [AppColors.accent, AppColors.primary],
@@ -384,7 +387,7 @@ class _LoginScreenState extends State<LoginScreen>
             borderRadius: BorderRadius.circular(13),
           ),
           child: Center(
-            child: _isLoading
+            child: isLoading
                 ? const SizedBox(
               width: 22,
               height: 22,
@@ -451,18 +454,17 @@ class _LoginScreenState extends State<LoginScreen>
 // ─────────────────────────────────────────────
 //  FORGOT PASSWORD DIALOG
 // ─────────────────────────────────────────────
-class ForgotPasswordDialog extends StatefulWidget {
+class ForgotPasswordDialog extends ConsumerStatefulWidget {
   const ForgotPasswordDialog({super.key});
 
   @override
-  State<ForgotPasswordDialog> createState() => _ForgotPasswordDialogState();
+  ConsumerState<ForgotPasswordDialog> createState() =>
+      _ForgotPasswordDialogState();
 }
 
-class _ForgotPasswordDialogState extends State<ForgotPasswordDialog>
+class _ForgotPasswordDialogState extends ConsumerState<ForgotPasswordDialog>
     with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
-  bool _isSent = false;
-  bool _isLoading = false;
 
   late AnimationController _animController;
   late Animation<double> _scaleAnim;
@@ -494,18 +496,13 @@ class _ForgotPasswordDialogState extends State<ForgotPasswordDialog>
 
   Future<void> _sendReset() async {
     if (_emailController.text.trim().isEmpty) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-        _isSent = true;
-      });
-    }
+    await ref.read(forgotPasswordControllerProvider.notifier).sendReset();
   }
 
   @override
   Widget build(BuildContext context) {
+    final isSent =
+        ref.watch(forgotPasswordControllerProvider.select((s) => s.isSent));
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24),
@@ -527,7 +524,7 @@ class _ForgotPasswordDialogState extends State<ForgotPasswordDialog>
                 ),
               ],
             ),
-            child: _isSent ? _buildSuccessContent() : _buildFormContent(),
+            child: isSent ? _buildSuccessContent() : _buildFormContent(),
           ),
         ),
       ),
@@ -535,6 +532,8 @@ class _ForgotPasswordDialogState extends State<ForgotPasswordDialog>
   }
 
   Widget _buildFormContent() {
+    final isLoading =
+        ref.watch(forgotPasswordControllerProvider.select((s) => s.isLoading));
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -650,7 +649,7 @@ class _ForgotPasswordDialogState extends State<ForgotPasswordDialog>
           width: double.infinity,
           height: 50,
           child: ElevatedButton(
-            onPressed: _isLoading ? null : _sendReset,
+            onPressed: isLoading ? null : _sendReset,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               disabledBackgroundColor: AppColors.primaryLight,
@@ -659,7 +658,7 @@ class _ForgotPasswordDialogState extends State<ForgotPasswordDialog>
                 borderRadius: BorderRadius.circular(13),
               ),
             ),
-            child: _isLoading
+            child: isLoading
                 ? const SizedBox(
               width: 22,
               height: 22,

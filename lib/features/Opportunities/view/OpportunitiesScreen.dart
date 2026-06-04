@@ -1,256 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/AppColors.dart';
-
-// ─────────────────────────────────────────────
-//  DATA MODELS
-// ─────────────────────────────────────────────
-
-enum OpportunityStage { proposal, negotiation, qualified, won, lost }
-
-extension OpportunityStageName on OpportunityStage {
-  String get label {
-    switch (this) {
-      case OpportunityStage.proposal:
-        return 'PROPOSAL';
-      case OpportunityStage.negotiation:
-        return 'NEGOTIATION';
-      case OpportunityStage.qualified:
-        return 'QUALIFIED';
-      case OpportunityStage.won:
-        return 'WON';
-      case OpportunityStage.lost:
-        return 'LOST';
-    }
-  }
-
-  Color get color {
-    switch (this) {
-      case OpportunityStage.proposal:
-        return AppColors.green;
-      case OpportunityStage.negotiation:
-        return AppColors.greenLight;
-      case OpportunityStage.qualified:
-        return const Color(0xFF4CAF9A);
-      case OpportunityStage.won:
-        return AppColors.leadFunnelWon;
-      case OpportunityStage.lost:
-        return AppColors.lossRed;
-    }
-  }
-
-  Color get bgColor {
-    switch (this) {
-      case OpportunityStage.proposal:
-        return AppColors.green.withOpacity(0.12);
-      case OpportunityStage.negotiation:
-        return AppColors.greenLight.withOpacity(0.12);
-      case OpportunityStage.qualified:
-        return const Color(0xFF4CAF9A).withOpacity(0.12);
-      case OpportunityStage.won:
-        return AppColors.leadFunnelWon.withOpacity(0.12);
-      case OpportunityStage.lost:
-        return AppColors.redLight;
-    }
-  }
-}
-
-enum SourceType { manual, facebook, website, referral, email }
-
-extension SourceTypeName on SourceType {
-  String get label {
-    switch (this) {
-      case SourceType.manual:
-        return 'MANUAL';
-      case SourceType.facebook:
-        return 'FACEBOOK';
-      case SourceType.website:
-        return 'WEBSITE';
-      case SourceType.referral:
-        return 'REFERRAL';
-      case SourceType.email:
-        return 'EMAIL';
-    }
-  }
-
-  Color get color {
-    switch (this) {
-      case SourceType.manual:
-        return const Color(0xFFB39DDB);
-      case SourceType.facebook:
-        return const Color(0xFF1877F2);
-      case SourceType.website:
-        return AppColors.primary;
-      case SourceType.referral:
-        return AppColors.donutTeal;
-      case SourceType.email:
-        return AppColors.accent;
-    }
-  }
-
-  IconData get icon {
-    switch (this) {
-      case SourceType.manual:
-        return Icons.edit_outlined;
-      case SourceType.facebook:
-        return Icons.facebook_rounded;
-      case SourceType.website:
-        return Icons.language_rounded;
-      case SourceType.referral:
-        return Icons.people_outline_rounded;
-      case SourceType.email:
-        return Icons.email_outlined;
-    }
-  }
-}
-
-class OpportunityModel {
-  final String id;
-  final String title;
-  final String contactName;
-  final double value;
-  final int probability;
-  final OpportunityStage stage;
-  final SourceType source;
-  final String timeAgo;
-  final String nextFollowUp;
-  final String phone;
-  final String avatarInitials;
-  final Color avatarColor;
-
-  const OpportunityModel({
-    required this.id,
-    required this.title,
-    required this.contactName,
-    required this.value,
-    required this.probability,
-    required this.stage,
-    required this.source,
-    required this.timeAgo,
-    required this.nextFollowUp,
-    required this.phone,
-    required this.avatarInitials,
-    required this.avatarColor,
-  });
-}
+import '../model/opportunity_model.dart';
+import '../provider/opportunities_provider.dart';
 
 // ─────────────────────────────────────────────
 //  SCREEN
 // ─────────────────────────────────────────────
 
-class OpportunitiesScreen extends StatefulWidget {
-  /// Optional opportunity created by converting a lead. When provided it is
-  /// inserted at the top of the list and briefly highlighted.
-  final OpportunityModel? convertedLead;
-
-  const OpportunitiesScreen({super.key, this.convertedLead});
+class OpportunitiesScreen extends ConsumerStatefulWidget {
+  const OpportunitiesScreen({super.key});
 
   @override
-  State<OpportunitiesScreen> createState() => _OpportunitiesScreenState();
+  ConsumerState<OpportunitiesScreen> createState() =>
+      _OpportunitiesScreenState();
 }
 
-class _OpportunitiesScreenState extends State<OpportunitiesScreen>
+class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
     with SingleTickerProviderStateMixin {
   final _searchController = TextEditingController();
-  OpportunityStage? _selectedStage; // null = All
-  String _sortLabel = 'Newest first';
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
-
-  // ── Sample data ──
-  late final List<OpportunityModel> _allOpportunities = [
-    if (widget.convertedLead != null) widget.convertedLead!,
-    ..._seedOpportunities,
-  ];
-
-  static const List<OpportunityModel> _seedOpportunities = [
-    OpportunityModel(
-      id: '1',
-      title: 'Website Opportunity',
-      contactName: 'Tanweer Khan',
-      value: 76.58,
-      probability: 70,
-      stage: OpportunityStage.proposal,
-      source: SourceType.manual,
-      timeAgo: '1w',
-      nextFollowUp: 'Jun 2, 10:00 AM',
-      phone: '+91 98765 43210',
-      avatarInitials: 'TK',
-      avatarColor: Color(0xFFE53935),
-    ),
-    OpportunityModel(
-      id: '2',
-      title: 'Mindverge Software Deal',
-      contactName: 'Rahul Sharma',
-      value: 45000,
-      probability: 85,
-      stage: OpportunityStage.negotiation,
-      source: SourceType.facebook,
-      timeAgo: '1w',
-      nextFollowUp: 'Jun 3, 9:00 AM',
-      phone: '+91 98765 43210',
-      avatarInitials: 'RS',
-      avatarColor: Color(0xFF7B72E9),
-    ),
-    OpportunityModel(
-      id: '3',
-      title: 'PeploHr Enterprise Plan',
-      contactName: 'Priya Menon',
-      value: 28000,
-      probability: 60,
-      stage: OpportunityStage.qualified,
-      source: SourceType.facebook,
-      timeAgo: '2w',
-      nextFollowUp: 'Jun 4, 2:00 PM',
-      phone: '+91 87654 32109',
-      avatarInitials: 'PM',
-      avatarColor: Color(0xFF2DD4A0),
-    ),
-    OpportunityModel(
-      id: '4',
-      title: 'Cloud Migration Project',
-      contactName: 'Arjun Patel',
-      value: 120000,
-      probability: 90,
-      stage: OpportunityStage.won,
-      source: SourceType.website,
-      timeAgo: '3w',
-      nextFollowUp: 'Jun 5, 11:00 AM',
-      phone: '+91 76543 21098',
-      avatarInitials: 'AP',
-      avatarColor: Color(0xFFFF7043),
-    ),
-    OpportunityModel(
-      id: '5',
-      title: 'Annual Support Contract',
-      contactName: 'Neha Singh',
-      value: 55000,
-      probability: 40,
-      stage: OpportunityStage.proposal,
-      source: SourceType.referral,
-      timeAgo: '3d',
-      nextFollowUp: 'Jun 6, 3:30 PM',
-      phone: '+91 90123 45678',
-      avatarInitials: 'NS',
-      avatarColor: Color(0xFF26C6DA),
-    ),
-    OpportunityModel(
-      id: '6',
-      title: 'UI/UX Redesign',
-      contactName: 'Vikram Iyer',
-      value: 18500,
-      probability: 55,
-      stage: OpportunityStage.negotiation,
-      source: SourceType.email,
-      timeAgo: '5d',
-      nextFollowUp: 'Jun 7, 4:00 PM',
-      phone: '+91 81234 56789',
-      avatarInitials: 'VI',
-      avatarColor: Color(0xFFAB47BC),
-    ),
-  ];
 
   @override
   void initState() {
@@ -275,28 +48,8 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
     super.dispose();
   }
 
-  // ── Derived lists ──
-  List<OpportunityModel> get _filteredList {
-    final query = _searchController.text.toLowerCase();
-    return _allOpportunities.where((o) {
-      final matchesSearch = query.isEmpty ||
-          o.title.toLowerCase().contains(query) ||
-          o.contactName.toLowerCase().contains(query) ||
-          o.phone.contains(query);
-      final matchesStage =
-          _selectedStage == null || o.stage == _selectedStage;
-      return matchesSearch && matchesStage;
-    }).toList();
-  }
-
   int _countByStage(OpportunityStage s) =>
-      _allOpportunities.where((o) => o.stage == s).length;
-
-  // ── Stat helpers ──
-  double get _totalValue =>
-      _allOpportunities.fold(0, (sum, o) => sum + o.value);
-
-  int get _wonCount => _countByStage(OpportunityStage.won);
+      ref.read(opportunitiesProvider.notifier).countByStage(s);
 
   // ── Formatting ──
   String _formatValue(double v) {
@@ -307,7 +60,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
 
   @override
   Widget build(BuildContext context) {
-    final list = _filteredList;
+    final list = ref.watch(filteredOpportunitiesProvider);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -358,6 +111,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
   //  HEADER
   // ─────────────────────────────────────────────
   Widget _buildHeader() {
+    final total = ref.watch(opportunitiesProvider.select((s) => s.items.length));
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Row(
@@ -387,7 +141,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        '${_allOpportunities.length}',
+                        '$total',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -441,11 +195,9 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
   //  STAT CARDS
   // ─────────────────────────────────────────────
   Widget _buildStatCards() {
+    final total = ref.watch(opportunitiesProvider.select((s) => s.items.length));
     final stats = [
-      _StatCard(
-          value: '${_allOpportunities.length}',
-          label: 'Total',
-          color: AppColors.green),
+      _StatCard(value: '$total', label: 'Total', color: AppColors.green),
       _StatCard(
           value: '${_countByStage(OpportunityStage.proposal)}',
           label: 'Proposal',
@@ -455,7 +207,9 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
           label: 'Negotiation',
           color: const Color(0xFF4CAF9A)),
       _StatCard(
-          value: '$_wonCount', label: 'Won', color: AppColors.leadFunnelWon),
+          value: '${_countByStage(OpportunityStage.won)}',
+          label: 'Won',
+          color: AppColors.leadFunnelWon),
     ];
 
     return Padding(
@@ -527,7 +281,8 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
         ),
         child: TextField(
           controller: _searchController,
-          onChanged: (_) => setState(() {}),
+          onChanged: (v) =>
+              ref.read(opportunitiesProvider.notifier).setSearch(v),
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
           decoration: const InputDecoration(
             hintText: 'Search title, name, phone, email...',
@@ -548,6 +303,8 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
   //  FILTER TABS
   // ─────────────────────────────────────────────
   Widget _buildFilterTabs() {
+    final selectedStage =
+        ref.watch(opportunitiesProvider.select((s) => s.selectedStage));
     final stages = [null, ...OpportunityStage.values];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -568,12 +325,13 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
                 size: 18, color: AppColors.textSecondary),
           ),
           ...stages.map((stage) {
-            final isSelected = _selectedStage == stage;
+            final isSelected = selectedStage == stage;
             final label = stage == null ? 'All' : stage.label;
             final activeColor =
                 stage == null ? AppColors.green : stage.color;
             return GestureDetector(
-              onTap: () => setState(() => _selectedStage = stage),
+              onTap: () =>
+                  ref.read(opportunitiesProvider.notifier).setStage(stage),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 margin: const EdgeInsets.only(right: 8),
@@ -611,7 +369,9 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
   //  LIST HEADER
   // ─────────────────────────────────────────────
   Widget _buildListHeader() {
-    final list = _filteredList;
+    final list = ref.watch(filteredOpportunitiesProvider);
+    final sortLabel =
+        ref.watch(opportunitiesProvider.select((s) => s.sortLabel));
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Row(
@@ -633,7 +393,7 @@ class _OpportunitiesScreenState extends State<OpportunitiesScreen>
                     size: 16, color: AppColors.textSecondary),
                 const SizedBox(width: 4),
                 Text(
-                  _sortLabel,
+                  sortLabel,
                   style: const TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,

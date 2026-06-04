@@ -6,7 +6,7 @@ class TaskModel {
   final String nextAction;
   final String remark;
   final DateTime dueDate;
-  TaskStatus status;
+  final TaskStatus status;
   final String? leadName;
 
   TaskModel({
@@ -18,6 +18,18 @@ class TaskModel {
     required this.status,
     this.leadName,
   });
+
+  TaskModel copyWith({TaskStatus? status}) {
+    return TaskModel(
+      id: id,
+      title: title,
+      nextAction: nextAction,
+      remark: remark,
+      dueDate: dueDate,
+      status: status ?? this.status,
+      leadName: leadName,
+    );
+  }
 
   // Sample data
   static List<TaskModel> sampleTasks() {
