@@ -104,6 +104,21 @@ extension SourceTypeName on SourceType {
   }
 }
 
+/// A line-item product attached to an opportunity.
+class OpportunityProduct {
+  final String name;
+  final int quantity;
+  final double price;
+
+  const OpportunityProduct({
+    required this.name,
+    required this.quantity,
+    required this.price,
+  });
+
+  double get total => quantity * price;
+}
+
 class OpportunityModel {
   final String id;
   final String title;
@@ -132,4 +147,34 @@ class OpportunityModel {
     required this.avatarInitials,
     required this.avatarColor,
   });
+
+  OpportunityModel copyWith({
+    String? id,
+    String? title,
+    String? contactName,
+    double? value,
+    int? probability,
+    OpportunityStage? stage,
+    SourceType? source,
+    String? timeAgo,
+    String? nextFollowUp,
+    String? phone,
+    String? avatarInitials,
+    Color? avatarColor,
+  }) {
+    return OpportunityModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      contactName: contactName ?? this.contactName,
+      value: value ?? this.value,
+      probability: probability ?? this.probability,
+      stage: stage ?? this.stage,
+      source: source ?? this.source,
+      timeAgo: timeAgo ?? this.timeAgo,
+      nextFollowUp: nextFollowUp ?? this.nextFollowUp,
+      phone: phone ?? this.phone,
+      avatarInitials: avatarInitials ?? this.avatarInitials,
+      avatarColor: avatarColor ?? this.avatarColor,
+    );
+  }
 }

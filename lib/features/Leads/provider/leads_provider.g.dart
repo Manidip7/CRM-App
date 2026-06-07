@@ -106,7 +106,7 @@ final class LeadsSourceProvider
   }
 }
 
-String _$leadsSourceHash() => r'4380801117ece1f42b9fef332a35fee9edd2caa8';
+String _$leadsSourceHash() => r'688a7399b92180d38a794f393f052af23dd98ea2';
 
 /// The source list with the active search query + status/source filters applied.
 

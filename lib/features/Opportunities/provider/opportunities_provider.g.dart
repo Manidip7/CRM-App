@@ -44,7 +44,7 @@ final class OpportunitiesProvider
   }
 }
 
-String _$opportunitiesHash() => r'3c7beb9f1c2a093d2b13c06afea768386c915ca8';
+String _$opportunitiesHash() => r'fd3a88f9df91ec1a3a1954e20d8f3089be523ab9';
 
 /// Kept alive so opportunities converted from leads survive navigation.
 
@@ -117,4 +117,4 @@ final class FilteredOpportunitiesProvider
 }
 
 String _$filteredOpportunitiesHash() =>
-    r'91f055d05428d222f156dc6866995857e97c76c5';
+    r'8c375f9368e4d39b3143676b4232623fe7dd1603';

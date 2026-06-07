@@ -12,6 +12,7 @@ import '../widgets/response_rate_card.dart';
 import '../widgets/revenue_forecast_card.dart';
 import '../widgets/source_distribution_card.dart';
 import '../widgets/stat_cards_row.dart';
+import '../widgets/app_drawer.dart';
 import '../widgets/top_bar.dart';
 import '../widgets/top_sales_performers_card.dart';
 import '../../task/view/TaskScreen.dart';
@@ -64,26 +65,6 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildPlaceholder(String label, IconData icon) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 48, color: AppColors.textLight),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedNavIndex = ref.watch(dashboardNavProvider);
@@ -107,6 +88,7 @@ class DashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      drawer: const AppDrawer(),
       body: SafeArea(child: body),
       bottomNavigationBar: BottomNavBar(
         selectedIndex: selectedNavIndex,

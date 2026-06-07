@@ -14,7 +14,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$OpportunitiesState {
 
- List<OpportunityModel> get items; OpportunityStage? get selectedStage; String get searchQuery; String get sortLabel;
+ List<OpportunityModel> get items; List<OpportunityModel> get backlogItems; OpportunityStage? get selectedStage; String get searchQuery; String get sortLabel; bool get showBacklog;
 /// Create a copy of OpportunitiesState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -25,16 +25,16 @@ $OpportunitiesStateCopyWith<OpportunitiesState> get copyWith => _$OpportunitiesS
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is OpportunitiesState&&const DeepCollectionEquality().equals(other.items, items)&&(identical(other.selectedStage, selectedStage) || other.selectedStage == selectedStage)&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.sortLabel, sortLabel) || other.sortLabel == sortLabel));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is OpportunitiesState&&const DeepCollectionEquality().equals(other.items, items)&&const DeepCollectionEquality().equals(other.backlogItems, backlogItems)&&(identical(other.selectedStage, selectedStage) || other.selectedStage == selectedStage)&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.sortLabel, sortLabel) || other.sortLabel == sortLabel)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(items),selectedStage,searchQuery,sortLabel);
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(items),const DeepCollectionEquality().hash(backlogItems),selectedStage,searchQuery,sortLabel,showBacklog);
 
 @override
 String toString() {
-  return 'OpportunitiesState(items: $items, selectedStage: $selectedStage, searchQuery: $searchQuery, sortLabel: $sortLabel)';
+  return 'OpportunitiesState(items: $items, backlogItems: $backlogItems, selectedStage: $selectedStage, searchQuery: $searchQuery, sortLabel: $sortLabel, showBacklog: $showBacklog)';
 }
 
 
@@ -45,7 +45,7 @@ abstract mixin class $OpportunitiesStateCopyWith<$Res>  {
   factory $OpportunitiesStateCopyWith(OpportunitiesState value, $Res Function(OpportunitiesState) _then) = _$OpportunitiesStateCopyWithImpl;
 @useResult
 $Res call({
- List<OpportunityModel> items, OpportunityStage? selectedStage, String searchQuery, String sortLabel
+ List<OpportunityModel> items, List<OpportunityModel> backlogItems, OpportunityStage? selectedStage, String searchQuery, String sortLabel, bool showBacklog
 });
 
 
@@ -62,13 +62,15 @@ class _$OpportunitiesStateCopyWithImpl<$Res>
 
 /// Create a copy of OpportunitiesState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? items = null,Object? selectedStage = freezed,Object? searchQuery = null,Object? sortLabel = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? items = null,Object? backlogItems = null,Object? selectedStage = freezed,Object? searchQuery = null,Object? sortLabel = null,Object? showBacklog = null,}) {
   return _then(_self.copyWith(
 items: null == items ? _self.items : items // ignore: cast_nullable_to_non_nullable
+as List<OpportunityModel>,backlogItems: null == backlogItems ? _self.backlogItems : backlogItems // ignore: cast_nullable_to_non_nullable
 as List<OpportunityModel>,selectedStage: freezed == selectedStage ? _self.selectedStage : selectedStage // ignore: cast_nullable_to_non_nullable
 as OpportunityStage?,searchQuery: null == searchQuery ? _self.searchQuery : searchQuery // ignore: cast_nullable_to_non_nullable
 as String,sortLabel: null == sortLabel ? _self.sortLabel : sortLabel // ignore: cast_nullable_to_non_nullable
-as String,
+as String,showBacklog: null == showBacklog ? _self.showBacklog : showBacklog // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -153,10 +155,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<OpportunityModel> items,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<OpportunityModel> items,  List<OpportunityModel> backlogItems,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel,  bool showBacklog)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _OpportunitiesState() when $default != null:
-return $default(_that.items,_that.selectedStage,_that.searchQuery,_that.sortLabel);case _:
+return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQuery,_that.sortLabel,_that.showBacklog);case _:
   return orElse();
 
 }
@@ -174,10 +176,10 @@ return $default(_that.items,_that.selectedStage,_that.searchQuery,_that.sortLabe
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<OpportunityModel> items,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<OpportunityModel> items,  List<OpportunityModel> backlogItems,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel,  bool showBacklog)  $default,) {final _that = this;
 switch (_that) {
 case _OpportunitiesState():
-return $default(_that.items,_that.selectedStage,_that.searchQuery,_that.sortLabel);case _:
+return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQuery,_that.sortLabel,_that.showBacklog);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -194,10 +196,10 @@ return $default(_that.items,_that.selectedStage,_that.searchQuery,_that.sortLabe
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<OpportunityModel> items,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<OpportunityModel> items,  List<OpportunityModel> backlogItems,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel,  bool showBacklog)?  $default,) {final _that = this;
 switch (_that) {
 case _OpportunitiesState() when $default != null:
-return $default(_that.items,_that.selectedStage,_that.searchQuery,_that.sortLabel);case _:
+return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQuery,_that.sortLabel,_that.showBacklog);case _:
   return null;
 
 }
@@ -209,7 +211,7 @@ return $default(_that.items,_that.selectedStage,_that.searchQuery,_that.sortLabe
 
 
 class _OpportunitiesState implements OpportunitiesState {
-  const _OpportunitiesState({final  List<OpportunityModel> items = const <OpportunityModel>[], this.selectedStage, this.searchQuery = '', this.sortLabel = 'Newest first'}): _items = items;
+  const _OpportunitiesState({final  List<OpportunityModel> items = const <OpportunityModel>[], final  List<OpportunityModel> backlogItems = const <OpportunityModel>[], this.selectedStage, this.searchQuery = '', this.sortLabel = 'Newest first', this.showBacklog = false}): _items = items,_backlogItems = backlogItems;
   
 
  final  List<OpportunityModel> _items;
@@ -219,9 +221,17 @@ class _OpportunitiesState implements OpportunitiesState {
   return EqualUnmodifiableListView(_items);
 }
 
+ final  List<OpportunityModel> _backlogItems;
+@override@JsonKey() List<OpportunityModel> get backlogItems {
+  if (_backlogItems is EqualUnmodifiableListView) return _backlogItems;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_backlogItems);
+}
+
 @override final  OpportunityStage? selectedStage;
 @override@JsonKey() final  String searchQuery;
 @override@JsonKey() final  String sortLabel;
+@override@JsonKey() final  bool showBacklog;
 
 /// Create a copy of OpportunitiesState
 /// with the given fields replaced by the non-null parameter values.
@@ -233,16 +243,16 @@ _$OpportunitiesStateCopyWith<_OpportunitiesState> get copyWith => __$Opportuniti
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _OpportunitiesState&&const DeepCollectionEquality().equals(other._items, _items)&&(identical(other.selectedStage, selectedStage) || other.selectedStage == selectedStage)&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.sortLabel, sortLabel) || other.sortLabel == sortLabel));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _OpportunitiesState&&const DeepCollectionEquality().equals(other._items, _items)&&const DeepCollectionEquality().equals(other._backlogItems, _backlogItems)&&(identical(other.selectedStage, selectedStage) || other.selectedStage == selectedStage)&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.sortLabel, sortLabel) || other.sortLabel == sortLabel)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_items),selectedStage,searchQuery,sortLabel);
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_items),const DeepCollectionEquality().hash(_backlogItems),selectedStage,searchQuery,sortLabel,showBacklog);
 
 @override
 String toString() {
-  return 'OpportunitiesState(items: $items, selectedStage: $selectedStage, searchQuery: $searchQuery, sortLabel: $sortLabel)';
+  return 'OpportunitiesState(items: $items, backlogItems: $backlogItems, selectedStage: $selectedStage, searchQuery: $searchQuery, sortLabel: $sortLabel, showBacklog: $showBacklog)';
 }
 
 
@@ -253,7 +263,7 @@ abstract mixin class _$OpportunitiesStateCopyWith<$Res> implements $Opportunitie
   factory _$OpportunitiesStateCopyWith(_OpportunitiesState value, $Res Function(_OpportunitiesState) _then) = __$OpportunitiesStateCopyWithImpl;
 @override @useResult
 $Res call({
- List<OpportunityModel> items, OpportunityStage? selectedStage, String searchQuery, String sortLabel
+ List<OpportunityModel> items, List<OpportunityModel> backlogItems, OpportunityStage? selectedStage, String searchQuery, String sortLabel, bool showBacklog
 });
 
 
@@ -270,13 +280,15 @@ class __$OpportunitiesStateCopyWithImpl<$Res>
 
 /// Create a copy of OpportunitiesState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? items = null,Object? selectedStage = freezed,Object? searchQuery = null,Object? sortLabel = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? items = null,Object? backlogItems = null,Object? selectedStage = freezed,Object? searchQuery = null,Object? sortLabel = null,Object? showBacklog = null,}) {
   return _then(_OpportunitiesState(
 items: null == items ? _self._items : items // ignore: cast_nullable_to_non_nullable
+as List<OpportunityModel>,backlogItems: null == backlogItems ? _self._backlogItems : backlogItems // ignore: cast_nullable_to_non_nullable
 as List<OpportunityModel>,selectedStage: freezed == selectedStage ? _self.selectedStage : selectedStage // ignore: cast_nullable_to_non_nullable
 as OpportunityStage?,searchQuery: null == searchQuery ? _self.searchQuery : searchQuery // ignore: cast_nullable_to_non_nullable
 as String,sortLabel: null == sortLabel ? _self.sortLabel : sortLabel // ignore: cast_nullable_to_non_nullable
-as String,
+as String,showBacklog: null == showBacklog ? _self.showBacklog : showBacklog // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

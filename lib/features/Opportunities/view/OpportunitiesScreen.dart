@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/utils/AppColors.dart';
 import '../model/opportunity_model.dart';
 import '../provider/opportunities_provider.dart';
+import 'opportunity_detail_screen.dart';
 
 // ─────────────────────────────────────────────
 //  SCREEN
@@ -50,6 +51,16 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
 
   int _countByStage(OpportunityStage s) =>
       ref.read(opportunitiesProvider.notifier).countByStage(s);
+
+  // Accent color — red theme when viewing the backlog.
+  Color get _accent =>
+      ref.watch(opportunitiesProvider.select((s) => s.showBacklog))
+          ? AppColors.red
+          : AppColors.green;
+
+  // Length of the currently active list (live pipeline or backlog).
+  int get _activeTotal => ref.watch(opportunitiesProvider
+      .select((s) => (s.showBacklog ? s.backlogItems : s.items).length));
 
   // ── Formatting ──
   String _formatValue(double v) {
@@ -111,7 +122,10 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   //  HEADER
   // ─────────────────────────────────────────────
   Widget _buildHeader() {
-    final total = ref.watch(opportunitiesProvider.select((s) => s.items.length));
+    final showBacklog =
+        ref.watch(opportunitiesProvider.select((s) => s.showBacklog));
+    final total = _activeTotal;
+    final accent = _accent;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Row(
@@ -123,13 +137,15 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
               children: [
                 Row(
                   children: [
-                    const Text(
-                      'Opportunities',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                        letterSpacing: 0.1,
+                    Flexible(
+                      child: Text(
+                        showBacklog ? 'Backlog' : 'Opportunities',
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                          letterSpacing: 0.1,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -137,24 +153,26 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.green.withOpacity(0.15),
+                        color: accent.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         '$total',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.green,
+                          color: accent,
                         ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 2),
-                const Text(
-                  'Track and grow your pipeline',
-                  style: TextStyle(
+                Text(
+                  showBacklog
+                      ? 'Overdue deals needing attention'
+                      : 'Track and grow your pipeline',
+                  style: const TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,
                   ),
@@ -162,31 +180,46 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
               ],
             ),
           ),
-          // Kanban view toggle icon (decorative)
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.divider),
-            ),
-            child: const Icon(Icons.view_column_outlined,
-                size: 20, color: AppColors.textSecondary),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.divider),
-            ),
-            child: const Icon(Icons.more_horiz_rounded,
-                size: 20, color: AppColors.textSecondary),
-          ),
+          const SizedBox(width: 10),
+          _buildBacklogButton(showBacklog),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBacklogButton(bool active) {
+    return GestureDetector(
+      onTap: () {
+        _searchController.clear();
+        ref.read(opportunitiesProvider.notifier).toggleBacklog();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? AppColors.red : AppColors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.red, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              active ? Icons.work_outline_rounded : Icons.history_rounded,
+              size: 16,
+              color: active ? Colors.white : AppColors.red,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              active ? 'Pipeline' : 'Backlog',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: active ? Colors.white : AppColors.red,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -195,7 +228,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   //  STAT CARDS
   // ─────────────────────────────────────────────
   Widget _buildStatCards() {
-    final total = ref.watch(opportunitiesProvider.select((s) => s.items.length));
+    final total = _activeTotal;
     final stats = [
       _StatCard(value: '$total', label: 'Total', color: AppColors.green),
       _StatCard(
@@ -432,7 +465,9 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   //  OPPORTUNITY CARD
   // ─────────────────────────────────────────────
   Widget _buildCard(OpportunityModel opp) {
-    return Container(
+    return GestureDetector(
+      onTap: () => _openDetail(opp),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
@@ -597,6 +632,16 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
             ),
           ],
         ),
+      ),
+      ),
+    );
+  }
+
+  void _openDetail(OpportunityModel opp) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OpportunityDetailScreen(opportunity: opp),
       ),
     );
   }
