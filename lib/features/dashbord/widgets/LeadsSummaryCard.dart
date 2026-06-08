@@ -105,20 +105,16 @@ class LeadsSummaryCard extends StatelessWidget {
                 hasValue: weekCount > 0,
               ),
               const SizedBox(width: 3),
-              Expanded(
+              _MiniProgressBar(
+                fraction: monthCount / maxVal,
+                hasValue: monthCount > 0,
                 flex: 2,
-                child: _MiniProgressBar(
-                  fraction: monthCount / maxVal,
-                  hasValue: monthCount > 0,
-                ),
               ),
               const SizedBox(width: 3),
-              Expanded(
+              _MiniProgressBar(
+                fraction: totalCount / maxVal,
+                hasValue: totalCount > 0,
                 flex: 2,
-                child: _MiniProgressBar(
-                  fraction: totalCount / maxVal,
-                  hasValue: totalCount > 0,
-                ),
               ),
             ],
           ),
@@ -185,12 +181,18 @@ class _VerticalDivider extends StatelessWidget {
 class _MiniProgressBar extends StatelessWidget {
   final double fraction;
   final bool hasValue;
+  final int flex;
 
-  const _MiniProgressBar({required this.fraction, required this.hasValue});
+  const _MiniProgressBar({
+    required this.fraction,
+    required this.hasValue,
+    this.flex = 1,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
+      flex: flex,
       child: Container(
         height: 3,
         decoration: BoxDecoration(

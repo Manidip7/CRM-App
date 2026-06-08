@@ -38,6 +38,62 @@ class LeadModel {
     required this.avatarColorIndex,
   });
 
+  /// Builds a [LeadModel] from the backend JSON shape. Unknown/missing enum
+  /// values fall back to sensible defaults so a single bad row can't crash the
+  /// whole list.
+  factory LeadModel.fromJson(Map<String, dynamic> json) {
+    return LeadModel(
+      id: '${json['id']}',
+      title: json['title'] as String? ?? '',
+      companyName: json['company_name'] as String?,
+      contactName: json['contact_name'] as String? ?? '',
+      phone: json['phone'] as String?,
+      email: json['email'] as String?,
+      status: _statusFromString(json['status'] as String?),
+      source: _sourceFromString(json['source'] as String?),
+      nextFollowUp: _parseDate(json['next_follow_up']) ?? DateTime.now(),
+      createdAt: _parseDate(json['created_at']) ?? DateTime.now(),
+      dealValue: (json['deal_value'] as num?)?.toDouble(),
+      avatarInitials: json['avatar_initials'] as String?,
+      avatarColorIndex: (json['avatar_color_index'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'company_name': companyName,
+        'contact_name': contactName,
+        'phone': phone,
+        'email': email,
+        'status': status.name,
+        'source': source.name,
+        'next_follow_up': nextFollowUp.toIso8601String(),
+        'created_at': createdAt.toIso8601String(),
+        'deal_value': dealValue,
+        'avatar_initials': avatarInitials,
+        'avatar_color_index': avatarColorIndex,
+      };
+
+  static DateTime? _parseDate(dynamic value) {
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  static LeadStatus _statusFromString(String? value) {
+    return LeadStatus.values.firstWhere(
+      (e) => e.name == value,
+      orElse: () => LeadStatus.newLead,
+    );
+  }
+
+  static LeadSource _sourceFromString(String? value) {
+    return LeadSource.values.firstWhere(
+      (e) => e.name == value,
+      orElse: () => LeadSource.manual,
+    );
+  }
+
   String get displayInitials {
     if (avatarInitials != null) return avatarInitials!;
     final parts = contactName.trim().split(' ');
