@@ -62,6 +62,12 @@ class AppDrawer extends ConsumerWidget {
                     selected: selected == 5,
                     onTap: () => _go(context, ref, 5),
                   ),
+                  _DrawerItem(
+                    icon: Icons.people_alt_rounded,
+                    label: 'Customers',
+                    selected: selected == 6,
+                    onTap: () => _go(context, ref, 6),
+                  ),
                   const SizedBox(height: 8),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),

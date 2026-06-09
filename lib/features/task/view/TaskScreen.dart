@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/utils/AppColors.dart';
 import '../model/TaskStatus.dart';
 import '../provider/task_provider.dart';
+import 'task_list_screen.dart';
 
 
 class TaskScreen extends ConsumerStatefulWidget {
@@ -65,6 +66,8 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                   children: [
                     const SizedBox(height: 12),
                     _buildTabToggle(),
+                    const SizedBox(height: 16),
+                    _buildTaskListButton(),
                     const SizedBox(height: 16),
                     _buildTaskOverviewCard(),
                     const SizedBox(height: 20),
@@ -149,27 +152,63 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.cardBackground,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 6,
-                    ),
-                  ],
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 6,
                 ),
-                child: const Icon(Icons.search,
-                    color: AppColors.textPrimary, size: 20),
-              ),
-            ],
+              ],
+            ),
+            child: const Icon(Icons.search,
+                color: AppColors.textPrimary, size: 20),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Full-width button that opens the searchable / filterable Task List.
+  Widget _buildTaskListButton() {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const TaskListScreen()),
+      ),
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withOpacity(0.25),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.format_list_bulleted_rounded,
+                color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Task List',
+              style: GoogleFonts.poppins(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

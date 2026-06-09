@@ -34,4 +34,12 @@ class TaskList extends _$TaskList {
   void deleteTask(TaskModel task) => state = state.copyWith(
         tasks: state.tasks.where((t) => t.id != task.id).toList(),
       );
+
+  /// Replaces the task sharing [updated]'s id with the edited version.
+  void updateTask(TaskModel updated) => state = state.copyWith(
+        tasks: [
+          for (final t in state.tasks)
+            if (t.id == updated.id) updated else t,
+        ],
+      );
 }
