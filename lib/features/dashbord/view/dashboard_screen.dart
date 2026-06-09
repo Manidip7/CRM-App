@@ -16,6 +16,8 @@ import '../widgets/app_drawer.dart';
 import '../widgets/top_bar.dart';
 import '../widgets/top_sales_performers_card.dart';
 import '../../task/view/TaskScreen.dart';
+import '../../followups/view/follow_ups_screen.dart';
+import '../../quotations/view/quotations_screen.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../core/constants/bottom_nav_bar.dart';
 
@@ -81,6 +83,12 @@ class DashboardScreen extends ConsumerWidget {
         break;
       case 3:
         body = OpportunitiesScreen();
+        break;
+      case 4:
+        body = const FollowUpsScreen();
+        break;
+      case 5:
+        body = const QuotationsScreen();
         break;
       default:
         body = _buildOverviewBody();

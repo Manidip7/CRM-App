@@ -15,11 +15,16 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // `index` maps each tab to the dashboard body switch (Overview 0, Leads 1,
+    // Tasks 2, Opportunities 3) so the visual order can differ from those ids.
     final items = [
-      _NavItem(icon: Icons.grid_view_rounded, label: 'Overview'),
-      _NavItem(icon: Icons.filter_list_rounded, label: 'Leads'),
-      _NavItem(icon: Icons.task_alt_rounded, label: 'Tasks'),
-      _NavItem(icon: Icons.trending_up_rounded, label: 'Opportunities'),
+      _NavItem(icon: Icons.grid_view_rounded, label: 'Overview', index: 0),
+      _NavItem(icon: Icons.filter_list_rounded, label: 'Leads', index: 1),
+      _NavItem(
+          icon: Icons.trending_up_rounded,
+          label: 'Opportunities',
+          index: 3),
+      _NavItem(icon: Icons.task_alt_rounded, label: 'Tasks', index: 2),
     ];
 
     final bottomInset = MediaQuery.of(context).padding.bottom;
@@ -39,10 +44,11 @@ class BottomNavBar extends StatelessWidget {
       ),
       child: Row(
         children: List.generate(items.length, (i) {
-          final isSelected = i == selectedIndex;
+          final item = items[i];
+          final isSelected = item.index == selectedIndex;
           return Expanded(
             child: GestureDetector(
-              onTap: () => onTap(i),
+              onTap: () => onTap(item.index),
               behavior: HitTestBehavior.opaque,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -57,7 +63,7 @@ class BottomNavBar extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
-                      items[i].icon,
+                      item.icon,
                       color: isSelected
                           ? AppColors.primary
                           : AppColors.navUnselected,
@@ -66,7 +72,7 @@ class BottomNavBar extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    items[i].label,
+                    item.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
@@ -91,5 +97,13 @@ class BottomNavBar extends StatelessWidget {
 class _NavItem {
   final IconData icon;
   final String label;
-  const _NavItem({required this.icon, required this.label});
+
+  /// Dashboard body index this tab activates (see DashboardScreen switch).
+  final int index;
+
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.index,
+  });
 }

@@ -1770,18 +1770,35 @@ class _MenuSheet extends StatelessWidget {
 
 // ── Add Product Sheet ─────────────────────────────────────────────────────────
 
-class _AddProductSheet extends StatefulWidget {
+/// Ephemeral validation message for the Add Product sheet.
+class _AddProductError extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String? message) => state = message;
+}
+
+final _addProductErrorProvider =
+    NotifierProvider<_AddProductError, String?>(_AddProductError.new);
+
+class _AddProductSheet extends ConsumerStatefulWidget {
   const _AddProductSheet();
 
   @override
-  State<_AddProductSheet> createState() => _AddProductSheetState();
+  ConsumerState<_AddProductSheet> createState() => _AddProductSheetState();
 }
 
-class _AddProductSheetState extends State<_AddProductSheet> {
+class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
   final _nameController = TextEditingController();
   final _qtyController = TextEditingController(text: '1');
   final _priceController = TextEditingController();
-  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Clear any error left over from a previous time the sheet was opened.
+    ref.read(_addProductErrorProvider.notifier).set(null);
+  }
 
   @override
   void dispose() {
@@ -1796,16 +1813,17 @@ class _AddProductSheetState extends State<_AddProductSheet> {
     final qty = int.tryParse(_qtyController.text.trim());
     final price = double.tryParse(_priceController.text.trim());
 
+    final errorNotifier = ref.read(_addProductErrorProvider.notifier);
     if (name.isEmpty) {
-      setState(() => _error = 'Please enter a product name');
+      errorNotifier.set('Please enter a product name');
       return;
     }
     if (qty == null || qty <= 0) {
-      setState(() => _error = 'Please enter a valid quantity');
+      errorNotifier.set('Please enter a valid quantity');
       return;
     }
     if (price == null || price < 0) {
-      setState(() => _error = 'Please enter a valid price');
+      errorNotifier.set('Please enter a valid price');
       return;
     }
 
@@ -1817,6 +1835,7 @@ class _AddProductSheetState extends State<_AddProductSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final error = ref.watch(_addProductErrorProvider);
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -1896,7 +1915,7 @@ class _AddProductSheetState extends State<_AddProductSheet> {
                 ),
               ],
             ),
-            if (_error != null) ...[
+            if (error != null) ...[
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -1904,7 +1923,7 @@ class _AddProductSheetState extends State<_AddProductSheet> {
                       size: 15, color: AppColors.red),
                   const SizedBox(width: 6),
                   Text(
-                    _error!,
+                    error,
                     style: GoogleFonts.poppins(
                       fontSize: 12,
                       color: AppColors.red,

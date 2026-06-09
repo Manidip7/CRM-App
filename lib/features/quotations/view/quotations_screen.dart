@@ -1,0 +1,772 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/utils/AppColors.dart';
+import '../../Opportunities/model/opportunity_model.dart';
+import '../../Opportunities/provider/opportunities_provider.dart';
+import '../../Opportunities/view/opportunity_detail_screen.dart';
+import '../../dashbord/provider/dashboard_provider.dart';
+import '../model/quotation_model.dart';
+import '../provider/quotations_provider.dart';
+import 'edit_quotation_screen.dart';
+
+/// Lists every quotation with a search field, a from/to date range and a status
+/// dropdown (All Status, Final Only and every individual status). Each card
+/// exposes download, edit and delete actions.
+class QuotationsScreen extends ConsumerStatefulWidget {
+  const QuotationsScreen({super.key});
+
+  @override
+  ConsumerState<QuotationsScreen> createState() => _QuotationsScreenState();
+}
+
+class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = ref.watch(filteredQuotationsProvider);
+
+    // Back button → return to the Dashboard overview tab instead of exiting.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        ref.read(dashboardNavProvider.notifier).select(0);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(),
+              _buildSearchRow(),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: ref.watch(quotationFiltersExpandedProvider)
+                    ? _buildDateAndStatusRow()
+                    : const SizedBox(width: double.infinity),
+              ),
+              Expanded(
+                child: list.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                        itemCount: list.length,
+                        itemBuilder: (ctx, i) => _buildCard(list[i]),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Header ──
+  Widget _buildHeader() {
+    final list = ref.watch(filteredQuotationsProvider);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => ref.read(dashboardNavProvider.notifier).select(0),
+            child: Container(
+              width: 38,
+              height: 38,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: AppColors.divider),
+              ),
+              child: const Icon(Icons.arrow_back_rounded,
+                  size: 20, color: AppColors.textPrimary),
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Flexible(
+                      child: Text(
+                        'Quotations',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${list.length}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Manage and track your quotes',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          _buildFilterToggle(),
+        ],
+      ),
+    );
+  }
+
+  // ── Filter toggle — expands/collapses the date + status filters ──
+  Widget _buildFilterToggle() {
+    final f = ref.watch(quotationFilterProvider);
+    final showFilters = ref.watch(quotationFiltersExpandedProvider);
+    final hasActiveFilters = f.statusFilter != QuotationStatusFilter.all ||
+        f.fromDate != null ||
+        f.toDate != null;
+    final active = showFilters || hasActiveFilters;
+    return GestureDetector(
+      onTap: () =>
+          ref.read(quotationFiltersExpandedProvider.notifier).toggle(),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: active ? AppColors.primary : AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? AppColors.primary : AppColors.divider,
+          ),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(
+              Icons.tune_rounded,
+              size: 19,
+              color: active ? Colors.white : AppColors.textSecondary,
+            ),
+            if (hasActiveFilters && !showFilters)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: AppColors.red,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Search bar (number / client / company) ──
+  Widget _buildSearchRow() {
+    final hasQuery =
+        ref.watch(quotationFilterProvider.select((f) => f.search.isNotEmpty));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Container(
+        height: 46,
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.divider),
+        ),
+        child: TextField(
+          controller: _searchController,
+          onChanged: (v) =>
+              ref.read(quotationFilterProvider.notifier).setSearch(v),
+          style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+          decoration: InputDecoration(
+            hintText: 'Search quote no, client or title...',
+            hintStyle:
+                const TextStyle(color: AppColors.textLight, fontSize: 13.5),
+            prefixIcon: const Icon(Icons.search_rounded,
+                color: AppColors.textLight, size: 20),
+            suffixIcon: !hasQuery
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.close_rounded,
+                        size: 18, color: AppColors.textLight),
+                    onPressed: () {
+                      _searchController.clear();
+                      ref
+                          .read(quotationFilterProvider.notifier)
+                          .setSearch('');
+                    },
+                  ),
+            border: InputBorder.none,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── From / To date pickers + status dropdown ──
+  Widget _buildDateAndStatusRow() {
+    final f = ref.watch(quotationFilterProvider);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _dateField(
+                  label: 'From',
+                  value: f.fromDate,
+                  onTap: () => _pickDate(isFrom: true),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _dateField(
+                  label: 'To',
+                  value: f.toDate,
+                  onTap: () => _pickDate(isFrom: false),
+                ),
+              ),
+              if (f.fromDate != null || f.toDate != null) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () =>
+                      ref.read(quotationFilterProvider.notifier).clearDates(),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.redLight,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.event_busy_rounded,
+                        size: 18, color: AppColors.red),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildStatusDropdown(f.statusFilter),
+        ],
+      ),
+    );
+  }
+
+  Widget _dateField({
+    required String label,
+    required DateTime? value,
+    required VoidCallback onTap,
+  }) {
+    final hasValue = value != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.divider),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calendar_today_rounded,
+                size: 15, color: AppColors.textSecondary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                hasValue ? _shortDate(value) : label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: hasValue ? FontWeight.w600 : FontWeight.w400,
+                  color:
+                      hasValue ? AppColors.textPrimary : AppColors.textLight,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusDropdown(QuotationStatusFilter selected) {
+    final accent = selected.finalOnly
+        ? AppColors.green
+        : selected.status?.color ?? AppColors.textSecondary;
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.flag_outlined, size: 16, color: accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<QuotationStatusFilter>(
+                value: selected,
+                isExpanded: true,
+                isDense: true,
+                icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                    color: AppColors.textSecondary),
+                style: const TextStyle(
+                    fontSize: 13.5, color: AppColors.textPrimary),
+                items: [
+                  const DropdownMenuItem<QuotationStatusFilter>(
+                    value: QuotationStatusFilter.all,
+                    child: Text('All Status'),
+                  ),
+                  DropdownMenuItem<QuotationStatusFilter>(
+                    value: QuotationStatusFilter.onlyFinal,
+                    child: Row(
+                      children: const [
+                        Icon(Icons.verified_rounded,
+                            size: 14, color: AppColors.green),
+                        SizedBox(width: 8),
+                        Text('Final Only'),
+                      ],
+                    ),
+                  ),
+                  ...QuotationStatus.values.map(
+                    (s) => DropdownMenuItem<QuotationStatusFilter>(
+                      value: QuotationStatusFilter(status: s),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            margin: const EdgeInsets.only(right: 8),
+                            decoration: BoxDecoration(
+                              color: s.color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          Text(s.label),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                onChanged: (filter) {
+                  if (filter == null) return;
+                  ref
+                      .read(quotationFilterProvider.notifier)
+                      .setStatusFilter(filter);
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Empty state ──
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Icon(Icons.request_quote_outlined,
+              size: 48, color: AppColors.textLight),
+          SizedBox(height: 12),
+          Text(
+            'No quotations match your filters',
+            style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Quotation card ──
+  Widget _buildCard(QuotationModel item) {
+    final accent = item.status.color;
+    return GestureDetector(
+      onTap: () => _openOpportunity(item),
+      child: Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(18),
+        border: Border(left: BorderSide(color: accent, width: 3.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top row: avatar + title + status badge
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Center(
+                    child: Text(
+                      item.displayInitials,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: accent,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          const Icon(Icons.person_outline_rounded,
+                              size: 13, color: AppColors.textSecondary),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              item.companyName == null
+                                  ? item.clientName
+                                  : '${item.clientName} · ${item.companyName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                _buildTag(item.status.tagLabel, accent,
+                    accent.withOpacity(0.12)),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Meta row: quote number + amount + item count
+            Row(
+              children: [
+                _metaChip(Icons.tag_rounded, item.number),
+                const SizedBox(width: 8),
+                _metaChip(Icons.inventory_2_outlined,
+                    '${item.effectiveItemCount} item${item.effectiveItemCount == 1 ? '' : 's'}'),
+                const Spacer(),
+                Text(
+                  item.amountLabel,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Divider(color: AppColors.divider, height: 1),
+            ),
+
+            // Bottom row: dates + action icons
+            Row(
+              children: [
+                const Icon(Icons.event_rounded,
+                    size: 14, color: AppColors.textSecondary),
+                const SizedBox(width: 5),
+                Text(
+                  'Valid till ${_shortDate(item.validUntil)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const Spacer(),
+                _actionIcon(
+                  icon: Icons.download_rounded,
+                  color: AppColors.primary,
+                  tooltip: 'Download',
+                  onTap: () => _onDownload(item),
+                ),
+                const SizedBox(width: 6),
+                _actionIcon(
+                  icon: Icons.edit_outlined,
+                  color: AppColors.green,
+                  tooltip: 'Edit',
+                  onTap: () => _onEdit(item),
+                ),
+                const SizedBox(width: 6),
+                _actionIcon(
+                  icon: Icons.delete_outline_rounded,
+                  color: AppColors.red,
+                  tooltip: 'Delete',
+                  onTap: () => _onDelete(item),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      ),
+    );
+  }
+
+  Widget _metaChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: AppColors.textSecondary),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionIcon({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTag(String label, Color textColor, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+          color: textColor,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  //  Actions
+  // ─────────────────────────────────────────────
+  Future<void> _pickDate({required bool isFrom}) async {
+    final f = ref.read(quotationFilterProvider);
+    final initial = (isFrom ? f.fromDate : f.toDate) ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030, 12, 31),
+    );
+    if (picked == null) return;
+    final notifier = ref.read(quotationFilterProvider.notifier);
+    if (isFrom) {
+      notifier.setFromDate(picked);
+    } else {
+      notifier.setToDate(picked);
+    }
+  }
+
+  void _onDownload(QuotationModel item) {
+    _toast('Downloading ${item.number}...');
+  }
+
+  void _onEdit(QuotationModel item) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditQuotationScreen(quotation: item),
+      ),
+    );
+  }
+
+  /// Opens the opportunity this quotation is linked to. Falls back to a toast
+  /// when the quotation has no (or a stale) opportunity attached.
+  void _openOpportunity(QuotationModel item) {
+    final id = item.opportunityId;
+    if (id == null) {
+      _toast('No opportunity linked to ${item.number}');
+      return;
+    }
+    final oppState = ref.read(opportunitiesProvider);
+    final opp = [...oppState.items, ...oppState.backlogItems]
+        .where((o) => o.id == id)
+        .cast<OpportunityModel?>()
+        .firstWhere((o) => o != null, orElse: () => null);
+    if (opp == null) {
+      _toast('Linked opportunity no longer exists');
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OpportunityDetailScreen(opportunity: opp),
+      ),
+    );
+  }
+
+  Future<void> _onDelete(QuotationModel item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete quotation?',
+            style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary)),
+        content: Text(
+          '${item.number} — ${item.title} will be permanently removed.',
+          style: const TextStyle(
+              fontSize: 13.5, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete',
+                style: TextStyle(
+                    color: AppColors.red, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    ref.read(quotationsProvider.notifier).delete(item.id);
+    _toast('${item.number} deleted');
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message,
+            style: const TextStyle(fontSize: 13, color: Colors.white)),
+        backgroundColor: AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  String _shortDate(DateTime d) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+}
