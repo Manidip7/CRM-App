@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/utils/AppColors.dart';
 import '../../Opportunities/model/opportunity_model.dart';
@@ -98,7 +99,7 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => Navigator.pop(context),
+            onTap: () => context.pop(),
             child: Container(
               width: 38,
               height: 38,
@@ -523,7 +524,7 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
         children: [
           Expanded(
             child: GestureDetector(
-              onTap: () => Navigator.pop(context),
+              onTap: () => context.pop(),
               child: Container(
                 height: 50,
                 alignment: Alignment.center,
@@ -804,7 +805,7 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
 
     ref.read(quotationsProvider.notifier).update(updated);
     _toast('${updated.number} updated');
-    Navigator.pop(context);
+    context.pop();
   }
 
   void _toast(String message) {

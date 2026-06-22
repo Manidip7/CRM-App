@@ -12,9 +12,12 @@ part of 'login_provider.dart';
 // dart format off
 T _$identity<T>(T value) => value;
 /// @nodoc
-mixin _$LoginState {
+mixin _$LoginState implements DiagnosticableTreeMixin {
 
- bool get obscurePassword; bool get isLoading;
+ bool get obscurePassword; bool get isLoading;/// A general error to show (e.g. in a snackbar) after a failed attempt.
+ String? get errorMessage;/// Field-level validation errors keyed by field, e.g.
+/// `{ "email": ["The email field is required."] }` — show under the input.
+ Map<String, List<String>>? get fieldErrors;
 /// Create a copy of LoginState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -22,19 +25,25 @@ mixin _$LoginState {
 $LoginStateCopyWith<LoginState> get copyWith => _$LoginStateCopyWithImpl<LoginState>(this as LoginState, _$identity);
 
 
+@override
+void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+  properties
+    ..add(DiagnosticsProperty('type', 'LoginState'))
+    ..add(DiagnosticsProperty('obscurePassword', obscurePassword))..add(DiagnosticsProperty('isLoading', isLoading))..add(DiagnosticsProperty('errorMessage', errorMessage))..add(DiagnosticsProperty('fieldErrors', fieldErrors));
+}
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LoginState&&(identical(other.obscurePassword, obscurePassword) || other.obscurePassword == obscurePassword)&&(identical(other.isLoading, isLoading) || other.isLoading == isLoading));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LoginState&&(identical(other.obscurePassword, obscurePassword) || other.obscurePassword == obscurePassword)&&(identical(other.isLoading, isLoading) || other.isLoading == isLoading)&&(identical(other.errorMessage, errorMessage) || other.errorMessage == errorMessage)&&const DeepCollectionEquality().equals(other.fieldErrors, fieldErrors));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,obscurePassword,isLoading);
+int get hashCode => Object.hash(runtimeType,obscurePassword,isLoading,errorMessage,const DeepCollectionEquality().hash(fieldErrors));
 
 @override
-String toString() {
-  return 'LoginState(obscurePassword: $obscurePassword, isLoading: $isLoading)';
+String toString({ DiagnosticLevel minLevel = DiagnosticLevel.info }) {
+  return 'LoginState(obscurePassword: $obscurePassword, isLoading: $isLoading, errorMessage: $errorMessage, fieldErrors: $fieldErrors)';
 }
 
 
@@ -45,7 +54,7 @@ abstract mixin class $LoginStateCopyWith<$Res>  {
   factory $LoginStateCopyWith(LoginState value, $Res Function(LoginState) _then) = _$LoginStateCopyWithImpl;
 @useResult
 $Res call({
- bool obscurePassword, bool isLoading
+ bool obscurePassword, bool isLoading, String? errorMessage, Map<String, List<String>>? fieldErrors
 });
 
 
@@ -62,11 +71,13 @@ class _$LoginStateCopyWithImpl<$Res>
 
 /// Create a copy of LoginState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? obscurePassword = null,Object? isLoading = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? obscurePassword = null,Object? isLoading = null,Object? errorMessage = freezed,Object? fieldErrors = freezed,}) {
   return _then(_self.copyWith(
 obscurePassword: null == obscurePassword ? _self.obscurePassword : obscurePassword // ignore: cast_nullable_to_non_nullable
 as bool,isLoading: null == isLoading ? _self.isLoading : isLoading // ignore: cast_nullable_to_non_nullable
-as bool,
+as bool,errorMessage: freezed == errorMessage ? _self.errorMessage : errorMessage // ignore: cast_nullable_to_non_nullable
+as String?,fieldErrors: freezed == fieldErrors ? _self.fieldErrors : fieldErrors // ignore: cast_nullable_to_non_nullable
+as Map<String, List<String>>?,
   ));
 }
 
@@ -151,10 +162,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool obscurePassword,  bool isLoading)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool obscurePassword,  bool isLoading,  String? errorMessage,  Map<String, List<String>>? fieldErrors)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _LoginState() when $default != null:
-return $default(_that.obscurePassword,_that.isLoading);case _:
+return $default(_that.obscurePassword,_that.isLoading,_that.errorMessage,_that.fieldErrors);case _:
   return orElse();
 
 }
@@ -172,10 +183,10 @@ return $default(_that.obscurePassword,_that.isLoading);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool obscurePassword,  bool isLoading)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool obscurePassword,  bool isLoading,  String? errorMessage,  Map<String, List<String>>? fieldErrors)  $default,) {final _that = this;
 switch (_that) {
 case _LoginState():
-return $default(_that.obscurePassword,_that.isLoading);case _:
+return $default(_that.obscurePassword,_that.isLoading,_that.errorMessage,_that.fieldErrors);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -192,10 +203,10 @@ return $default(_that.obscurePassword,_that.isLoading);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool obscurePassword,  bool isLoading)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool obscurePassword,  bool isLoading,  String? errorMessage,  Map<String, List<String>>? fieldErrors)?  $default,) {final _that = this;
 switch (_that) {
 case _LoginState() when $default != null:
-return $default(_that.obscurePassword,_that.isLoading);case _:
+return $default(_that.obscurePassword,_that.isLoading,_that.errorMessage,_that.fieldErrors);case _:
   return null;
 
 }
@@ -206,12 +217,27 @@ return $default(_that.obscurePassword,_that.isLoading);case _:
 /// @nodoc
 
 
-class _LoginState implements LoginState {
-  const _LoginState({this.obscurePassword = true, this.isLoading = false});
+class _LoginState with DiagnosticableTreeMixin implements LoginState {
+  const _LoginState({this.obscurePassword = true, this.isLoading = false, this.errorMessage, final  Map<String, List<String>>? fieldErrors}): _fieldErrors = fieldErrors;
   
 
 @override@JsonKey() final  bool obscurePassword;
 @override@JsonKey() final  bool isLoading;
+/// A general error to show (e.g. in a snackbar) after a failed attempt.
+@override final  String? errorMessage;
+/// Field-level validation errors keyed by field, e.g.
+/// `{ "email": ["The email field is required."] }` — show under the input.
+ final  Map<String, List<String>>? _fieldErrors;
+/// Field-level validation errors keyed by field, e.g.
+/// `{ "email": ["The email field is required."] }` — show under the input.
+@override Map<String, List<String>>? get fieldErrors {
+  final value = _fieldErrors;
+  if (value == null) return null;
+  if (_fieldErrors is EqualUnmodifiableMapView) return _fieldErrors;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableMapView(value);
+}
+
 
 /// Create a copy of LoginState
 /// with the given fields replaced by the non-null parameter values.
@@ -220,19 +246,25 @@ class _LoginState implements LoginState {
 _$LoginStateCopyWith<_LoginState> get copyWith => __$LoginStateCopyWithImpl<_LoginState>(this, _$identity);
 
 
+@override
+void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+  properties
+    ..add(DiagnosticsProperty('type', 'LoginState'))
+    ..add(DiagnosticsProperty('obscurePassword', obscurePassword))..add(DiagnosticsProperty('isLoading', isLoading))..add(DiagnosticsProperty('errorMessage', errorMessage))..add(DiagnosticsProperty('fieldErrors', fieldErrors));
+}
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LoginState&&(identical(other.obscurePassword, obscurePassword) || other.obscurePassword == obscurePassword)&&(identical(other.isLoading, isLoading) || other.isLoading == isLoading));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LoginState&&(identical(other.obscurePassword, obscurePassword) || other.obscurePassword == obscurePassword)&&(identical(other.isLoading, isLoading) || other.isLoading == isLoading)&&(identical(other.errorMessage, errorMessage) || other.errorMessage == errorMessage)&&const DeepCollectionEquality().equals(other._fieldErrors, _fieldErrors));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,obscurePassword,isLoading);
+int get hashCode => Object.hash(runtimeType,obscurePassword,isLoading,errorMessage,const DeepCollectionEquality().hash(_fieldErrors));
 
 @override
-String toString() {
-  return 'LoginState(obscurePassword: $obscurePassword, isLoading: $isLoading)';
+String toString({ DiagnosticLevel minLevel = DiagnosticLevel.info }) {
+  return 'LoginState(obscurePassword: $obscurePassword, isLoading: $isLoading, errorMessage: $errorMessage, fieldErrors: $fieldErrors)';
 }
 
 
@@ -243,7 +275,7 @@ abstract mixin class _$LoginStateCopyWith<$Res> implements $LoginStateCopyWith<$
   factory _$LoginStateCopyWith(_LoginState value, $Res Function(_LoginState) _then) = __$LoginStateCopyWithImpl;
 @override @useResult
 $Res call({
- bool obscurePassword, bool isLoading
+ bool obscurePassword, bool isLoading, String? errorMessage, Map<String, List<String>>? fieldErrors
 });
 
 
@@ -260,11 +292,13 @@ class __$LoginStateCopyWithImpl<$Res>
 
 /// Create a copy of LoginState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? obscurePassword = null,Object? isLoading = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? obscurePassword = null,Object? isLoading = null,Object? errorMessage = freezed,Object? fieldErrors = freezed,}) {
   return _then(_LoginState(
 obscurePassword: null == obscurePassword ? _self.obscurePassword : obscurePassword // ignore: cast_nullable_to_non_nullable
 as bool,isLoading: null == isLoading ? _self.isLoading : isLoading // ignore: cast_nullable_to_non_nullable
-as bool,
+as bool,errorMessage: freezed == errorMessage ? _self.errorMessage : errorMessage // ignore: cast_nullable_to_non_nullable
+as String?,fieldErrors: freezed == fieldErrors ? _self._fieldErrors : fieldErrors // ignore: cast_nullable_to_non_nullable
+as Map<String, List<String>>?,
   ));
 }
 
@@ -272,7 +306,7 @@ as bool,
 }
 
 /// @nodoc
-mixin _$ForgotPasswordState {
+mixin _$ForgotPasswordState implements DiagnosticableTreeMixin {
 
  bool get isLoading; bool get isSent;
 /// Create a copy of ForgotPasswordState
@@ -282,6 +316,12 @@ mixin _$ForgotPasswordState {
 $ForgotPasswordStateCopyWith<ForgotPasswordState> get copyWith => _$ForgotPasswordStateCopyWithImpl<ForgotPasswordState>(this as ForgotPasswordState, _$identity);
 
 
+@override
+void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+  properties
+    ..add(DiagnosticsProperty('type', 'ForgotPasswordState'))
+    ..add(DiagnosticsProperty('isLoading', isLoading))..add(DiagnosticsProperty('isSent', isSent));
+}
 
 @override
 bool operator ==(Object other) {
@@ -293,7 +333,7 @@ bool operator ==(Object other) {
 int get hashCode => Object.hash(runtimeType,isLoading,isSent);
 
 @override
-String toString() {
+String toString({ DiagnosticLevel minLevel = DiagnosticLevel.info }) {
   return 'ForgotPasswordState(isLoading: $isLoading, isSent: $isSent)';
 }
 
@@ -466,7 +506,7 @@ return $default(_that.isLoading,_that.isSent);case _:
 /// @nodoc
 
 
-class _ForgotPasswordState implements ForgotPasswordState {
+class _ForgotPasswordState with DiagnosticableTreeMixin implements ForgotPasswordState {
   const _ForgotPasswordState({this.isLoading = false, this.isSent = false});
   
 
@@ -480,6 +520,12 @@ class _ForgotPasswordState implements ForgotPasswordState {
 _$ForgotPasswordStateCopyWith<_ForgotPasswordState> get copyWith => __$ForgotPasswordStateCopyWithImpl<_ForgotPasswordState>(this, _$identity);
 
 
+@override
+void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+  properties
+    ..add(DiagnosticsProperty('type', 'ForgotPasswordState'))
+    ..add(DiagnosticsProperty('isLoading', isLoading))..add(DiagnosticsProperty('isSent', isSent));
+}
 
 @override
 bool operator ==(Object other) {
@@ -491,7 +537,7 @@ bool operator ==(Object other) {
 int get hashCode => Object.hash(runtimeType,isLoading,isSent);
 
 @override
-String toString() {
+String toString({ DiagnosticLevel minLevel = DiagnosticLevel.info }) {
   return 'ForgotPasswordState(isLoading: $isLoading, isSent: $isSent)';
 }
 

@@ -5,7 +5,7 @@ class ApiConstants {
   ApiConstants._();
 
   /// Root of the backend API. Change this for staging / production builds.
-  static const String baseUrl = 'https://api.example.com';
+  static const String baseUrl = 'https://crm.mindverge.in';
 
   /// Common prefix appended to [baseUrl] (e.g. `/api/v1`).
   static const String apiPrefix = '/api/v1';
@@ -23,9 +23,11 @@ class ApiConstants {
 
   // --- Endpoints ------------------------------------------------------------
   // Auth
-  static const String login = '/auth/login';
-  static const String forgotPassword = '/auth/forgot-password';
-  static const String refreshToken = '/auth/refresh';
+  static const String login = '/login';
+  static const String logout = '/logout';
+  static const String forgotPassword = '/forgot-password';
+  static const String refreshToken = '/refresh';
+  static const String myProfile = '/my-profile';
 
   // Leads
   static const String leads = '/leads';

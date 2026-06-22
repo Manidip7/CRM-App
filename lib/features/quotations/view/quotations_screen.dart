@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../../../routes/app_routes.dart';
 import '../../Opportunities/model/opportunity_model.dart';
 import '../../Opportunities/provider/opportunities_provider.dart';
-import '../../Opportunities/view/opportunity_detail_screen.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
 import '../model/quotation_model.dart';
 import '../provider/quotations_provider.dart';
-import 'edit_quotation_screen.dart';
 
 /// Lists every quotation with a search field, a from/to date range and a status
 /// dropdown (All Status, Final Only and every individual status). Each card
@@ -679,12 +679,7 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
   }
 
   void _onEdit(QuotationModel item) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => EditQuotationScreen(quotation: item),
-      ),
-    );
+    context.push(AppRoutes.editQuotation, extra: item);
   }
 
   /// Opens the opportunity this quotation is linked to. Falls back to a toast
@@ -704,12 +699,7 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
       _toast('Linked opportunity no longer exists');
       return;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => OpportunityDetailScreen(opportunity: opp),
-      ),
-    );
+    context.push(AppRoutes.opportunityDetail, extra: opp);
   }
 
   Future<void> _onDelete(QuotationModel item) async {

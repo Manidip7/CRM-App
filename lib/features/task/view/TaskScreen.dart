@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../../../routes/app_routes.dart';
 import '../model/TaskStatus.dart';
 import '../provider/task_provider.dart';
-import 'task_list_screen.dart';
 
 
 class TaskScreen extends ConsumerStatefulWidget {
@@ -176,10 +177,7 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
   /// Full-width button that opens the searchable / filterable Task List.
   Widget _buildTaskListButton() {
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const TaskListScreen()),
-      ),
+      onTap: () => context.push(AppRoutes.taskList),
       child: Container(
         height: 48,
         decoration: BoxDecoration(

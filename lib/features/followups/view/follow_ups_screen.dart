@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/utils/AppColors.dart';
-import '../../Leads/view/lead_detail_screen.dart';
-import '../../Opportunities/view/opportunity_detail_screen.dart';
+import '../../../routes/app_routes.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
 import '../model/follow_up_item.dart';
 import '../provider/follow_ups_provider.dart';
@@ -670,20 +670,9 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
 
   void _openDetail(FollowUpItem item) {
     if (item.lead != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => LeadDetailScreen(lead: item.lead!),
-        ),
-      );
+      context.push(AppRoutes.leadDetail, extra: item.lead!);
     } else if (item.opportunity != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              OpportunityDetailScreen(opportunity: item.opportunity!),
-        ),
-      );
+      context.push(AppRoutes.opportunityDetail, extra: item.opportunity!);
     }
   }
 

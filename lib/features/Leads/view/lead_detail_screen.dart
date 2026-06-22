@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/utils/AppColors.dart';
+import '../../../routes/app_routes.dart';
 import '../model/lead_model.dart';
 import '../provider/lead_detail_provider.dart';
 import '../../Opportunities/model/opportunity_model.dart';
 import '../../Opportunities/provider/opportunities_provider.dart';
-import '../../Opportunities/view/OpportunitiesScreen.dart';
 
 class LeadDetailScreen extends ConsumerStatefulWidget {
   final LeadModel lead;
@@ -104,7 +105,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => Navigator.pop(context),
+            onTap: () => context.pop(),
             child: Container(
               width: 38,
               height: 38,
@@ -530,12 +531,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     ref.read(opportunitiesProvider.notifier).addOpportunity(opp);
     ref.read(_detailProvider.notifier).markConverted();
     _showSnack('Lead converted to opportunity');
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const OpportunitiesScreen(),
-      ),
-    );
+    context.push(AppRoutes.opportunities);
   }
 
   SourceType _mapSource(LeadSource s) {

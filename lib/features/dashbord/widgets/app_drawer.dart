@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../../../routes/app_routes.dart';
+import '../../auth/data/auth_repository.dart';
+import '../../profile/data/profile_repository.dart';
 import '../provider/dashboard_provider.dart';
 
 /// Side navigation drawer opened from the dashboard header.
@@ -20,7 +24,7 @@ class AppDrawer extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeader(),
+            _buildHeader(context, ref),
             const SizedBox(height: 8),
             Expanded(
               child: ListView(
@@ -126,7 +130,19 @@ class AppDrawer extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context, WidgetRef ref) {
+    // Live profile from GET /my-profile. While it loads (or if it fails) fall
+    // back to the user already stored in the session so the header is never
+    // empty.
+    final profileAsync = ref.watch(profileProvider);
+    final sessionUser = ref.watch(authSessionProvider)?.user;
+
+    final name = profileAsync.value?.name ?? sessionUser?.name ?? '';
+    final email = profileAsync.value?.email ?? sessionUser?.email ?? '';
+    final avatar = profileAsync.value?.avatar ?? sessionUser?.avatar;
+    final role = profileAsync.value?.primaryRole;
+    final isLoading = profileAsync.isLoading && !profileAsync.hasValue;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
@@ -138,28 +154,65 @@ class AppDrawer extends ConsumerWidget {
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.2),
-              border: Border.all(color: Colors.white.withOpacity(0.5)),
-            ),
-            child: ClipOval(
-              child: Image.network(
-                'https://i.pravatar.cc/120?img=12',
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    const Icon(Icons.person, color: Colors.white, size: 30),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.2),
+                  border: Border.all(color: Colors.white.withOpacity(0.5)),
+                ),
+                child: ClipOval(
+                  child: (avatar != null && avatar.isNotEmpty)
+                      ? Image.network(
+                          avatar,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(
+                              Icons.person,
+                              color: Colors.white,
+                              size: 30),
+                        )
+                      : const Icon(Icons.person, color: Colors.white, size: 30),
+                ),
               ),
-            ),
+              // Edit button overlapping the top-right of the avatar.
+              Positioned(
+                top: -4,
+                right: -4,
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.pop(context); // close the drawer first
+                    context.push(AppRoutes.editProfile);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.edit,
+                        color: AppColors.primary, size: 14),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
           Text(
-            'Admin Owner',
+            isLoading && name.isEmpty ? 'Loading…' : name,
+            textAlign: TextAlign.center,
             style: GoogleFonts.poppins(
               fontSize: 17,
               fontWeight: FontWeight.w700,
@@ -168,12 +221,31 @@ class AppDrawer extends ConsumerWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            'admin@crm.app',
+            email,
+            textAlign: TextAlign.center,
             style: GoogleFonts.poppins(
               fontSize: 12.5,
               color: Colors.white.withOpacity(0.85),
             ),
           ),
+          if (role != null && role.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                role,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

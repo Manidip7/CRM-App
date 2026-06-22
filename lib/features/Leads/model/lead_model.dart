@@ -9,6 +9,7 @@ enum LeadTemperature { hot, warm, cold }
 
 class LeadModel {
   final String id;
+  final String? leadNo;
   final String title;
   final String? companyName;
   final String contactName;
@@ -22,8 +23,13 @@ class LeadModel {
   final String? avatarInitials;
   final int avatarColorIndex;
 
+  /// First assignee (the person the lead is assigned to), if any.
+  final String? assigneeName;
+  final String? assigneeEmail;
+
   LeadModel({
     required this.id,
+    this.leadNo,
     required this.title,
     required this.contactName,
     this.companyName,
@@ -36,27 +42,58 @@ class LeadModel {
     this.dealValue,
     this.avatarInitials,
     required this.avatarColorIndex,
+    this.assigneeName,
+    this.assigneeEmail,
   });
 
-  /// Builds a [LeadModel] from the backend JSON shape. Unknown/missing enum
+  /// Builds a [LeadModel] from the backend JSON shape (the `/leads` list item).
+  /// `status` and `source` arrive as nested objects (`{ "name": ... }`); the
+  /// contact name is composed from `first_name` + `last_name`. Unknown/missing
   /// values fall back to sensible defaults so a single bad row can't crash the
   /// whole list.
   factory LeadModel.fromJson(Map<String, dynamic> json) {
+    final id = '${json['id']}';
+    final contact = [
+      json['first_name'] as String? ?? '',
+      json['last_name'] as String? ?? '',
+    ].where((s) => s.trim().isNotEmpty).join(' ').trim();
+
+    // First assignee from the `assignees` array, if present.
+    final assignees = json['assignees'];
+    final firstAssignee = (assignees is List && assignees.isNotEmpty)
+        ? (assignees.first as Map).cast<String, dynamic>()
+        : null;
+
     return LeadModel(
-      id: '${json['id']}',
+      id: id,
+      leadNo: json['lead_no'] as String?,
       title: json['title'] as String? ?? '',
-      companyName: json['company_name'] as String?,
-      contactName: json['contact_name'] as String? ?? '',
+      companyName: json['company'] as String? ?? json['company_name'] as String?,
+      contactName: contact.isNotEmpty
+          ? contact
+          : (json['contact_name'] as String? ?? ''),
       phone: json['phone'] as String?,
       email: json['email'] as String?,
-      status: _statusFromString(json['status'] as String?),
-      source: _sourceFromString(json['source'] as String?),
-      nextFollowUp: _parseDate(json['next_follow_up']) ?? DateTime.now(),
+      status: _statusFromString(_nameOf(json['status'])),
+      source: _sourceFromString(_nameOf(json['source'])),
+      nextFollowUp: _parseDate(json['next_followup_at'] ?? json['next_follow_up']) ??
+          DateTime.now(),
       createdAt: _parseDate(json['created_at']) ?? DateTime.now(),
       dealValue: (json['deal_value'] as num?)?.toDouble(),
       avatarInitials: json['avatar_initials'] as String?,
-      avatarColorIndex: (json['avatar_color_index'] as num?)?.toInt() ?? 0,
+      avatarColorIndex: (json['avatar_color_index'] as num?)?.toInt() ??
+          (int.tryParse(id) ?? 0),
+      assigneeName: firstAssignee?['name'] as String?,
+      assigneeEmail: firstAssignee?['email'] as String?,
     );
+  }
+
+  /// Reads `.name` from a nested object, or treats the value itself as the name
+  /// when the API sends a plain string.
+  static String? _nameOf(dynamic value) {
+    if (value is Map) return value['name'] as String?;
+    if (value is String) return value;
+    return null;
   }
 
   Map<String, dynamic> toJson() => {
@@ -80,18 +117,48 @@ class LeadModel {
     return null;
   }
 
+  /// Maps the backend status name (e.g. "In Progress", "Interested") to the
+  /// app's [LeadStatus] enum. Also accepts the enum's own `name` for safety.
   static LeadStatus _statusFromString(String? value) {
-    return LeadStatus.values.firstWhere(
-      (e) => e.name == value,
-      orElse: () => LeadStatus.newLead,
-    );
+    switch (value?.toLowerCase().trim()) {
+      case 'new':
+      case 'newlead':
+        return LeadStatus.newLead;
+      case 'in progress':
+      case 'contacted':
+        return LeadStatus.contacted;
+      case 'interested':
+      case 'qualified':
+        return LeadStatus.qualified;
+      case 'won':
+      case 'converted':
+        return LeadStatus.won;
+      case 'lost':
+      case 'not interested':
+        return LeadStatus.lost;
+      default:
+        return LeadStatus.newLead;
+    }
   }
 
   static LeadSource _sourceFromString(String? value) {
-    return LeadSource.values.firstWhere(
-      (e) => e.name == value,
-      orElse: () => LeadSource.manual,
-    );
+    switch (value?.toLowerCase().trim()) {
+      case 'facebook':
+        return LeadSource.facebook;
+      case 'manual':
+        return LeadSource.manual;
+      case 'referral':
+        return LeadSource.referral;
+      case 'email':
+        return LeadSource.email;
+      case 'website':
+        return LeadSource.website;
+      case 'cold':
+      case 'cold call':
+        return LeadSource.cold;
+      default:
+        return LeadSource.manual;
+    }
   }
 
   String get displayInitials {

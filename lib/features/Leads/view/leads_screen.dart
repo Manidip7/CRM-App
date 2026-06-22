@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
+import '../../../routes/app_routes.dart';
 import '../model/lead_model.dart';
 import '../provider/leads_provider.dart';
-import 'lead_detail_screen.dart';
 
 class LeadsScreen extends ConsumerStatefulWidget {
   const LeadsScreen({super.key});
@@ -16,6 +18,7 @@ class LeadsScreen extends ConsumerStatefulWidget {
 class _LeadsScreenState extends ConsumerState<LeadsScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   late AnimationController _animController;
 
   // Accent color — red theme when viewing backlog leads
@@ -44,11 +47,22 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     _searchController.addListener(
         () => ref.read(leadsFilterProvider.notifier)
             .setSearch(_searchController.text));
+    // Infinite scroll: load the next page as we approach the bottom.
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    if (pos.pixels >= pos.maxScrollExtent - 300) {
+      ref.read(leadsListProvider.notifier).loadMore();
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     _animController.dispose();
     super.dispose();
   }
@@ -56,6 +70,20 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
   @override
   Widget build(BuildContext context) {
     final leads = ref.watch(filteredLeadsProvider);
+    final showBacklog =
+        ref.watch(leadsFilterProvider.select((s) => s.showBacklog));
+    // Async state of the API-backed leads (ignored in backlog/sample mode).
+    final leadsAsync = ref.watch(leadsListProvider);
+    final loadingMore = ref.watch(leadsPaginationStateProvider
+        .select((p) => p.isLoadingMore));
+
+    // Initial load / error states only apply to the live (non-backlog) list.
+    final isInitialLoading =
+        !showBacklog && leadsAsync.isLoading && leads.isEmpty;
+    final loadError =
+        !showBacklog && leadsAsync.hasError && leads.isEmpty
+            ? leadsAsync.error
+            : null;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -64,35 +92,42 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
           children: [
             _buildHeader(),
             Expanded(
-              child: CustomScrollView(
-                physics: const BouncingScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(child: _buildStatsRow()),
-                  SliverToBoxAdapter(child: _buildSearchBar()),
-                  SliverToBoxAdapter(child: _buildFilterChips()),
-                  SliverToBoxAdapter(child: _buildListHeader(leads.length)),
-                  if (leads.isEmpty)
-                    SliverFillRemaining(child: _buildEmptyState())
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, i) {
-                            final lead = leads[i];
-                            return TweenAnimationBuilder<double>(
-                              tween: Tween(begin: 0, end: 1),
-                              duration:
-                                  Duration(milliseconds: 300 + i * 60),
-                              curve: Curves.easeOut,
-                              builder: (_, value, child) => Opacity(
-                                opacity: value,
-                                child: Transform.translate(
-                                  offset: Offset(0, 20 * (1 - value)),
-                                  child: child,
-                                ),
-                              ),
-                              child: _LeadCard(
+              child: RefreshIndicator(
+                color: _accent,
+                onRefresh: () =>
+                    ref.read(leadsListProvider.notifier).refresh(),
+                child: CustomScrollView(
+                  controller: _scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics()),
+                  cacheExtent: 600,
+                  slivers: [
+                    SliverToBoxAdapter(child: _buildStatsRow()),
+                    SliverToBoxAdapter(child: _buildSearchBar()),
+                    SliverToBoxAdapter(child: _buildFilterChips()),
+                    SliverToBoxAdapter(child: _buildListHeader(leads.length)),
+                    if (isInitialLoading)
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (loadError != null)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _buildErrorState(loadError),
+                      )
+                    else if (leads.isEmpty)
+                      SliverFillRemaining(
+                          hasScrollBody: false, child: _buildEmptyState())
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, i) {
+                              final lead = leads[i];
+                              return _LeadCard(
+                                key: ValueKey(lead.id),
                                 lead: lead,
                                 avatarColor:
                                     _avatarColors[lead.avatarColorIndex %
@@ -101,14 +136,31 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
                                 onTap: () => _openDetail(lead),
                                 onMenuAction: (action) =>
                                     _handleAction(action, lead),
-                              ),
-                            );
-                          },
-                          childCount: leads.length,
+                              );
+                            },
+                            childCount: leads.length,
+                            addRepaintBoundaries: true,
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                    // Bottom loading indicator while fetching the next page.
+                    if (loadingMore)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2.4),
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 84)),
+                  ],
+                ),
               ),
             ),
           ],
@@ -128,7 +180,10 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
   Widget _buildHeader() {
     final showBacklog =
         ref.watch(leadsFilterProvider.select((s) => s.showBacklog));
-    final totalLeads = ref.watch(leadsSourceProvider).length;
+    // Show the API's grand total for live leads; the loaded count for backlog.
+    final totalLeads = showBacklog
+        ? ref.watch(leadsSourceProvider).length
+        : ref.watch(leadsPaginationStateProvider.select((p) => p.total));
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       color: AppColors.background,
@@ -224,7 +279,11 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
 
   Widget _buildStatsRow() {
     final source = ref.watch(leadsSourceProvider);
-    final total = source.length;
+    final showBacklog =
+        ref.watch(leadsFilterProvider.select((s) => s.showBacklog));
+    final total = showBacklog
+        ? source.length
+        : ref.watch(leadsPaginationStateProvider.select((p) => p.total));
     final newCount =
         source.where((l) => l.status == LeadStatus.newLead).length;
     final qualifiedCount =
@@ -441,11 +500,69 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     );
   }
 
-  void _openDetail(LeadModel lead) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => LeadDetailScreen(lead: lead)),
+  Widget _buildErrorState(Object error) {
+    final message = error is ApiException
+        ? error.message
+        : 'Something went wrong. Please try again.';
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: AppColors.red.withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.cloud_off_rounded,
+                  color: AppColors.red, size: 34),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Could not load leads',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                  fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () =>
+                  ref.read(leadsListProvider.notifier).refresh(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _accent,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.refresh_rounded,
+                  size: 18, color: Colors.white),
+              label: Text(
+                'Retry',
+                style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  void _openDetail(LeadModel lead) {
+    context.push(AppRoutes.leadDetail, extra: lead);
   }
 
   void _handleAction(String action, LeadModel lead) {
@@ -481,6 +598,7 @@ class _LeadCard extends StatelessWidget {
   final ValueChanged<String> onMenuAction;
 
   const _LeadCard({
+    super.key,
     required this.lead,
     required this.avatarColor,
     required this.accent,
@@ -581,11 +699,15 @@ class _LeadCard extends StatelessWidget {
                                 size: 12,
                                 color: AppColors.textSecondary),
                             const SizedBox(width: 3),
-                            Text(
-                              lead.contactName,
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
+                            Flexible(
+                              child: Text(
+                                lead.assigneeName.toString(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
                               ),
                             ),
                             if (lead.dealValue != null) ...[

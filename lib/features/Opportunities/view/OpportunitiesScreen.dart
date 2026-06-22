@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../../../routes/app_routes.dart';
 import '../model/opportunity_model.dart';
 import '../provider/opportunities_provider.dart';
-import 'opportunity_detail_screen.dart';
 
 // ─────────────────────────────────────────────
 //  SCREEN
@@ -638,12 +639,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   }
 
   void _openDetail(OpportunityModel opp) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => OpportunityDetailScreen(opportunity: opp),
-      ),
-    );
+    context.push(AppRoutes.opportunityDetail, extra: opp);
   }
 
   Widget _buildTag(

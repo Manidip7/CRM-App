@@ -61,18 +61,129 @@ abstract class _$LeadsFilter extends $Notifier<LeadsFilterState> {
   }
 }
 
-/// Base data set — swaps between normal leads and backlog leads.
+@ProviderFor(LeadsPaginationState)
+final leadsPaginationStateProvider = LeadsPaginationStateProvider._();
+
+final class LeadsPaginationStateProvider
+    extends $NotifierProvider<LeadsPaginationState, LeadsPagination> {
+  LeadsPaginationStateProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'leadsPaginationStateProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$leadsPaginationStateHash();
+
+  @$internal
+  @override
+  LeadsPaginationState create() => LeadsPaginationState();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(LeadsPagination value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<LeadsPagination>(value),
+    );
+  }
+}
+
+String _$leadsPaginationStateHash() =>
+    r'7d266a10bb510fde92b170299df682570cd63644';
+
+abstract class _$LeadsPaginationState extends $Notifier<LeadsPagination> {
+  LeadsPagination build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final ref = this.ref as $Ref<LeadsPagination, LeadsPagination>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<LeadsPagination, LeadsPagination>,
+              LeadsPagination,
+              Object?,
+              Object?
+            >;
+    element.handleCreate(ref, build);
+  }
+}
+
+/// Loads leads from `GET /leads` with page-based pagination, accumulating each
+/// fetched page into one growing list. Call [LeadsList.loadMore] when the user
+/// scrolls near the bottom, and [LeadsList.refresh] for pull-to-refresh.
+
+@ProviderFor(LeadsList)
+final leadsListProvider = LeadsListProvider._();
+
+/// Loads leads from `GET /leads` with page-based pagination, accumulating each
+/// fetched page into one growing list. Call [LeadsList.loadMore] when the user
+/// scrolls near the bottom, and [LeadsList.refresh] for pull-to-refresh.
+final class LeadsListProvider
+    extends $AsyncNotifierProvider<LeadsList, List<LeadModel>> {
+  /// Loads leads from `GET /leads` with page-based pagination, accumulating each
+  /// fetched page into one growing list. Call [LeadsList.loadMore] when the user
+  /// scrolls near the bottom, and [LeadsList.refresh] for pull-to-refresh.
+  LeadsListProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'leadsListProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$leadsListHash();
+
+  @$internal
+  @override
+  LeadsList create() => LeadsList();
+}
+
+String _$leadsListHash() => r'107d8439960533ec1abafbf1f553eabb7a023a16';
+
+/// Loads leads from `GET /leads` with page-based pagination, accumulating each
+/// fetched page into one growing list. Call [LeadsList.loadMore] when the user
+/// scrolls near the bottom, and [LeadsList.refresh] for pull-to-refresh.
+
+abstract class _$LeadsList extends $AsyncNotifier<List<LeadModel>> {
+  FutureOr<List<LeadModel>> build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final ref = this.ref as $Ref<AsyncValue<List<LeadModel>>, List<LeadModel>>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<AsyncValue<List<LeadModel>>, List<LeadModel>>,
+              AsyncValue<List<LeadModel>>,
+              Object?,
+              Object?
+            >;
+    element.handleCreate(ref, build);
+  }
+}
+
+/// Base data set — swaps between normal (API) leads and backlog (sample) leads.
 
 @ProviderFor(leadsSource)
 final leadsSourceProvider = LeadsSourceProvider._();
 
-/// Base data set — swaps between normal leads and backlog leads.
+/// Base data set — swaps between normal (API) leads and backlog (sample) leads.
 
 final class LeadsSourceProvider
     extends
         $FunctionalProvider<List<LeadModel>, List<LeadModel>, List<LeadModel>>
     with $Provider<List<LeadModel>> {
-  /// Base data set — swaps between normal leads and backlog leads.
+  /// Base data set — swaps between normal (API) leads and backlog (sample) leads.
   LeadsSourceProvider._()
     : super(
         from: null,
@@ -106,7 +217,7 @@ final class LeadsSourceProvider
   }
 }
 
-String _$leadsSourceHash() => r'688a7399b92180d38a794f393f052af23dd98ea2';
+String _$leadsSourceHash() => r'701d8a37267a6ddc934b0f78d87bcd6cc2a7d697';
 
 /// The source list with the active search query + status/source filters applied.
 

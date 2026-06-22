@@ -1,9 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/utils/AppColors.dart';
-import '../../dashbord/view/dashboard_screen.dart';
+import '../../../routes/app_routes.dart';
 import '../provider/login_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -60,12 +61,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _handleLogin() async {
-    await ref.read(loginControllerProvider.notifier).login();
+    FocusScope.of(context).unfocus();
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    if (email.isEmpty || password.isEmpty) {
+      _showError('Please enter your email and password.');
+      return;
+    }
+
+    final success = await ref
+        .read(loginControllerProvider.notifier)
+        .login(email: email, password: password);
     if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const DashboardScreen()),
-    );
+
+    if (success) {
+      context.go(AppRoutes.dashboard);
+    } else {
+      final message =
+          ref.read(loginControllerProvider).errorMessage ?? 'Login failed.';
+      _showError(message);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppColors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   @override

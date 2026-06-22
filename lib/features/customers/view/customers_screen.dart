@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../../../routes/app_routes.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
 import '../model/customer_model.dart';
 import '../provider/customers_provider.dart';
-import 'create_customer_screen.dart';
-import 'customer_detail_screen.dart';
 
 /// Lists every customer with a search field. Each row shows the contact's
 /// name, company, status, location and total deal value.
@@ -61,11 +61,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           ),
         ),
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (_) => const CreateCustomerScreen()),
-          ),
+          onPressed: () => context.push(AppRoutes.createCustomer),
           backgroundColor: AppColors.primary,
           elevation: 4,
           shape: RoundedRectangleBorder(
@@ -218,10 +214,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   Widget _buildCard(CustomerModel c) {
     final accent = c.status.color;
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => CustomerDetailScreen(customer: c)),
-      ),
+      onTap: () => context.push(AppRoutes.customerDetail, extra: c),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(

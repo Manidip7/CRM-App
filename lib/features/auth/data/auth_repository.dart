@@ -1,47 +1,48 @@
+import 'dart:developer' as developer;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_constants.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_result.dart';
 import '../../../core/network/network_providers.dart';
 import '../../../core/network/token_storage.dart';
+import '../model/auth_session.dart';
+import 'session_store.dart';
 
-/// Example repository showing how a feature talks to the backend through
-/// [ApiClient]. Repositories own the endpoint paths, the request payloads and
-/// the JSON → model decoding; everything else (errors, auth header, timeouts)
-/// is handled by the network layer.
+/// Talks to the backend's auth endpoints through [ApiClient]. The repository
+/// owns the endpoint paths, request payloads and JSON → model decoding;
+/// transport concerns (errors, auth header, timeouts) live in the network layer.
 class AuthRepository {
   final ApiClient _api;
   final TokenStorage _tokenStorage;
 
   AuthRepository(this._api, this._tokenStorage);
 
-  /// POST /auth/login → saves the returned token and returns the user id.
-  Future<ApiResult<String>> login({
+  /// POST /login → on success, persists the bearer token (so [AuthInterceptor]
+  /// attaches it to every future request) and returns the full [AuthSession].
+  Future<ApiResult<AuthSession>> login({
     required String email,
     required String password,
   }) async {
-    final result = await _api.post<_LoginResponse>(
+    final result = await _api.post<AuthSession>(
       ApiConstants.login,
       data: {'email': email, 'password': password},
-      decoder: (json) => _LoginResponse.fromJson(json as Map<String, dynamic>),
+      decoder: _decodeSession,
     );
 
-    // On success, persist the token so AuthInterceptor attaches it to every
-    // future request, then surface just the bit the caller cares about.
     return switch (result) {
       Success(:final data) => await () async {
-          await _tokenStorage.saveTokens(
-            accessToken: data.accessToken,
-            refreshToken: data.refreshToken,
-          );
-          return ApiResult.success(data.userId);
+          await _tokenStorage.saveTokens(accessToken: data.token);
+          return ApiResult.success(data);
         }(),
       Failure(:final error) => ApiResult.failure(error),
     };
   }
 
-  /// POST /auth/forgot-password
+  /// POST /forgot-password
   Future<ApiResult<void>> forgotPassword(String email) {
     return _api.post<void>(
       ApiConstants.forgotPassword,
@@ -50,34 +51,74 @@ class AuthRepository {
     );
   }
 
-  Future<void> logout() => _tokenStorage.clear();
-}
+  /// Clears the local token. Best-effort hits the backend too, but local state
+  /// is wiped regardless so the user is always logged out on the device.
+  Future<void> logout() async {
+    await _api.post<void>(ApiConstants.logout, decoder: (_) {});
+    await _tokenStorage.clear();
+  }
 
-/// Internal DTO for the login endpoint response.
-class _LoginResponse {
-  final String accessToken;
-  final String? refreshToken;
-  final String userId;
+  /// Unwraps the standard `{ success, message, data: {...} }` envelope and
+  /// builds an [AuthSession]. Throws a typed [ApiException] if the body says
+  /// the request failed or is missing the `data` object.
+  static AuthSession _decodeSession(dynamic json) {
+    final map = (json as Map).cast<String, dynamic>();
 
-  _LoginResponse({
-    required this.accessToken,
-    required this.userId,
-    this.refreshToken,
-  });
+    // Print the raw login response to the console (debug builds only).
+    if (kDebugMode) {
+      developer.log('Login response: $map', name: 'AUTH');
+    }
 
-  factory _LoginResponse.fromJson(Map<String, dynamic> json) {
-    return _LoginResponse(
-      accessToken: json['access_token'] as String,
-      refreshToken: json['refresh_token'] as String?,
-      userId: '${json['user_id'] ?? json['id'] ?? ''}',
-    );
+    if (map['success'] == false) {
+      throw ApiException(
+        type: ApiErrorType.validation,
+        message: map['message'] as String? ?? 'Login failed.',
+        raw: json,
+      );
+    }
+
+    final data = (map['data'] as Map?)?.cast<String, dynamic>();
+    if (data == null) {
+      throw ApiException.unexpected('Login response had no "data" object.');
+    }
+    return AuthSession.fromJson(data);
   }
 }
 
-/// DI for the repository — inject this into your controllers/providers.
+/// DI for the repository — inject this into controllers/providers.
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository(
     ref.watch(apiClientProvider),
     ref.watch(tokenStorageProvider),
   );
 });
+
+/// Holds the [SessionStore]. Overridden in `main()` with the instance loaded
+/// from disk before the app starts.
+final sessionStoreProvider = Provider<SessionStore>((ref) {
+  throw UnimplementedError('sessionStoreProvider must be overridden in main()');
+});
+
+/// App-wide current session. `null` means logged out. Restored from local
+/// storage on startup, saved to storage on a successful login, and cleared on
+/// logout. Watch this anywhere you need the user, their roles or permissions
+/// (e.g. to hide a button the user can't use).
+class AuthSessionNotifier extends Notifier<AuthSession?> {
+  @override
+  AuthSession? build() => ref.read(sessionStoreProvider).cached;
+
+  /// Stores the full session in local storage and updates app state.
+  Future<void> setSession(AuthSession session) async {
+    await ref.read(sessionStoreProvider).save(session);
+    state = session;
+  }
+
+  Future<void> logout() async {
+    await ref.read(authRepositoryProvider).logout();
+    await ref.read(sessionStoreProvider).clear();
+    state = null;
+  }
+}
+
+final authSessionProvider =
+    NotifierProvider<AuthSessionNotifier, AuthSession?>(AuthSessionNotifier.new);

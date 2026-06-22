@@ -277,4 +277,270 @@ as bool,
 
 }
 
+/// @nodoc
+mixin _$LeadsPagination {
+
+ int get currentPage; int get lastPage; int get total; bool get isLoadingMore;
+/// Create a copy of LeadsPagination
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$LeadsPaginationCopyWith<LeadsPagination> get copyWith => _$LeadsPaginationCopyWithImpl<LeadsPagination>(this as LeadsPagination, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LeadsPagination&&(identical(other.currentPage, currentPage) || other.currentPage == currentPage)&&(identical(other.lastPage, lastPage) || other.lastPage == lastPage)&&(identical(other.total, total) || other.total == total)&&(identical(other.isLoadingMore, isLoadingMore) || other.isLoadingMore == isLoadingMore));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,currentPage,lastPage,total,isLoadingMore);
+
+@override
+String toString() {
+  return 'LeadsPagination(currentPage: $currentPage, lastPage: $lastPage, total: $total, isLoadingMore: $isLoadingMore)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $LeadsPaginationCopyWith<$Res>  {
+  factory $LeadsPaginationCopyWith(LeadsPagination value, $Res Function(LeadsPagination) _then) = _$LeadsPaginationCopyWithImpl;
+@useResult
+$Res call({
+ int currentPage, int lastPage, int total, bool isLoadingMore
+});
+
+
+
+
+}
+/// @nodoc
+class _$LeadsPaginationCopyWithImpl<$Res>
+    implements $LeadsPaginationCopyWith<$Res> {
+  _$LeadsPaginationCopyWithImpl(this._self, this._then);
+
+  final LeadsPagination _self;
+  final $Res Function(LeadsPagination) _then;
+
+/// Create a copy of LeadsPagination
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? currentPage = null,Object? lastPage = null,Object? total = null,Object? isLoadingMore = null,}) {
+  return _then(_self.copyWith(
+currentPage: null == currentPage ? _self.currentPage : currentPage // ignore: cast_nullable_to_non_nullable
+as int,lastPage: null == lastPage ? _self.lastPage : lastPage // ignore: cast_nullable_to_non_nullable
+as int,total: null == total ? _self.total : total // ignore: cast_nullable_to_non_nullable
+as int,isLoadingMore: null == isLoadingMore ? _self.isLoadingMore : isLoadingMore // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [LeadsPagination].
+extension LeadsPaginationPatterns on LeadsPagination {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _LeadsPagination value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _LeadsPagination() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _LeadsPagination value)  $default,){
+final _that = this;
+switch (_that) {
+case _LeadsPagination():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _LeadsPagination value)?  $default,){
+final _that = this;
+switch (_that) {
+case _LeadsPagination() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int currentPage,  int lastPage,  int total,  bool isLoadingMore)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _LeadsPagination() when $default != null:
+return $default(_that.currentPage,_that.lastPage,_that.total,_that.isLoadingMore);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int currentPage,  int lastPage,  int total,  bool isLoadingMore)  $default,) {final _that = this;
+switch (_that) {
+case _LeadsPagination():
+return $default(_that.currentPage,_that.lastPage,_that.total,_that.isLoadingMore);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int currentPage,  int lastPage,  int total,  bool isLoadingMore)?  $default,) {final _that = this;
+switch (_that) {
+case _LeadsPagination() when $default != null:
+return $default(_that.currentPage,_that.lastPage,_that.total,_that.isLoadingMore);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class _LeadsPagination extends LeadsPagination {
+  const _LeadsPagination({this.currentPage = 1, this.lastPage = 1, this.total = 0, this.isLoadingMore = false}): super._();
+  
+
+@override@JsonKey() final  int currentPage;
+@override@JsonKey() final  int lastPage;
+@override@JsonKey() final  int total;
+@override@JsonKey() final  bool isLoadingMore;
+
+/// Create a copy of LeadsPagination
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$LeadsPaginationCopyWith<_LeadsPagination> get copyWith => __$LeadsPaginationCopyWithImpl<_LeadsPagination>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LeadsPagination&&(identical(other.currentPage, currentPage) || other.currentPage == currentPage)&&(identical(other.lastPage, lastPage) || other.lastPage == lastPage)&&(identical(other.total, total) || other.total == total)&&(identical(other.isLoadingMore, isLoadingMore) || other.isLoadingMore == isLoadingMore));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,currentPage,lastPage,total,isLoadingMore);
+
+@override
+String toString() {
+  return 'LeadsPagination(currentPage: $currentPage, lastPage: $lastPage, total: $total, isLoadingMore: $isLoadingMore)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$LeadsPaginationCopyWith<$Res> implements $LeadsPaginationCopyWith<$Res> {
+  factory _$LeadsPaginationCopyWith(_LeadsPagination value, $Res Function(_LeadsPagination) _then) = __$LeadsPaginationCopyWithImpl;
+@override @useResult
+$Res call({
+ int currentPage, int lastPage, int total, bool isLoadingMore
+});
+
+
+
+
+}
+/// @nodoc
+class __$LeadsPaginationCopyWithImpl<$Res>
+    implements _$LeadsPaginationCopyWith<$Res> {
+  __$LeadsPaginationCopyWithImpl(this._self, this._then);
+
+  final _LeadsPagination _self;
+  final $Res Function(_LeadsPagination) _then;
+
+/// Create a copy of LeadsPagination
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? currentPage = null,Object? lastPage = null,Object? total = null,Object? isLoadingMore = null,}) {
+  return _then(_LeadsPagination(
+currentPage: null == currentPage ? _self.currentPage : currentPage // ignore: cast_nullable_to_non_nullable
+as int,lastPage: null == lastPage ? _self.lastPage : lastPage // ignore: cast_nullable_to_non_nullable
+as int,total: null == total ? _self.total : total // ignore: cast_nullable_to_non_nullable
+as int,isLoadingMore: null == isLoadingMore ? _self.isLoadingMore : isLoadingMore // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
 // dart format on

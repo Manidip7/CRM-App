@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
@@ -312,7 +313,7 @@ class _CreateCustomerScreenState extends ConsumerState<CreateCustomerScreen> {
     );
 
     ref.read(customersProvider.notifier).add(customer);
-    Navigator.pop(context);
+    context.pop();
     _toast('${customer.name} created');
   }
 
