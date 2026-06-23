@@ -15,7 +15,16 @@ abstract class LeadsFilterState with _$LeadsFilterState {
     LeadStatus? filterStatus,
     LeadSource? filterSource,
     @Default(false) bool showBacklog,
+
+    /// Server-side date range filter (`from_date` / `to_date`).
+    DateTime? fromDate,
+    DateTime? toDate,
   }) = _LeadsFilterState;
+
+  const LeadsFilterState._();
+
+  /// `true` when any server-side date filter is active.
+  bool get hasDateFilter => fromDate != null || toDate != null;
 }
 
 @riverpod
@@ -38,15 +47,18 @@ class LeadsFilter extends _$LeadsFilter {
         filterSource: state.filterSource == s ? null : s,
       );
 
-  /// Switches between normal leads and backlog leads, resetting search/filters.
+  /// Sets the server-side date range. Pass null to clear a bound.
+  void setDateRange({DateTime? from, DateTime? to}) =>
+      state = state.copyWith(fromDate: from, toDate: to);
+
+  void clearDateRange() =>
+      state = state.copyWith(fromDate: null, toDate: null);
+
+
   void toggleBacklog() =>
       state = LeadsFilterState(showBacklog: !state.showBacklog);
 }
 
-/// Reactive pagination metadata for the leads list: how many leads exist in
-/// total, whether more pages remain, and whether a "load more" is in flight.
-/// Kept separate from [LeadsList] (whose state is the `List`) so the UI can
-/// watch the footer spinner / total count and rebuild when they change.
 @freezed
 abstract class LeadsPagination with _$LeadsPagination {
   const factory LeadsPagination({
@@ -76,27 +88,59 @@ class LeadsPaginationState extends _$LeadsPaginationState {
       state = state.copyWith(isLoadingMore: value);
 }
 
-/// Loads leads from `GET /leads` with page-based pagination, accumulating each
-/// fetched page into one growing list. Call [LeadsList.loadMore] when the user
-/// scrolls near the bottom, and [LeadsList.refresh] for pull-to-refresh.
+/// The server-side query bits (search + date range) as a record. Record
+/// equality means [LeadsList] only refetches when one of these changes — not
+/// when the client-side status/source chips toggle.
+@riverpod
+(String, DateTime?, DateTime?) leadsServerQuery(Ref ref) {
+  final f = ref.watch(leadsFilterProvider);
+  return (f.searchQuery, f.fromDate, f.toDate);
+}
+
+
 @riverpod
 class LeadsList extends _$LeadsList {
   LeadsPaginationState get _pagination =>
       ref.read(leadsPaginationStateProvider.notifier);
 
+  // Active query, captured from the filter on each build so loadMore reuses it.
+  String? _search;
+  String? _fromDate;
+  String? _toDate;
+
   @override
   Future<List<LeadModel>> build() async {
+    // Re-fetch from page 1 whenever the search text or date range changes
+    // (record equality means status/source chip toggles don't refetch).
+    final query = ref.watch(leadsServerQueryProvider);
+    _search = query.$1.trim().isEmpty ? null : query.$1.trim();
+    _fromDate = _fmtDate(query.$2);
+    _toDate = _fmtDate(query.$3);
+
     final page = await _fetch(1);
     _pagination.setFromPage(page);
     return page.leads;
   }
 
   Future<LeadsPage> _fetch(int page) async {
-    final result = await ref.read(leadsRepositoryProvider).getLeads(page: page);
+    final result = await ref.read(leadsRepositoryProvider).getLeads(
+          page: page,
+          search: _search,
+          fromDate: _fromDate,
+          toDate: _toDate,
+        );
     return switch (result) {
       Success(:final data) => data,
       Failure(:final error) => throw error,
     };
+  }
+
+  /// Formats a date as `yyyy-MM-dd` for the API, or null.
+  static String? _fmtDate(DateTime? d) {
+    if (d == null) return null;
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$m-$day';
   }
 
   /// Fetches the next page and appends it to the current list. No-op while a
@@ -144,7 +188,8 @@ List<LeadModel> filteredLeads(Ref ref) {
   final f = ref.watch(leadsFilterProvider);
   final q = f.searchQuery.toLowerCase();
   return all.where((lead) {
-    final matchSearch = q.isEmpty ||
+    final matchSearch = !f.showBacklog ||
+        q.isEmpty ||
         lead.title.toLowerCase().contains(q) ||
         lead.contactName.toLowerCase().contains(q) ||
         (lead.companyName?.toLowerCase().contains(q) ?? false) ||

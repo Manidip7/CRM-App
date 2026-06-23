@@ -41,7 +41,7 @@ final class LeadsFilterProvider
   }
 }
 
-String _$leadsFilterHash() => r'c0aefe65f91c7be51037a4dfaf3d61bb868b17e5';
+String _$leadsFilterHash() => r'f5c139bb68c45669a33d7b4f7bedb99095dc1b30';
 
 abstract class _$LeadsFilter extends $Notifier<LeadsFilterState> {
   LeadsFilterState build();
@@ -114,6 +114,66 @@ abstract class _$LeadsPaginationState extends $Notifier<LeadsPagination> {
   }
 }
 
+/// The server-side query bits (search + date range) as a record. Record
+/// equality means [LeadsList] only refetches when one of these changes — not
+/// when the client-side status/source chips toggle.
+
+@ProviderFor(leadsServerQuery)
+final leadsServerQueryProvider = LeadsServerQueryProvider._();
+
+/// The server-side query bits (search + date range) as a record. Record
+/// equality means [LeadsList] only refetches when one of these changes — not
+/// when the client-side status/source chips toggle.
+
+final class LeadsServerQueryProvider
+    extends
+        $FunctionalProvider<
+          (String, DateTime?, DateTime?),
+          (String, DateTime?, DateTime?),
+          (String, DateTime?, DateTime?)
+        >
+    with $Provider<(String, DateTime?, DateTime?)> {
+  /// The server-side query bits (search + date range) as a record. Record
+  /// equality means [LeadsList] only refetches when one of these changes — not
+  /// when the client-side status/source chips toggle.
+  LeadsServerQueryProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'leadsServerQueryProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$leadsServerQueryHash();
+
+  @$internal
+  @override
+  $ProviderElement<(String, DateTime?, DateTime?)> $createElement(
+    $ProviderPointer pointer,
+  ) => $ProviderElement(pointer);
+
+  @override
+  (String, DateTime?, DateTime?) create(Ref ref) {
+    return leadsServerQuery(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue((String, DateTime?, DateTime?) value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<(String, DateTime?, DateTime?)>(
+        value,
+      ),
+    );
+  }
+}
+
+String _$leadsServerQueryHash() => r'38b468d056e670e65ca2009732114c69c55baec8';
+
 /// Loads leads from `GET /leads` with page-based pagination, accumulating each
 /// fetched page into one growing list. Call [LeadsList.loadMore] when the user
 /// scrolls near the bottom, and [LeadsList.refresh] for pull-to-refresh.
@@ -148,7 +208,7 @@ final class LeadsListProvider
   LeadsList create() => LeadsList();
 }
 
-String _$leadsListHash() => r'107d8439960533ec1abafbf1f553eabb7a023a16';
+String _$leadsListHash() => r'f2d7be9f5162f2fc68780ca043a813240aec38c6';
 
 /// Loads leads from `GET /leads` with page-based pagination, accumulating each
 /// fetched page into one growing list. Call [LeadsList.loadMore] when the user
@@ -264,4 +324,4 @@ final class FilteredLeadsProvider
   }
 }
 
-String _$filteredLeadsHash() => r'febc76fdb7027f56876752c382a46b23416c65a5';
+String _$filteredLeadsHash() => r'66e7199beb031238f5583d51ea4a037e725da678';

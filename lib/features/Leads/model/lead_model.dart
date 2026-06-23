@@ -1,3 +1,127 @@
+/// One entry from a lead's `activities` timeline (`GET /leads/{id}`).
+class LeadActivity {
+  final int id;
+  final String action;
+  final String description;
+  final String? userName;
+  final DateTime? createdAt;
+
+  const LeadActivity({
+    required this.id,
+    required this.action,
+    required this.description,
+    this.userName,
+    this.createdAt,
+  });
+
+  factory LeadActivity.fromJson(Map<String, dynamic> json) {
+    final user = json['user'];
+    return LeadActivity(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      action: json['action'] as String? ?? '',
+      description: json['description'] as String? ?? '',
+      userName: user is Map ? user['name'] as String? : null,
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+    );
+  }
+
+  /// Human label for the [action] code, e.g. `followup_scheduled` → "Follow-up
+  /// Scheduled".
+  String get actionLabel => action
+      .split(RegExp(r'[_\s]+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+}
+
+/// A note attached to a lead (`notes` array of `GET /leads/{id}`).
+class LeadNote {
+  final int id;
+  final String content;
+  final String? userName;
+  final DateTime? createdAt;
+
+  const LeadNote({
+    required this.id,
+    required this.content,
+    this.userName,
+    this.createdAt,
+  });
+
+  factory LeadNote.fromJson(Map<String, dynamic> json) {
+    final user = json['user'];
+    return LeadNote(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      content: json['content'] as String? ?? '',
+      userName: user is Map ? user['name'] as String? : null,
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+    );
+  }
+}
+
+/// A task linked to a lead (`tasks` array of `GET /leads/{id}`).
+class LeadTask {
+  final int id;
+  final String title;
+  final String? description;
+  final String? priority;
+  final String? status;
+  final DateTime? dueAt;
+  final String? assigneeName;
+
+  const LeadTask({
+    required this.id,
+    required this.title,
+    this.description,
+    this.priority,
+    this.status,
+    this.dueAt,
+    this.assigneeName,
+  });
+
+  factory LeadTask.fromJson(Map<String, dynamic> json) {
+    final assignee = json['assignee'];
+    return LeadTask(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      title: json['title'] as String? ?? '',
+      description: json['description'] as String?,
+      priority: json['priority'] as String?,
+      status: json['status'] as String?,
+      dueAt: DateTime.tryParse(json['due_at'] as String? ?? ''),
+      assigneeName: assignee is Map ? assignee['name'] as String? : null,
+    );
+  }
+}
+
+/// The expandable parts of a lead's detail response: its activity timeline,
+/// notes and tasks. Bundled so the screen fetches `GET /leads/{id}` once.
+class LeadDetailBundle {
+  final List<LeadActivity> activities;
+  final List<LeadNote> notes;
+  final List<LeadTask> tasks;
+
+  const LeadDetailBundle({
+    required this.activities,
+    required this.notes,
+    required this.tasks,
+  });
+
+  factory LeadDetailBundle.fromJson(Map<String, dynamic> json) {
+    List<T> parse<T>(String key, T Function(Map<String, dynamic>) fromJson) {
+      final list = json[key] as List? ?? const [];
+      return list
+          .map((e) => fromJson((e as Map).cast<String, dynamic>()))
+          .toList(growable: false);
+    }
+
+    return LeadDetailBundle(
+      activities: parse('activities', LeadActivity.fromJson),
+      notes: parse('notes', LeadNote.fromJson),
+      tasks: parse('tasks', LeadTask.fromJson),
+    );
+  }
+}
+
 enum LeadStatus { newLead, contacted, qualified, won, lost }
 enum LeadSource { facebook, manual, referral, email, website, cold }
 
@@ -26,6 +150,19 @@ class LeadModel {
   /// First assignee (the person the lead is assigned to), if any.
   final String? assigneeName;
   final String? assigneeEmail;
+  final String? assigneeDesignation;
+
+  // Extra contact / professional fields.
+  final String? alternatePhone;
+  final String? designation;
+  final String? website;
+  final String? interestedIn;
+  final String? priority;
+
+  // Follow-up fields.
+  final String? currentUpdate;
+  final String? nextAction;
+  final String? followupRemarks;
 
   LeadModel({
     required this.id,
@@ -44,6 +181,15 @@ class LeadModel {
     required this.avatarColorIndex,
     this.assigneeName,
     this.assigneeEmail,
+    this.assigneeDesignation,
+    this.alternatePhone,
+    this.designation,
+    this.website,
+    this.interestedIn,
+    this.priority,
+    this.currentUpdate,
+    this.nextAction,
+    this.followupRemarks,
   });
 
   /// Builds a [LeadModel] from the backend JSON shape (the `/leads` list item).
@@ -85,6 +231,15 @@ class LeadModel {
           (int.tryParse(id) ?? 0),
       assigneeName: firstAssignee?['name'] as String?,
       assigneeEmail: firstAssignee?['email'] as String?,
+      assigneeDesignation: firstAssignee?['designation'] as String?,
+      alternatePhone: json['alternate_phone'] as String?,
+      designation: json['designation'] as String?,
+      website: json['website'] as String?,
+      interestedIn: json['interested_in'] as String?,
+      priority: json['priority'] as String?,
+      currentUpdate: _nameOf(json['current_update']),
+      nextAction: _nameOf(json['next_action']),
+      followupRemarks: json['followup_remarks'] as String?,
     );
   }
 

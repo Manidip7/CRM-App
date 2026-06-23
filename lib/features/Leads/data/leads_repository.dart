@@ -40,6 +40,8 @@ class LeadsRepository {
     int page = 1,
     String? search,
     String? status,
+    String? fromDate,
+    String? toDate,
   }) {
     return _api.get<LeadsPage>(
       ApiConstants.leads,
@@ -48,6 +50,8 @@ class LeadsRepository {
         'per_page': perPage,
         if (search != null && search.isNotEmpty) 'search': search,
         if (status != null && status.isNotEmpty) 'status': status,
+        if (fromDate != null && fromDate.isNotEmpty) 'from_date': fromDate,
+        if (toDate != null && toDate.isNotEmpty) 'to_date': toDate,
       },
       decoder: _decodePage,
     );
@@ -89,6 +93,17 @@ class LeadsRepository {
       decoder: (json) {
         final map = json is Map && json['data'] is Map ? json['data'] : json;
         return LeadModel.fromJson(map as Map<String, dynamic>);
+      },
+    );
+  }
+
+  /// GET /leads/{id} → the lead's timeline, notes and tasks.
+  Future<ApiResult<LeadDetailBundle>> getLeadDetail(String id) {
+    return _api.get<LeadDetailBundle>(
+      ApiConstants.leadDetail(id),
+      decoder: (json) {
+        final map = json is Map && json['data'] is Map ? json['data'] : json;
+        return LeadDetailBundle.fromJson((map as Map).cast<String, dynamic>());
       },
     );
   }

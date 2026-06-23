@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../model/lead_model.dart';
@@ -24,9 +26,15 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   late TabController _tabController;
   late LeadDetailModel _detail;
 
-  // Provider keyed by this lead's id
+  // Provider keyed by this lead's id, seeded with the temperature derived from
+  // the lead's `priority` (cold/warm/hot).
   LeadDetailControllerProvider get _detailProvider =>
-      leadDetailControllerProvider(widget.lead.id);
+      leadDetailControllerProvider(
+        widget.lead.id,
+        initialTemperature:
+            _temperatureFromPriority(widget.lead.priority) ??
+                LeadTemperature.warm,
+      );
 
   static const List<Color> _avatarColors = [
     Color(0xFF4B3FC7),
@@ -42,6 +50,20 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _detail = LeadDetailModel.fromLead(widget.lead);
+  }
+
+  /// Maps the backend `priority` string to the [LeadTemperature] enum.
+  LeadTemperature? _temperatureFromPriority(String? priority) {
+    switch (priority?.toLowerCase().trim()) {
+      case 'hot':
+        return LeadTemperature.hot;
+      case 'warm':
+        return LeadTemperature.warm;
+      case 'cold':
+        return LeadTemperature.cold;
+      default:
+        return null;
+    }
   }
 
   @override
@@ -562,7 +584,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             label: 'Call',
             bgColor: AppColors.primary.withOpacity(0.1),
             iconColor: AppColors.primary,
-            onTap: () => _showSnack('Calling ${widget.lead.contactName}...'),
+            onTap: _callLead,
           ),
           const SizedBox(width: 10),
           _ActionButton(
@@ -570,7 +592,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             label: 'WhatsApp',
             bgColor: const Color(0xFF25D366).withOpacity(0.1),
             iconColor: const Color(0xFF25D366),
-            onTap: () => _showSnack('Opening WhatsApp...'),
+            onTap: _whatsappLead,
           ),
           const SizedBox(width: 10),
           _ActionButton(
@@ -578,7 +600,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             label: 'Email',
             bgColor: AppColors.leadFunnelContacted.withOpacity(0.1),
             iconColor: AppColors.leadFunnelContacted,
-            onTap: () => _showSnack('Composing email...'),
+            onTap: _emailLead,
           ),
           const SizedBox(width: 10),
           _ActionButton(
@@ -586,11 +608,72 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             label: 'SMS',
             bgColor: AppColors.red.withOpacity(0.1),
             iconColor: AppColors.red,
-            onTap: () => _showSnack('Opening SMS...'),
+            onTap: _smsLead,
           ),
         ],
       ),
     );
+  }
+
+  // ── Quick Action handlers ─────────────────────────────────────────────────────
+
+  /// Strips a phone string to digits/`+`, returning null if empty.
+  String? _digits(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final digits = raw.replaceAll(RegExp(r'[^0-9+]'), '');
+    return digits.isEmpty ? null : digits;
+  }
+
+  /// Digits-only primary phone number, suitable for tel:/sms:/wa.me URIs.
+  String? get _phoneDigits => _digits(widget.lead.phone);
+
+  /// Dials an arbitrary number (used by the primary and alternate phone).
+  Future<void> _callNumber(String? raw) async {
+    final phone = _digits(raw);
+    if (phone == null) return _showSnack('No phone number for this lead.');
+    await _launch(Uri(scheme: 'tel', path: phone), 'phone dialer');
+  }
+
+  Future<void> _callLead() => _callNumber(widget.lead.phone);
+
+  Future<void> _smsLead() async {
+    final phone = _phoneDigits;
+    if (phone == null) return _showSnack('No phone number for this lead.');
+    await _launch(Uri(scheme: 'sms', path: phone), 'messaging app');
+  }
+
+  Future<void> _whatsappLead() async {
+    final phone = _phoneDigits;
+    if (phone == null) return _showSnack('No phone number for this lead.');
+    // wa.me requires the number without a leading '+' or spaces.
+    final waNumber = phone.replaceAll('+', '');
+    await _launch(
+      Uri.parse('https://wa.me/$waNumber'),
+      'WhatsApp',
+    );
+  }
+
+  Future<void> _emailLead() async {
+    final email = widget.lead.email;
+    if (email == null || email.trim().isEmpty) {
+      return _showSnack('No email address for this lead.');
+    }
+    await _launch(Uri(scheme: 'mailto', path: email), 'email app');
+  }
+
+  /// Launches [uri] externally, showing a friendly message if it can't open.
+  /// Tries the external-application mode first, then falls back to the platform
+  /// default (helps on devices where the strict mode reports failure).
+  Future<void> _launch(Uri uri, String target) async {
+    try {
+      var ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) {
+        ok = await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+      if (!ok && mounted) _showSnack('Could not open $target.');
+    } catch (_) {
+      if (mounted) _showSnack('Could not open $target.');
+    }
   }
 
   // ── Contact Details Card ─────────────────────────────────────────────────────
@@ -652,9 +735,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             label: 'Email',
             value: lead.email ?? '—',
             isLink: lead.email != null,
-            onTap: lead.email != null
-                ? () => _showSnack('Email: ${lead.email}')
-                : null,
+            onTap: lead.email != null ? _emailLead : null,
           ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
@@ -668,10 +749,41 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             label: 'Phone',
             value: lead.phone ?? '—',
             isLink: lead.phone != null,
-            onTap: lead.phone != null
-                ? () => _showSnack('Calling ${lead.phone}')
-                : null,
+            onTap: lead.phone != null ? _callLead : null,
           ),
+          // Alternate Phone (only when present)
+          if (lead.alternatePhone != null &&
+              lead.alternatePhone!.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Divider(height: 0, color: AppColors.divider),
+            ),
+            _ContactRow(
+              icon: Icons.phone_forwarded_outlined,
+              iconBg: AppColors.primary.withOpacity(0.1),
+              iconColor: AppColors.primary,
+              label: 'Alternate Phone',
+              value: lead.alternatePhone!,
+              isLink: true,
+              onTap: () => _callNumber(lead.alternatePhone),
+            ),
+          ],
+          // Interested In (only when present)
+          if (lead.interestedIn != null &&
+              lead.interestedIn!.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Divider(height: 0, color: AppColors.divider),
+            ),
+            _ContactRow(
+              icon: Icons.interests_outlined,
+              iconBg: const Color(0xFFFFB547).withOpacity(0.12),
+              iconColor: const Color(0xFFFFB547),
+              label: 'Interested In',
+              value: lead.interestedIn!,
+              isLink: false,
+            ),
+          ],
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: Divider(height: 0, color: AppColors.divider),
@@ -682,8 +794,8 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             iconBg: AppColors.green.withOpacity(0.1),
             iconColor: AppColors.green,
             label: 'Assigned To',
-            value: _detail.assignedToName ?? '—',
-            subValue: _detail.assignedToRole,
+            value: lead.assigneeName ?? _detail.assignedToName ?? '—',
+            subValue: lead.assigneeDesignation ?? _detail.assignedToRole,
             isLink: false,
           ),
           const SizedBox(height: 4),
@@ -745,7 +857,26 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          // Current Update / Next Action / Remarks (shown when present).
+          if (widget.lead.currentUpdate != null &&
+              widget.lead.currentUpdate!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _followUpRow(
+                Icons.update_rounded, 'Current Update', widget.lead.currentUpdate!),
+          ],
+          if (widget.lead.nextAction != null &&
+              widget.lead.nextAction!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _followUpRow(Icons.bolt_rounded, 'Next Action',
+                widget.lead.nextAction!),
+          ],
+          if (widget.lead.followupRemarks != null &&
+              widget.lead.followupRemarks!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _followUpRow(Icons.notes_rounded, 'Remarks',
+                widget.lead.followupRemarks!),
+          ],
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             height: 44,
@@ -770,6 +901,36 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
           ),
         ],
       ),
+    );
+  }
+
+  /// A labelled value row inside the follow-up banner.
+  Widget _followUpRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: AppColors.primary),
+        const SizedBox(width: 8),
+        Text(
+          '$label: ',
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textPrimary,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -893,11 +1054,17 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                 ),
               ),
               const SizedBox(height: 14),
-              _InfoField(label: 'DESIGNATION', value: _detail.designation),
+              _InfoField(
+                  label: 'DESIGNATION',
+                  value: widget.lead.designation ?? _detail.designation),
               const SizedBox(height: 12),
-              _InfoField(label: 'WEBSITE', value: _detail.website),
+              _InfoField(
+                  label: 'WEBSITE',
+                  value: widget.lead.website ?? _detail.website),
               const SizedBox(height: 12),
-              _InfoField(label: 'ALT PHONE', value: _detail.altPhone),
+              _InfoField(
+                  label: 'ALT PHONE',
+                  value: widget.lead.alternatePhone ?? _detail.altPhone),
             ],
           ),
         ),
@@ -985,271 +1152,595 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   }
 
   Widget _buildTimelineTab() {
-    final events = [
-      _TimelineEvent(
-        icon: Icons.add_circle_outline_rounded,
-        title: 'Lead Created',
-        subtitle: 'Lead was added via ${_sourceLabel(widget.lead.source)}',
-        time: widget.lead.createdAt,
-        color: AppColors.green,
-      ),
-      _TimelineEvent(
-        icon: Icons.assignment_ind_rounded,
-        title: 'Assigned',
-        subtitle: 'Assigned to ${_detail.assignedToName ?? "Admin Owner"}',
-        time: widget.lead.createdAt.add(const Duration(minutes: 5)),
-        color: AppColors.primary,
-      ),
-      _TimelineEvent(
-        icon: Icons.access_time_rounded,
-        title: 'Follow-up Scheduled',
-        subtitle: 'Next follow-up set for ${_fmtDate(widget.lead.nextFollowUp)}',
-        time: widget.lead.createdAt.add(const Duration(hours: 1)),
-        color: AppColors.leadFunnelContacted,
-      ),
-    ];
+    final detailAsync = ref.watch(leadDetailProvider(widget.lead.id));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        children: List.generate(events.length, (i) {
-          final e = events[i];
-          final isLast = i == events.length - 1;
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: e.color.withOpacity(0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(e.icon, color: e.color, size: 17),
-                  ),
-                  if (!isLast)
-                    Container(
-                      width: 2,
-                      height: 40,
-                      color: AppColors.divider,
-                    ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBackground,
-                      borderRadius: BorderRadius.circular(12),
-                      border:
-                          Border.all(color: AppColors.divider, width: 0.8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              e.title,
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              _timeAgo(e.time),
-                              style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  color: AppColors.textLight),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          e.subtitle,
-                          style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
+      child: detailAsync.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 40),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (e, _) => _buildTimelineError(e),
+        data: (detail) {
+          final activities = detail.activities;
+          if (activities.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              child: Center(
+                child: Text(
+                  'No activity yet for this lead.',
+                  style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic),
                 ),
               ),
-            ],
+            );
+          }
+          return Column(
+            children: List.generate(activities.length, (i) {
+              final a = activities[i];
+              final isLast = i == activities.length - 1;
+              final cfg = _activityConfig(a.action);
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Column(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: cfg.$1.withOpacity(0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(cfg.$2, color: cfg.$1, size: 17),
+                      ),
+                      if (!isLast)
+                        Container(
+                          width: 2,
+                          height: 40,
+                          color: AppColors.divider,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBackground,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: AppColors.divider, width: 0.8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    a.actionLabel,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                if (a.createdAt != null)
+                                  Text(
+                                    _timeAgo(a.createdAt!),
+                                    style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        color: AppColors.textLight),
+                                  ),
+                              ],
+                            ),
+                            if (a.description.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                a.description,
+                                style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                    height: 1.4),
+                              ),
+                            ],
+                            if (a.userName != null &&
+                                a.userName!.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  const Icon(Icons.person_outline_rounded,
+                                      size: 12,
+                                      color: AppColors.textLight),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    a.userName!,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }),
           );
-        }),
+        },
       ),
     );
   }
 
+  Widget _buildTimelineError(Object error) {
+    final message = error is ApiException
+        ? error.message
+        : 'Could not load activity timeline.';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Center(
+        child: Column(
+          children: [
+            const Icon(Icons.cloud_off_rounded,
+                color: AppColors.red, size: 34),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                  fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () =>
+                  ref.invalidate(leadDetailProvider(widget.lead.id)),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: Text('Retry', style: GoogleFonts.poppins(fontSize: 13)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Picks an icon + color for an activity based on its action code.
+  (Color, IconData) _activityConfig(String action) {
+    switch (action) {
+      case 'created':
+        return (AppColors.green, Icons.add_circle_outline_rounded);
+      case 'assignment':
+        return (AppColors.primary, Icons.assignment_ind_rounded);
+      case 'followup_scheduled':
+        return (AppColors.leadFunnelContacted, Icons.access_time_rounded);
+      case 'note_added':
+        return (const Color(0xFFFFB547), Icons.sticky_note_2_outlined);
+      case 'priority_changed':
+        return (AppColors.red, Icons.local_fire_department_rounded);
+      case 'updated':
+      case 'edit_lead':
+        return (AppColors.primary, Icons.edit_outlined);
+      default:
+        return (AppColors.textSecondary, Icons.circle_notifications_outlined);
+    }
+  }
+
   Widget _buildNotesTab() {
+    final detailAsync = ref.watch(leadDetailProvider(widget.lead.id));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: detailAsync.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 40),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (e, _) => _buildTimelineError(e),
+        data: (detail) {
+          final notes = detail.notes;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _tabSectionHeader(
+                  Icons.sticky_note_2_outlined, 'Notes', notes.length,
+                  addLabel: 'Add Note', onAdd: () => _showSnack('Add note')),
+              const SizedBox(height: 12),
+              if (notes.isEmpty)
+                _emptyTabState(Icons.notes_rounded,
+                    'No notes yet. Tap Add Note to get started.')
+              else
+                ...notes.map(_buildNoteCard),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildNoteCard(LeadNote note) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider, width: 0.8),
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.divider, width: 0.8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.sticky_note_2_outlined,
-                        color: AppColors.primary, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Notes',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const Spacer(),
-                    GestureDetector(
-                      onTap: () => _showSnack('Add note'),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.add,
-                                color: AppColors.primary, size: 14),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Add Note',
-                              style: GoogleFonts.poppins(
-                                fontSize: 11,
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+          Text(
+            note.content,
+            style: GoogleFonts.poppins(
+                fontSize: 13, color: AppColors.textPrimary, height: 1.4),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.person_outline_rounded,
+                  size: 12, color: AppColors.textLight),
+              const SizedBox(width: 4),
+              Text(
+                note.userName ?? 'Unknown',
+                style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary),
+              ),
+              const Spacer(),
+              if (note.createdAt != null)
+                Text(
+                  _timeAgo(note.createdAt!),
+                  style: GoogleFonts.poppins(
+                      fontSize: 11, color: AppColors.textLight),
                 ),
-                const SizedBox(height: 16),
-                Center(
-                  child: Column(
-                    children: [
-                      Icon(Icons.notes_rounded,
-                          color: AppColors.textLight, size: 40),
-                      const SizedBox(height: 8),
-                      Text(
-                        'No notes yet. Tap Add Note to get started.',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
-                            fontStyle: FontStyle.italic),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              const SizedBox(width: 6),
+              _TaskActionIcon(
+                icon: Icons.delete_outline_rounded,
+                color: AppColors.red,
+                tooltip: 'Delete note',
+                onTap: () => _deleteNote(note),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
+  Future<void> _deleteNote(LeadNote note) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Delete note?',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete this note?',
+          style: GoogleFonts.poppins(
+              fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.poppins(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete',
+                style: GoogleFonts.poppins(
+                    color: AppColors.red, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      _showSnack('Deleted note');
+    }
+  }
+
   Widget _buildTasksTab() {
+    final detailAsync = ref.watch(leadDetailProvider(widget.lead.id));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.divider, width: 0.8),
+      child: detailAsync.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 40),
+          child: Center(child: CircularProgressIndicator()),
         ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.task_alt_rounded,
-                    color: AppColors.primary, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'Tasks',
+        error: (e, _) => _buildTimelineError(e),
+        data: (detail) {
+          final tasks = detail.tasks;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _tabSectionHeader(
+                  Icons.task_alt_rounded, 'Tasks', tasks.length,
+                  addLabel: 'Add Task', onAdd: () => _showSnack('Add task')),
+              const SizedBox(height: 12),
+              if (tasks.isEmpty)
+                _emptyTabState(Icons.assignment_outlined,
+                    'No tasks linked to this lead.')
+              else
+                ...tasks.map(_buildTaskCard),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTaskCard(LeadTask task) {
+    final cfg = _taskStatusConfig(task.status);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  task.title,
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary,
                   ),
                 ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => _showSnack('Add task'),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.add,
-                            color: AppColors.primary, size: 14),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Add Task',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cfg.$1.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  cfg.$2,
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: cfg.$1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (task.description != null && task.description!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              task.description!,
+              style: GoogleFonts.poppins(
+                  fontSize: 12, color: AppColors.textSecondary, height: 1.4),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (task.assigneeName != null) ...[
+                const Icon(Icons.person_outline_rounded,
+                    size: 12, color: AppColors.textLight),
+                const SizedBox(width: 4),
+                Text(
+                  task.assigneeName!,
+                  style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textSecondary),
+                ),
+              ],
+              const Spacer(),
+              if (task.dueAt != null) ...[
+                const Icon(Icons.event_outlined,
+                    size: 12, color: AppColors.textLight),
+                const SizedBox(width: 4),
+                Text(
+                  'Due ${_fmtDate(task.dueAt!)}',
+                  style: GoogleFonts.poppins(
+                      fontSize: 11, color: AppColors.textLight),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: AppColors.divider),
+          const SizedBox(height: 4),
+          // Action icons: Done / Edit / Delete
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              _TaskActionIcon(
+                icon: Icons.check_circle_outline_rounded,
+                color: AppColors.green,
+                tooltip: 'Mark as done',
+                onTap: () => _markTaskDone(task),
+              ),
+              const SizedBox(width: 4),
+              _TaskActionIcon(
+                icon: Icons.edit_outlined,
+                color: AppColors.primary,
+                tooltip: 'Edit task',
+                onTap: () => _editTask(task),
+              ),
+              const SizedBox(width: 4),
+              _TaskActionIcon(
+                icon: Icons.delete_outline_rounded,
+                color: AppColors.red,
+                tooltip: 'Delete task',
+                onTap: () => _deleteTask(task),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _markTaskDone(LeadTask task) {
+    _showSnack('Marked "${task.title}" as done');
+  }
+
+  void _editTask(LeadTask task) {
+    _showSnack('Edit "${task.title}"');
+  }
+
+  Future<void> _deleteTask(LeadTask task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Delete task?',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete "${task.title}"?',
+          style: GoogleFonts.poppins(
+              fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.poppins(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete',
+                style: GoogleFonts.poppins(
+                    color: AppColors.red, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      _showSnack('Deleted "${task.title}"');
+    }
+  }
+
+  /// Header row used by the Notes/Tasks tabs (title + count + add button).
+  Widget _tabSectionHeader(IconData icon, String title, int count,
+      {required String addLabel, required VoidCallback onAdd}) {
+    return Row(
+      children: [
+        Icon(icon, color: AppColors.primary, size: 18),
+        const SizedBox(width: 8),
+        Text(
+          '$title ($count)',
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const Spacer(),
+        GestureDetector(
+          onTap: onAdd,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.add, color: AppColors.primary, size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  addLabel,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Center(
-              child: Column(
-                children: [
-                  Icon(Icons.assignment_outlined,
-                      color: AppColors.textLight, size: 40),
-                  const SizedBox(height: 8),
-                  Text(
-                    'No tasks linked to this lead.',
-                    style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                        fontStyle: FontStyle.italic),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
+      ],
+    );
+  }
+
+  Widget _emptyTabState(IconData icon, String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.divider, width: 0.8),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: AppColors.textLight, size: 40),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                fontStyle: FontStyle.italic),
+          ),
+        ],
       ),
     );
+  }
+
+  /// (color, label) for a task status string.
+  (Color, String) _taskStatusConfig(String? status) {
+    switch (status?.toLowerCase()) {
+      case 'open':
+        return (AppColors.primary, 'OPEN');
+      case 'in_progress':
+        return (AppColors.leadFunnelContacted, 'IN PROGRESS');
+      case 'completed':
+      case 'done':
+        return (AppColors.green, 'DONE');
+      case 'backlog':
+        return (AppColors.red, 'BACKLOG');
+      default:
+        return (AppColors.textSecondary, (status ?? 'TASK').toUpperCase());
+    }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1420,6 +1911,40 @@ class _Chip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Small circular icon button used for per-task actions (done/edit/delete).
+class _TaskActionIcon extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _TaskActionIcon({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
       ),
     );
   }
@@ -1632,24 +2157,6 @@ class _SectionCard extends StatelessWidget {
       child: child,
     );
   }
-}
-
-// ── Timeline Event ────────────────────────────────────────────────────────────
-
-class _TimelineEvent {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final DateTime time;
-  final Color color;
-
-  _TimelineEvent({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.time,
-    required this.color,
-  });
 }
 
 // ── Menu Sheet ────────────────────────────────────────────────────────────────

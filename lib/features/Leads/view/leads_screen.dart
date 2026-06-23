@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -20,6 +22,7 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   late AnimationController _animController;
+  Timer? _searchDebounce;
 
   // Accent color — red theme when viewing backlog leads
   Color get _accent =>
@@ -44,9 +47,13 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     )..forward();
-    _searchController.addListener(
-        () => ref.read(leadsFilterProvider.notifier)
-            .setSearch(_searchController.text));
+    // Debounce search so we hit the API only after the user pauses typing.
+    _searchController.addListener(() {
+      _searchDebounce?.cancel();
+      _searchDebounce = Timer(const Duration(milliseconds: 450), () {
+        ref.read(leadsFilterProvider.notifier).setSearch(_searchController.text);
+      });
+    });
     // Infinite scroll: load the next page as we approach the bottom.
     _scrollController.addListener(_onScroll);
   }
@@ -61,6 +68,7 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
     _animController.dispose();
@@ -306,59 +314,259 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
   }
 
   Widget _buildSearchBar() {
+    final hasDateFilter =
+        ref.watch(leadsFilterProvider.select((s) => s.hasDateFilter));
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      child: Container(
-        height: 46,
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.divider, width: 0.8),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 46,
+              decoration: BoxDecoration(
+                color: AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.divider, width: 0.8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(left: 14),
+                    child: Icon(Icons.search_rounded,
+                        color: AppColors.textSecondary, size: 20),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      style: GoogleFonts.poppins(
+                          fontSize: 13, color: AppColors.textPrimary),
+                      decoration: InputDecoration(
+                        hintText: 'Search name, ID, phone, email...',
+                        hintStyle: GoogleFonts.poppins(
+                            fontSize: 13, color: AppColors.textLight),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  if (ref.watch(leadsFilterProvider
+                      .select((s) => s.searchQuery)).isNotEmpty)
+                    GestureDetector(
+                      onTap: () {
+                        _searchController.clear();
+                        ref.read(leadsFilterProvider.notifier).clearSearch();
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.only(right: 12),
+                        child: Icon(Icons.close_rounded,
+                            color: AppColors.textSecondary, size: 18),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ],
+          ),
+          const SizedBox(width: 10),
+          // Filter button (date range). Shows a dot when a filter is active.
+          GestureDetector(
+            onTap: _openDateFilterSheet,
+            child: Container(
+              height: 46,
+              width: 46,
+              decoration: BoxDecoration(
+                color: hasDateFilter ? _accent : AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: hasDateFilter ? _accent : AppColors.divider,
+                  width: 0.8,
+                ),
+              ),
+              child: Icon(
+                Icons.tune_rounded,
+                size: 21,
+                color: hasDateFilter ? Colors.white : AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Bottom sheet to pick the `from_date` / `to_date` server-side filter.
+  Future<void> _openDateFilterSheet() async {
+    final filter = ref.read(leadsFilterProvider);
+    DateTime? from = filter.fromDate;
+    DateTime? to = filter.toDate;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.cardBackground,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            String fmt(DateTime? d) => d == null
+                ? 'Select date'
+                : '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+            Future<void> pick(bool isFrom) async {
+              final now = DateTime.now();
+              final picked = await showDatePicker(
+                context: ctx,
+                initialDate: (isFrom ? from : to) ?? now,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(now.year + 2),
+              );
+              if (picked != null) {
+                setSheetState(() {
+                  if (isFrom) {
+                    from = picked;
+                  } else {
+                    to = picked;
+                  }
+                });
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                  20, 16, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.divider,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Filter by date',
+                    style: GoogleFonts.poppins(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _dateField('From date', fmt(from), () => pick(true)),
+                  const SizedBox(height: 12),
+                  _dateField('To date', fmt(to), () => pick(false)),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            ref.read(leadsFilterProvider.notifier)
+                                .clearDateRange();
+                            Navigator.pop(ctx);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: AppColors.divider),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: Text(
+                            'Clear',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            ref
+                                .read(leadsFilterProvider.notifier)
+                                .setDateRange(from: from, to: to);
+                            Navigator.pop(ctx);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _accent,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: Text(
+                            'Apply',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _dateField(String label, String value, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.divider, width: 0.8),
         ),
         child: Row(
           children: [
-            const Padding(
-              padding: EdgeInsets.only(left: 14),
-              child: Icon(Icons.search_rounded,
-                  color: AppColors.textSecondary, size: 20),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                style: GoogleFonts.poppins(
-                    fontSize: 13, color: AppColors.textPrimary),
-                decoration: InputDecoration(
-                  hintText: 'Search name, ID, phone, email...',
-                  hintStyle: GoogleFonts.poppins(
-                      fontSize: 13, color: AppColors.textLight),
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding:
-                      const EdgeInsets.symmetric(vertical: 12),
-                ),
+            Icon(Icons.calendar_today_rounded,
+                size: 16, color: _accent),
+            const SizedBox(width: 10),
+            Text(
+              '$label: ',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            if (ref.watch(
-                leadsFilterProvider.select((s) => s.searchQuery)).isNotEmpty)
-              GestureDetector(
-                onTap: () {
-                  _searchController.clear();
-                  ref.read(leadsFilterProvider.notifier).clearSearch();
-                },
-                child: const Padding(
-                  padding: EdgeInsets.only(right: 12),
-                  child: Icon(Icons.close_rounded,
-                      color: AppColors.textSecondary, size: 18),
-                ),
+            Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
               ),
+            ),
           ],
         ),
       ),
