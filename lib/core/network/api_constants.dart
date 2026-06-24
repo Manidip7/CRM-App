@@ -32,6 +32,16 @@ class ApiConstants {
   // Leads
   static const String leads = '/leads';
   static String leadDetail(String id) => '/leads/$id';
+  static String leadPriority(String id) => '/leads/$id/priority';
+  static String leadFollowup(String id) => '/leads/$id/followup';
+  static String leadStatus(String id) => '/leads/$id/status';
+  static String leadNotes(String id) => '/leads/$id/notes';
+  static String leadTasks(String id) => '/leads/$id/tasks';
+  static String leadConvert(String id) => '/leads/$id/convert';
+  static const String leadSources = '/lead-sources';
+  static const String currentUpdates = '/current-updates';
+  static const String nextActions = '/next-actions';
+  static const String statuses = '/statuses';
 
   // Opportunities
   static const String opportunities = '/opportunities';

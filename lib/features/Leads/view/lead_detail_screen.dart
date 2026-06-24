@@ -7,8 +7,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
+import '../data/leads_repository.dart';
 import '../model/lead_model.dart';
 import '../provider/lead_detail_provider.dart';
+import '../provider/leads_provider.dart';
 import '../../Opportunities/model/opportunity_model.dart';
 import '../../Opportunities/provider/opportunities_provider.dart';
 
@@ -26,14 +28,22 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   late TabController _tabController;
   late LeadDetailModel _detail;
 
+  /// The display lead, held in Riverpod ([leadViewProvider]) so follow-up edits
+  /// and server-loaded values flow through state management — not `setState`.
+  /// Falls back to the navigation lead until the provider is seeded.
+  LeadModel get _lead =>
+      ref.read(leadViewProvider(widget.lead.id)) ?? widget.lead;
+
   // Provider keyed by this lead's id, seeded with the temperature derived from
-  // the lead's `priority` (cold/warm/hot).
+  // the lead's `priority` (cold/warm/hot) and the status id from the lead.
+  // Seed values come from `widget.lead` (immutable) so the family key is stable.
   LeadDetailControllerProvider get _detailProvider =>
       leadDetailControllerProvider(
         widget.lead.id,
         initialTemperature:
             _temperatureFromPriority(widget.lead.priority) ??
                 LeadTemperature.warm,
+        initialStatusId: widget.lead.statusId ?? widget.lead.status.statusId,
       );
 
   static const List<Color> _avatarColors = [
@@ -50,6 +60,12 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _detail = LeadDetailModel.fromLead(widget.lead);
+    // Seed the Riverpod-held display lead from the navigation lead (once).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(leadViewProvider(widget.lead.id).notifier).seed(widget.lead);
+      }
+    });
   }
 
   /// Maps the backend `priority` string to the [LeadTemperature] enum.
@@ -77,6 +93,27 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Seed the header from the server-authoritative lead once it loads, so
+    // follow-up fields the list endpoint omits (e.g. next_action,
+    // interest_score) show up. Optimistic edits from scheduling still win since
+    // this only fires when the fetched value changes.
+    ref.listen<AsyncValue<LeadModel>>(
+      leadFullProvider(widget.lead.id),
+      (prev, next) {
+        final full = next.asData?.value;
+        if (full == null) return;
+        // Merge server-authoritative follow-up fields into the held lead.
+        ref
+            .read(leadViewProvider(widget.lead.id).notifier)
+            .applyServerFollowUp(full);
+        // Reflect the authoritative status from the detail endpoint (no API).
+        if (full.statusId != null) {
+          ref.read(_detailProvider.notifier).seedStatusId(full.statusId!);
+        }
+      },
+    );
+    // Subscribe so the screen rebuilds when the held lead changes.
+    ref.watch(leadViewProvider(widget.lead.id));
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -107,14 +144,6 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddMenu(context),
-        backgroundColor: AppColors.primary,
-        elevation: 4,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
     );
   }
@@ -156,38 +185,88 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     );
   }
 
-  // Status dropdown shown on the top bar (header) right side
+  /// Parses a `#rrggbb` (or `#aarrggbb`) hex string into a [Color], falling
+  /// back to the app primary when missing/invalid.
+  Color _hexColor(String? hex) {
+    if (hex == null) return AppColors.primary;
+    var h = hex.replaceAll('#', '').trim();
+    if (h.length == 6) h = 'FF$h';
+    final value = int.tryParse(h, radix: 16);
+    return value == null ? AppColors.primary : Color(value);
+  }
+
+  // Status chip/menu shown on the top bar (header) right side, driven by
+  // GET /statuses. The selected status id lives in the detail controller state.
   Widget _buildStatusDropdown() {
-    final pipelineStatus =
-        ref.watch(_detailProvider.select((s) => s.pipelineStatus));
-    final cfg = _pipelineConfig(pipelineStatus);
-    return PopupMenuButton<LeadPipelineStatus>(
+    final statuses =
+        ref.watch(leadStatusesProvider).asData?.value ?? const <StatusOption>[];
+    final statusId = ref.watch(_detailProvider.select((s) => s.statusId));
+
+    StatusOption? current;
+    for (final s in statuses) {
+      if (s.id == statusId) {
+        current = s;
+        break;
+      }
+    }
+
+    final color = _hexColor(current?.colorHex);
+    final label = current?.name ?? 'Status';
+
+    // While the options load (or none match), show a static chip.
+    if (statuses.isEmpty) {
+      return Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return PopupMenuButton<int>(
       tooltip: 'Change status',
       offset: const Offset(0, 46),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: AppColors.cardBackground,
-      onSelected: (s) =>
-          ref.read(_detailProvider.notifier).setStatus(s),
-      itemBuilder: (_) => LeadPipelineStatus.values.map((s) {
-        final c = _pipelineConfig(s);
-        final selected = s == pipelineStatus;
-        return PopupMenuItem<LeadPipelineStatus>(
-          value: s,
+      onSelected: _changeStatus,
+      itemBuilder: (_) => statuses.map((s) {
+        final c = _hexColor(s.colorHex);
+        final selected = s.id == statusId;
+        return PopupMenuItem<int>(
+          value: s.id,
           height: 42,
           child: Row(
             children: [
               Container(
                 width: 10,
                 height: 10,
-                decoration: BoxDecoration(
-                  color: c.$1,
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: c, shape: BoxShape.circle),
               ),
               const SizedBox(width: 10),
               Text(
-                c.$2,
+                s.name,
                 style: GoogleFonts.poppins(
                   fontSize: 13,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
@@ -195,8 +274,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                 ),
               ),
               const Spacer(),
-              if (selected)
-                Icon(Icons.check_rounded, size: 16, color: c.$1),
+              if (selected) Icon(Icons.check_rounded, size: 16, color: c),
             ],
           ),
         );
@@ -205,9 +283,9 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
         height: 38,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: cfg.$1.withOpacity(0.12),
+          color: color.withOpacity(0.12),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: cfg.$1, width: 1),
+          border: Border.all(color: color, width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -215,26 +293,43 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             Container(
               width: 8,
               height: 8,
-              decoration: BoxDecoration(
-                color: cfg.$1,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
             const SizedBox(width: 7),
             Text(
-              cfg.$2,
+              label,
               style: GoogleFonts.poppins(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: cfg.$1,
+                color: color,
               ),
             ),
             const SizedBox(width: 3),
-            Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: cfg.$1),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: color),
           ],
         ),
       ),
     );
+  }
+
+  /// Persists a status change via the controller, showing an error and
+  /// reverting (handled in the controller) if the API call fails.
+  Future<void> _changeStatus(int id) async {
+    final ok = await ref.read(_detailProvider.notifier).setStatusId(id);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not update status',
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.white),
+          ),
+          backgroundColor: AppColors.red,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    }
   }
 
   // ── Hero Card ────────────────────────────────────────────────────────────────
@@ -422,8 +517,22 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                 child: Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: GestureDetector(
-                    onTap: () =>
-                        ref.read(_detailProvider.notifier).setTemperature(t),
+                    onTap: () async {
+                      final ok = await ref
+                          .read(_detailProvider.notifier)
+                          .setTemperature(t);
+                      if (!ok && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text('Could not update priority'),
+                            backgroundColor: AppColors.red,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                          ),
+                        );
+                      }
+                    },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -471,7 +580,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             width: double.infinity,
             height: 48,
             child: ElevatedButton.icon(
-              onPressed: converted ? null : _convertToOpportunity,
+              onPressed: converted ? null : _showConvertSheet,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.green,
                 disabledBackgroundColor: AppColors.green.withOpacity(0.5),
@@ -503,20 +612,6 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     );
   }
 
-  // (Color, label) for pipeline status
-  (Color, String) _pipelineConfig(LeadPipelineStatus s) {
-    switch (s) {
-      case LeadPipelineStatus.newLead:
-        return (AppColors.leadFunnelNew, 'New');
-      case LeadPipelineStatus.inProgress:
-        return (AppColors.primary, 'In Progress');
-      case LeadPipelineStatus.interested:
-        return (AppColors.green, 'Interested');
-      case LeadPipelineStatus.lost:
-        return (AppColors.red, 'Lost');
-    }
-  }
-
   // (Color, label, icon) for temperature
   (Color, String, IconData) _temperatureConfig(LeadTemperature t) {
     switch (t) {
@@ -529,17 +624,33 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     }
   }
 
-  void _convertToOpportunity() {
+  /// Opens the convert popup (expected value + probability). On a successful
+  /// API conversion, mirrors the opportunity into the local store, marks the
+  /// lead converted, and navigates to the Opportunities screen.
+  Future<void> _showConvertSheet() async {
+    final result = await showModalBottomSheet<({double expectedValue, int probability})>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ConvertSheet(
+        leadId: _lead.id,
+        initialValue: _lead.dealValue,
+      ),
+    );
+    if (result == null || !mounted) return;
+    _onConverted(result.expectedValue, result.probability);
+  }
+
+  void _onConverted(double expectedValue, int probability) {
     final lead = widget.lead;
-    final pipelineStatus = ref.read(_detailProvider).pipelineStatus;
     final opp = OpportunityModel(
       id: 'OPP-${lead.id}',
       title: lead.companyName != null
           ? '${lead.companyName} Deal'
           : '${lead.contactName} Opportunity',
       contactName: lead.contactName,
-      value: lead.dealValue ?? 0,
-      probability: pipelineStatus == LeadPipelineStatus.interested ? 70 : 50,
+      value: expectedValue,
+      probability: probability,
       stage: OpportunityStage.qualified,
       source: _mapSource(lead.source),
       timeAgo: 'now',
@@ -807,12 +918,35 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     );
   }
 
+  /// Resolves a display label: the stored [name] when present, otherwise the
+  /// option whose id matches [id] in [options] (so a lead that only carries
+  /// `*_id` from the API still shows a readable label).
+  String? _resolveLookupName(
+      List<NamedLookup> options, int? id, String? name) {
+    if (name != null && name.isNotEmpty) return name;
+    if (id == null) return null;
+    for (final o in options) {
+      if (o.id == id) return o.name;
+    }
+    return null;
+  }
+
   Widget _buildFollowUpBanner() {
     final months = [
       'JAN','FEB','MAR','APR','MAY','JUN',
       'JUL','AUG','SEP','OCT','NOV','DEC'
     ];
-    final dt = widget.lead.nextFollowUp;
+    // Resolve Current Update / Next Action labels from their option lists when
+    // the lead only carries the id (the detail API may omit the name).
+    final updateOpts =
+        ref.watch(currentUpdatesProvider).asData?.value ?? const <NamedLookup>[];
+    final actionOpts =
+        ref.watch(nextActionsProvider).asData?.value ?? const <NamedLookup>[];
+    final currentUpdateLabel = _resolveLookupName(
+        updateOpts, _lead.currentUpdateId, _lead.currentUpdate);
+    final nextActionLabel =
+        _resolveLookupName(actionOpts, _lead.nextActionId, _lead.nextAction);
+    final dt = _lead.nextFollowUp;
     final dateStr =
         '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
 
@@ -858,30 +992,32 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             ],
           ),
           // Current Update / Next Action / Remarks (shown when present).
-          if (widget.lead.currentUpdate != null &&
-              widget.lead.currentUpdate!.isNotEmpty) ...[
+          if (currentUpdateLabel != null) ...[
             const SizedBox(height: 10),
             _followUpRow(
-                Icons.update_rounded, 'Current Update', widget.lead.currentUpdate!),
+                Icons.update_rounded, 'Current Update', currentUpdateLabel),
           ],
-          if (widget.lead.nextAction != null &&
-              widget.lead.nextAction!.isNotEmpty) ...[
+          if (nextActionLabel != null) ...[
             const SizedBox(height: 8),
-            _followUpRow(Icons.bolt_rounded, 'Next Action',
-                widget.lead.nextAction!),
+            _followUpRow(Icons.bolt_rounded, 'Next Action', nextActionLabel),
           ],
-          if (widget.lead.followupRemarks != null &&
-              widget.lead.followupRemarks!.isNotEmpty) ...[
+          if (_lead.followupRemarks != null &&
+              _lead.followupRemarks!.isNotEmpty) ...[
             const SizedBox(height: 8),
             _followUpRow(Icons.notes_rounded, 'Remarks',
-                widget.lead.followupRemarks!),
+                _lead.followupRemarks!),
+          ],
+          // Interest Score (shown when present).
+          if (_lead.interestScore != null) ...[
+            const SizedBox(height: 10),
+            _buildInterestScore(_lead.interestScore!),
           ],
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             height: 44,
             child: ElevatedButton.icon(
-              onPressed: () => _showSnack('Schedule follow-up'),
+              onPressed: _showScheduleFollowUpSheet,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
@@ -901,6 +1037,63 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
           ),
         ],
       ),
+    );
+  }
+
+  /// Interest-score row inside the follow-up banner: a label, a colour-coded
+  /// percentage badge, and a thin progress bar.
+  Widget _buildInterestScore(int score) {
+    final clamped = score.clamp(0, 100);
+    final color = clamped < 40
+        ? AppColors.red
+        : clamped < 70
+            ? const Color(0xFFFFB547)
+            : AppColors.green;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.percent_rounded, size: 14, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Text(
+              'Interest Score: ',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '$clamped%',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: clamped / 100,
+            minHeight: 6,
+            backgroundColor: AppColors.divider,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1338,6 +1531,18 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     }
   }
 
+  /// Opens the add-note sheet; shows a confirmation once a note is added (the
+  /// notes list refreshes itself via the provider).
+  Future<void> _showAddNoteSheet() async {
+    final added = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AddNoteSheet(leadId: _lead.id),
+    );
+    if (added == true && mounted) _showSnack('Note added');
+  }
+
   Widget _buildNotesTab() {
     final detailAsync = ref.watch(leadDetailProvider(widget.lead.id));
     return Padding(
@@ -1355,7 +1560,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             children: [
               _tabSectionHeader(
                   Icons.sticky_note_2_outlined, 'Notes', notes.length,
-                  addLabel: 'Add Note', onAdd: () => _showSnack('Add note')),
+                  addLabel: 'Add Note', onAdd: _showAddNoteSheet),
               const SizedBox(height: 12),
               if (notes.isEmpty)
                 _emptyTabState(Icons.notes_rounded,
@@ -1461,6 +1666,18 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     }
   }
 
+  /// Opens the add-task sheet; shows a confirmation once a task is added (the
+  /// tasks list refreshes itself via the provider).
+  Future<void> _showAddTaskSheet() async {
+    final added = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AddTaskSheet(leadId: _lead.id),
+    );
+    if (added == true && mounted) _showSnack('Task added');
+  }
+
   Widget _buildTasksTab() {
     final detailAsync = ref.watch(leadDetailProvider(widget.lead.id));
     return Padding(
@@ -1478,7 +1695,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             children: [
               _tabSectionHeader(
                   Icons.task_alt_rounded, 'Tasks', tasks.length,
-                  addLabel: 'Add Task', onAdd: () => _showSnack('Add task')),
+                  addLabel: 'Add Task', onAdd: _showAddTaskSheet),
               const SizedBox(height: 12),
               if (tasks.isEmpty)
                 _emptyTabState(Icons.assignment_outlined,
@@ -1830,20 +2047,51 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     );
   }
 
-  void _showAddMenu(BuildContext context) {
-    showModalBottomSheet(
+  /// Opens the "Schedule Next Follow-up" popup. Pre-fills its fields from the
+  /// lead's current follow-up data. The sheet persists via the API itself and
+  /// only pops with a result on success, so here we just refresh the timeline
+  /// and confirm.
+  Future<void> _showScheduleFollowUpSheet() async {
+    final result = await showModalBottomSheet<FollowUpFormResult>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _MenuSheet(
-        items: [
-          _MenuItem(Icons.task_alt_rounded, 'Add Task', AppColors.primary),
-          _MenuItem(Icons.sticky_note_2_outlined, 'Add Note', AppColors.green),
-          _MenuItem(
-              Icons.calendar_month_rounded, 'Schedule Follow-up', AppColors.leadFunnelContacted),
-        ],
-        onSelected: (label) => _showSnack(label),
+      builder: (_) => _ScheduleFollowUpSheet(
+        leadId: _lead.id,
+        initialCurrentUpdate: _lead.currentUpdate,
+        initialNextAction: _lead.nextAction,
+        initialCurrentUpdateId: _lead.currentUpdateId,
+        initialNextActionId: _lead.nextActionId,
+        initialRemark: _lead.followupRemarks,
+        initialDate: _lead.nextFollowUp,
       ),
     );
+    if (result == null || !mounted) return;
+
+    // Instantly reflect the new follow-up on this screen via Riverpod…
+    ref.read(leadViewProvider(widget.lead.id).notifier).applyFollowUp(
+          nextFollowUp: result.scheduleDate,
+          currentUpdate: result.currentUpdate,
+          nextAction: result.nextAction,
+          followupRemarks: result.nextRemark,
+          currentUpdateId: result.currentUpdateId,
+          nextActionId: result.nextActionId,
+          interestScore: result.score,
+        );
+    // …and patch it in the leads list so it's updated on return.
+    ref.read(leadsListProvider.notifier).updateFollowUp(
+          _lead.id,
+          nextFollowUp: result.scheduleDate,
+          currentUpdate: result.currentUpdate,
+          nextAction: result.nextAction,
+          followupRemarks: result.nextRemark,
+          currentUpdateId: result.currentUpdateId,
+          nextActionId: result.nextActionId,
+          interestScore: result.score,
+        );
+    // Reload the activity timeline so the new follow-up entry shows up.
+    ref.invalidate(leadDetailProvider(_lead.id));
+    _showSnack('Follow-up scheduled for ${_fmtDate(result.scheduleDate)}');
   }
 
   String _timeAgo(DateTime dt) {
@@ -2228,6 +2476,1398 @@ class _MenuSheet extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Schedule Follow-up Sheet ──────────────────────────────────────────────────
+
+/// The values collected by the "Schedule Next Follow-up" popup, returned to the
+/// caller via `Navigator.pop` when the user taps Save.
+class FollowUpFormResult {
+  final int? currentUpdateId;
+  final String? currentUpdate;
+  final int? nextActionId;
+  final String? nextAction;
+  final String? nextRemark;
+  final DateTime scheduleDate;
+  final int score;
+
+  const FollowUpFormResult({
+    required this.currentUpdateId,
+    required this.currentUpdate,
+    required this.nextActionId,
+    required this.nextAction,
+    required this.nextRemark,
+    required this.scheduleDate,
+    required this.score,
+  });
+}
+
+/// Bottom-sheet form to schedule the next follow-up for a lead. Holds its own
+/// local form state and returns a [FollowUpFormResult] when saved.
+class _ScheduleFollowUpSheet extends ConsumerStatefulWidget {
+  final String leadId;
+  final String? initialCurrentUpdate;
+  final String? initialNextAction;
+  final int? initialCurrentUpdateId;
+  final int? initialNextActionId;
+  final String? initialRemark;
+  final DateTime initialDate;
+
+  const _ScheduleFollowUpSheet({
+    required this.leadId,
+    this.initialCurrentUpdate,
+    this.initialNextAction,
+    this.initialCurrentUpdateId,
+    this.initialNextActionId,
+    this.initialRemark,
+    required this.initialDate,
+  });
+
+  @override
+  ConsumerState<_ScheduleFollowUpSheet> createState() =>
+      _ScheduleFollowUpSheetState();
+}
+
+class _ScheduleFollowUpSheetState
+    extends ConsumerState<_ScheduleFollowUpSheet> {
+  // Both "Current Update" and "Next Action" options are fetched from the API.
+  static const List<String> _months = [
+    'Jan','Feb','Mar','Apr','May','Jun',
+    'Jul','Aug','Sep','Oct','Nov','Dec'
+  ];
+
+  late final TextEditingController _remarkCtrl;
+
+  /// The Riverpod notifier for this sheet's form state.
+  FollowUpForm get _form =>
+      ref.read(followUpFormProvider(widget.leadId).notifier);
+
+  /// The current form state (read, no subscription).
+  FollowUpFormState get _state =>
+      ref.read(followUpFormProvider(widget.leadId));
+
+  @override
+  void initState() {
+    super.initState();
+    _remarkCtrl = TextEditingController(text: widget.initialRemark ?? '');
+  }
+
+  @override
+  void dispose() {
+    _remarkCtrl.dispose();
+    super.dispose();
+  }
+
+  /// The currently-selected Current Update: the form value, or — if untouched —
+  /// the option matching the lead's existing value.
+  NamedLookup? _effectiveUpdate(List<NamedLookup> options) =>
+      _state.currentUpdate ??
+      _matchOption(options, widget.initialCurrentUpdateId,
+          widget.initialCurrentUpdate);
+
+  NamedLookup? _effectiveAction(List<NamedLookup> options) =>
+      _state.nextAction ??
+      _matchOption(
+          options, widget.initialNextActionId, widget.initialNextAction);
+
+  DateTime get _effectiveDate => _state.scheduleDate ?? widget.initialDate;
+
+  /// Finds the option matching [id] (preferred) or [name]; null if none.
+  NamedLookup? _matchOption(
+      List<NamedLookup> options, int? id, String? name) {
+    for (final o in options) {
+      if (id != null && o.id == id) return o;
+    }
+    if (name != null) {
+      for (final o in options) {
+        if (o.name == name) return o;
+      }
+    }
+    return null;
+  }
+
+  /// Colour for the score bar/label: red <40, amber <70, green otherwise.
+  Color _scoreColor(double score) {
+    if (score < 40) return AppColors.red;
+    if (score < 70) return const Color(0xFFFFB547);
+    return AppColors.green;
+  }
+
+  String _dateLabel(DateTime d) {
+    final h = d.hour > 12
+        ? d.hour - 12
+        : d.hour == 0
+            ? 12
+            : d.hour;
+    final ampm = d.hour >= 12 ? 'PM' : 'AM';
+    final min = d.minute.toString().padLeft(2, '0');
+    return '${_months[d.month - 1]} ${d.day}, ${d.year} · $h:$min $ampm';
+  }
+
+  /// `next_followup_at` in the API's `yyyy-MM-dd HH:mm:ss` format.
+  String _apiDateTime(DateTime d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)} '
+        '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+  }
+
+  /// Themes the date/time pickers to match the app palette.
+  Widget _pickerTheme(BuildContext ctx, Widget? child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: AppColors.primary,
+            onPrimary: Colors.white,
+            onSurface: AppColors.textPrimary,
+          ),
+        ),
+        child: child!,
+      );
+
+  /// Picks a date, then a time, and stores them via the form notifier.
+  Future<void> _pickDate() async {
+    final current = _effectiveDate;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      builder: _pickerTheme,
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+      builder: _pickerTheme,
+    );
+    _form.setScheduleDate(DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time?.hour ?? current.hour,
+      time?.minute ?? current.minute,
+    ));
+  }
+
+  /// Persists the follow-up via `POST /leads/{id}/followup`. Keeps the sheet
+  /// open on error, and pops with the result on success.
+  Future<void> _submit() async {
+    if (_state.saving) return;
+
+    // Resolve the effective selections/date/score from the form state.
+    final updateOptions =
+        ref.read(currentUpdatesProvider).asData?.value ?? const <NamedLookup>[];
+    final actionOptions =
+        ref.read(nextActionsProvider).asData?.value ?? const <NamedLookup>[];
+    final selectedUpdate = _effectiveUpdate(updateOptions);
+    final selectedAction = _effectiveAction(actionOptions);
+    final scheduleDate = _effectiveDate;
+    final score = _state.score.round();
+
+    _form.setSaving(true);
+    final result =
+        await ref.read(leadsRepositoryProvider).scheduleFollowUp(
+              widget.leadId,
+              currentUpdateId: selectedUpdate?.id,
+              nextActionId: selectedAction?.id,
+              followupRemarks: _remarkCtrl.text.trim(),
+              nextFollowUpAt: _apiDateTime(scheduleDate),
+              interestScore: score,
+            );
+    if (!mounted) return;
+
+    result.when(
+      success: (_) {
+        Navigator.pop(
+          context,
+          FollowUpFormResult(
+            currentUpdateId: selectedUpdate?.id,
+            currentUpdate: selectedUpdate?.name,
+            nextActionId: selectedAction?.id,
+            nextAction: selectedAction?.name,
+            nextRemark: _remarkCtrl.text.trim().isEmpty
+                ? null
+                : _remarkCtrl.text.trim(),
+            scheduleDate: scheduleDate,
+            score: score,
+          ),
+        );
+      },
+      failure: (error) {
+        _form.setSaving(false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error.message,
+              style: GoogleFonts.poppins(fontSize: 13, color: Colors.white),
+            ),
+            backgroundColor: AppColors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Pad the sheet above the keyboard when the remark field is focused.
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    // Form state (selections, date, score, saving) from Riverpod.
+    final form = ref.watch(followUpFormProvider(widget.leadId));
+    // "Current Update" options from GET /current-updates.
+    final updatesAsync = ref.watch(currentUpdatesProvider);
+    final updateOptions = updatesAsync.asData?.value ?? const <NamedLookup>[];
+    final updateHint = updatesAsync.isLoading
+        ? 'Loading updates…'
+        : updatesAsync.hasError
+            ? 'Could not load updates'
+            : 'Select current update';
+    // "Next Action" options from GET /next-actions.
+    final actionsAsync = ref.watch(nextActionsProvider);
+    final actionOptions = actionsAsync.asData?.value ?? const <NamedLookup>[];
+    final actionHint = actionsAsync.isLoading
+        ? 'Loading actions…'
+        : actionsAsync.hasError
+            ? 'Could not load actions'
+            : 'Select next action';
+    // Effective values: form selection, or fall back to the lead's existing.
+    final selectedUpdate = form.currentUpdate ??
+        _matchOption(updateOptions, widget.initialCurrentUpdateId,
+            widget.initialCurrentUpdate);
+    final selectedAction = form.nextAction ??
+        _matchOption(actionOptions, widget.initialNextActionId,
+            widget.initialNextAction);
+    final scheduleDate = form.scheduleDate ?? widget.initialDate;
+    final score = form.score;
+    final scoreColor = _scoreColor(score);
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            // Drag handle
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.event_available_rounded,
+                        color: AppColors.primary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Schedule Follow-up',
+                          style: GoogleFonts.poppins(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'Update progress and plan the next step',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.close_rounded,
+                          size: 18, color: AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            // Scrollable form body
+            Flexible(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Current Update (dropdown, fetched from the API)
+                    _FieldLabel('Current Update', Icons.update_rounded),
+                    const SizedBox(height: 8),
+                    _SheetDropdown<NamedLookup>(
+                      hint: updateHint,
+                      value: selectedUpdate,
+                      options: updateOptions,
+                      labelOf: (o) => o.name,
+                      onChanged: _form.setCurrentUpdate,
+                    ),
+                    const SizedBox(height: 18),
+                    // Next Remark (text field)
+                    _FieldLabel('Next Remark', Icons.notes_rounded),
+                    const SizedBox(height: 8),
+                    _SheetTextField(
+                      controller: _remarkCtrl,
+                      hint: 'Add a remark for the next follow-up…',
+                    ),
+                    const SizedBox(height: 18),
+                    // Next Action (dropdown, fetched from the API)
+                    _FieldLabel('Next Action', Icons.bolt_rounded),
+                    const SizedBox(height: 8),
+                    _SheetDropdown<NamedLookup>(
+                      hint: actionHint,
+                      value: selectedAction,
+                      options: actionOptions,
+                      labelOf: (o) => o.name,
+                      onChanged: _form.setNextAction,
+                    ),
+                    const SizedBox(height: 18),
+                    // Schedule Date (picker)
+                    _FieldLabel('Schedule Date', Icons.calendar_month_rounded),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: _pickDate,
+                      child: Container(
+                        height: 52,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: AppColors.divider, width: 0.8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.event_rounded,
+                                size: 18, color: AppColors.primary),
+                            const SizedBox(width: 10),
+                            Text(
+                              _dateLabel(scheduleDate),
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const Spacer(),
+                            const Icon(Icons.keyboard_arrow_down_rounded,
+                                color: AppColors.textSecondary),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    // Score (%) slider
+                    Row(
+                      children: [
+                        _FieldLabel('Score', Icons.percent_rounded),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: scoreColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${score.round()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: scoreColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // Progress bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: score / 100,
+                        minHeight: 8,
+                        backgroundColor: AppColors.divider,
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(scoreColor),
+                      ),
+                    ),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: scoreColor,
+                        inactiveTrackColor: AppColors.divider,
+                        thumbColor: scoreColor,
+                        overlayColor: scoreColor.withOpacity(0.15),
+                        trackHeight: 4,
+                      ),
+                      child: Slider(
+                        value: score,
+                        min: 0,
+                        max: 100,
+                        divisions: 100,
+                        onChanged: _form.setScore,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Save button (pinned to the bottom)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: form.saving ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    disabledBackgroundColor:
+                        AppColors.primary.withOpacity(0.6),
+                    foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: form.saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.check_rounded, size: 19),
+                  label: Text(
+                    form.saving ? 'Scheduling…' : 'Schedule Follow-up',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small label row (icon + text) used above each field in the follow-up sheet.
+class _FieldLabel extends StatelessWidget {
+  final String text;
+  final IconData icon;
+  const _FieldLabel(this.text, this.icon);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: AppColors.primary),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: GoogleFonts.poppins(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Styled dropdown matching the sheet's design language. Generic over the
+/// option type [T]; [labelOf] maps an option to its display text.
+class _SheetDropdown<T> extends StatelessWidget {
+  final String hint;
+  final T? value;
+  final List<T> options;
+  final String Function(T) labelOf;
+  final ValueChanged<T?> onChanged;
+
+  const _SheetDropdown({
+    required this.hint,
+    required this.value,
+    required this.options,
+    required this.labelOf,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider, width: 0.8),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          isExpanded: true,
+          value: value,
+          hint: Text(
+            hint,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              color: AppColors.textLight,
+            ),
+          ),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded,
+              color: AppColors.textSecondary),
+          dropdownColor: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(12),
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: AppColors.textPrimary,
+          ),
+          items: options
+              .map((o) => DropdownMenuItem<T>(
+                    value: o,
+                    child: Text(labelOf(o)),
+                  ))
+              .toList(),
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+}
+
+/// Styled multiline text field used for the "Next Remark" input.
+class _SheetTextField extends StatelessWidget {
+  final TextEditingController controller;
+  final String hint;
+
+  const _SheetTextField({required this.controller, required this.hint});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      maxLines: 3,
+      minLines: 2,
+      style: GoogleFonts.poppins(
+        fontSize: 14,
+        color: AppColors.textPrimary,
+      ),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: GoogleFonts.poppins(
+          fontSize: 14,
+          color: AppColors.textLight,
+        ),
+        filled: true,
+        fillColor: AppColors.background,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide:
+              const BorderSide(color: AppColors.divider, width: 0.8),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide:
+              const BorderSide(color: AppColors.divider, width: 0.8),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide:
+              const BorderSide(color: AppColors.primary, width: 1.2),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Add Note Sheet ────────────────────────────────────────────────────────────
+
+/// Bottom sheet to add a note to a lead (`POST /leads/{id}/notes`). The saving
+/// state is Riverpod-managed ([addNoteProvider]); the text field uses a local
+/// controller. Pops `true` when the note is saved.
+class _AddNoteSheet extends ConsumerStatefulWidget {
+  final String leadId;
+  const _AddNoteSheet({required this.leadId});
+
+  @override
+  ConsumerState<_AddNoteSheet> createState() => _AddNoteSheetState();
+}
+
+class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final ok =
+        await ref.read(addNoteProvider(widget.leadId).notifier).submit(_ctrl.text);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context, true);
+    } else if (_ctrl.text.trim().isNotEmpty) {
+      // Non-empty content but the request failed.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not add note',
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.white),
+          ),
+          backgroundColor: AppColors.red,
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final saving = ref.watch(addNoteProvider(widget.leadId));
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Header
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.sticky_note_2_outlined,
+                      color: AppColors.green, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Add Note',
+                    style: GoogleFonts.poppins(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.close_rounded,
+                        size: 18, color: AppColors.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            const _FieldLabel('Note', Icons.notes_rounded),
+            const SizedBox(height: 8),
+            _SheetTextField(
+              controller: _ctrl,
+              hint: 'Write a note about this lead…',
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: saving ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
+                  foregroundColor: Colors.white,
+                  disabledForegroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Icon(Icons.check_rounded, size: 19),
+                label: Text(
+                  saving ? 'Saving…' : 'Add Note',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Add Task Sheet ────────────────────────────────────────────────────────────
+
+/// Bottom sheet to add a task to a lead (`POST /leads/{id}/tasks`): a title, a
+/// due date+time picker, and a priority dropdown. Form state (due date,
+/// priority, saving) is Riverpod-managed ([addTaskProvider]); the title uses a
+/// local controller. Pops `true` when the task is saved.
+class _AddTaskSheet extends ConsumerStatefulWidget {
+  final String leadId;
+  const _AddTaskSheet({required this.leadId});
+
+  @override
+  ConsumerState<_AddTaskSheet> createState() => _AddTaskSheetState();
+}
+
+class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
+  static const List<String> _months = [
+    'Jan','Feb','Mar','Apr','May','Jun',
+    'Jul','Aug','Sep','Oct','Nov','Dec'
+  ];
+  static const List<String> _priorities = ['high', 'medium', 'low'];
+
+  late final TextEditingController _ctrl;
+
+  AddTask get _form => ref.read(addTaskProvider(widget.leadId).notifier);
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  String _dateLabel(DateTime d) {
+    final h = d.hour > 12
+        ? d.hour - 12
+        : d.hour == 0
+            ? 12
+            : d.hour;
+    final ampm = d.hour >= 12 ? 'PM' : 'AM';
+    final min = d.minute.toString().padLeft(2, '0');
+    return '${_months[d.month - 1]} ${d.day}, ${d.year} · $h:$min $ampm';
+  }
+
+  Widget _pickerTheme(BuildContext ctx, Widget? child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: AppColors.primary,
+            onPrimary: Colors.white,
+            onSurface: AppColors.textPrimary,
+          ),
+        ),
+        child: child!,
+      );
+
+  Future<void> _pickDue() async {
+    final current = ref.read(addTaskProvider(widget.leadId)).dueAt ?? DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      builder: _pickerTheme,
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+      builder: _pickerTheme,
+    );
+    _form.setDueAt(DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time?.hour ?? current.hour,
+      time?.minute ?? current.minute,
+    ));
+  }
+
+  void _error(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg,
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.white)),
+        backgroundColor: AppColors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final state = ref.read(addTaskProvider(widget.leadId));
+    if (_ctrl.text.trim().isEmpty) return _error('Enter a task title');
+    if (state.dueAt == null) return _error('Pick a due date & time');
+
+    final ok = await _form.submit(_ctrl.text);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context, true);
+    } else {
+      _error('Could not add task');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(addTaskProvider(widget.leadId));
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.task_alt_rounded,
+                        color: AppColors.primary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Add Task',
+                      style: GoogleFonts.poppins(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.close_rounded,
+                          size: 18, color: AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            Flexible(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    const _FieldLabel('Title', Icons.title_rounded),
+                    const SizedBox(height: 8),
+                    _SheetTextField(
+                      controller: _ctrl,
+                      hint: 'e.g. Send Quotation',
+                    ),
+                    const SizedBox(height: 18),
+                    // Due date + time
+                    const _FieldLabel(
+                        'Due Date & Time', Icons.event_rounded),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: _pickDue,
+                      child: Container(
+                        height: 52,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: AppColors.divider, width: 0.8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_month_rounded,
+                                size: 18, color: AppColors.primary),
+                            const SizedBox(width: 10),
+                            Text(
+                              state.dueAt == null
+                                  ? 'Select due date & time'
+                                  : _dateLabel(state.dueAt!),
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: state.dueAt == null
+                                    ? AppColors.textLight
+                                    : AppColors.textPrimary,
+                              ),
+                            ),
+                            const Spacer(),
+                            const Icon(Icons.keyboard_arrow_down_rounded,
+                                color: AppColors.textSecondary),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    // Priority
+                    const _FieldLabel('Priority', Icons.flag_rounded),
+                    const SizedBox(height: 8),
+                    _SheetDropdown<String>(
+                      hint: 'Select priority',
+                      value: state.priority,
+                      options: _priorities,
+                      labelOf: (p) =>
+                          '${p[0].toUpperCase()}${p.substring(1)}',
+                      onChanged: (v) {
+                        if (v != null) _form.setPriority(v);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Save button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: state.saving ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
+                    foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: state.saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.check_rounded, size: 19),
+                  label: Text(
+                    state.saving ? 'Saving…' : 'Add Task',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Convert to Opportunity Sheet ──────────────────────────────────────────────
+
+/// Bottom sheet to convert a lead to an opportunity (`POST /leads/{id}/convert`):
+/// an expected value field and a probability slider. Form state (probability,
+/// saving) is Riverpod-managed ([convertLeadProvider]); the value field uses a
+/// local controller. Pops `(expectedValue, probability)` on success.
+class _ConvertSheet extends ConsumerStatefulWidget {
+  final String leadId;
+  final double? initialValue;
+  const _ConvertSheet({required this.leadId, this.initialValue});
+
+  @override
+  ConsumerState<_ConvertSheet> createState() => _ConvertSheetState();
+}
+
+class _ConvertSheetState extends ConsumerState<_ConvertSheet> {
+  late final TextEditingController _valueCtrl;
+
+  ConvertLead get _form => ref.read(convertLeadProvider(widget.leadId).notifier);
+
+  @override
+  void initState() {
+    super.initState();
+    _valueCtrl = TextEditingController(
+      text: (widget.initialValue != null && widget.initialValue! > 0)
+          ? widget.initialValue!.toStringAsFixed(0)
+          : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _valueCtrl.dispose();
+    super.dispose();
+  }
+
+  Color _probColor(double p) {
+    if (p < 40) return AppColors.red;
+    if (p < 70) return const Color(0xFFFFB547);
+    return AppColors.green;
+  }
+
+  void _error(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg,
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.white)),
+        backgroundColor: AppColors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final value = double.tryParse(_valueCtrl.text.trim().replaceAll(',', ''));
+    if (value == null || value <= 0) {
+      return _error('Enter a valid expected value');
+    }
+    final probability = ref.read(convertLeadProvider(widget.leadId)).probability;
+    final ok = await _form.submit(value);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(
+        context,
+        (expectedValue: value, probability: probability.round()),
+      );
+    } else {
+      _error('Could not convert lead');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(convertLeadProvider(widget.leadId));
+    final probColor = _probColor(state.probability);
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Header
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.swap_horiz_rounded,
+                      color: AppColors.green, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Convert to Opportunity',
+                        style: GoogleFonts.poppins(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        'Set the deal value and win probability',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.close_rounded,
+                        size: 18, color: AppColors.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            // Expected Value
+            const _FieldLabel('Expected Value', Icons.attach_money_rounded),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _valueCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+              ],
+              style: GoogleFonts.poppins(
+                  fontSize: 14, color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'e.g. 50000',
+                hintStyle: GoogleFonts.poppins(
+                    fontSize: 14, color: AppColors.textLight),
+                filled: true,
+                fillColor: AppColors.background,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      const BorderSide(color: AppColors.divider, width: 0.8),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      const BorderSide(color: AppColors.divider, width: 0.8),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide:
+                      const BorderSide(color: AppColors.primary, width: 1.2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            // Probability slider
+            Row(
+              children: [
+                const _FieldLabel('Probability', Icons.percent_rounded),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: probColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${state.probability.round()}%',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: probColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: state.probability / 100,
+                minHeight: 8,
+                backgroundColor: AppColors.divider,
+                valueColor: AlwaysStoppedAnimation<Color>(probColor),
+              ),
+            ),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: probColor,
+                inactiveTrackColor: AppColors.divider,
+                thumbColor: probColor,
+                overlayColor: probColor.withOpacity(0.15),
+                trackHeight: 4,
+              ),
+              child: Slider(
+                value: state.probability,
+                min: 0,
+                max: 100,
+                divisions: 100,
+                onChanged: _form.setProbability,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: state.saving ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.green,
+                  disabledBackgroundColor: AppColors.green.withOpacity(0.6),
+                  foregroundColor: Colors.white,
+                  disabledForegroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: state.saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Icon(Icons.check_rounded, size: 19),
+                label: Text(
+                  state.saving ? 'Converting…' : 'Convert',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

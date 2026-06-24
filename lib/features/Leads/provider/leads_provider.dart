@@ -14,6 +14,10 @@ abstract class LeadsFilterState with _$LeadsFilterState {
     @Default('') String searchQuery,
     LeadStatus? filterStatus,
     LeadSource? filterSource,
+
+    /// Server-side `quick_filter` values (today / upcoming / overdue /
+    /// my_leads). Multiple can be active at once.
+    @Default(<String>{}) Set<String> quickFilters,
     @Default(false) bool showBacklog,
 
     /// Server-side date range filter (`from_date` / `to_date`).
@@ -36,8 +40,11 @@ class LeadsFilter extends _$LeadsFilter {
 
   void clearSearch() => state = state.copyWith(searchQuery: '');
 
-  void clearFilters() =>
-      state = state.copyWith(filterStatus: null, filterSource: null);
+  void clearFilters() => state = state.copyWith(
+        filterStatus: null,
+        filterSource: null,
+        quickFilters: const <String>{},
+      );
 
   void toggleStatus(LeadStatus s) => state = state.copyWith(
         filterStatus: state.filterStatus == s ? null : s,
@@ -46,6 +53,14 @@ class LeadsFilter extends _$LeadsFilter {
   void toggleSource(LeadSource s) => state = state.copyWith(
         filterSource: state.filterSource == s ? null : s,
       );
+
+  /// Adds/removes a `quick_filter` value (today / upcoming / overdue /
+  /// my_leads). Multiple may be active simultaneously.
+  void toggleQuickFilter(String value) {
+    final next = Set<String>.from(state.quickFilters);
+    if (!next.remove(value)) next.add(value);
+    state = state.copyWith(quickFilters: next);
+  }
 
   /// Sets the server-side date range. Pass null to clear a bound.
   void setDateRange({DateTime? from, DateTime? to}) =>
@@ -88,13 +103,29 @@ class LeadsPaginationState extends _$LeadsPaginationState {
       state = state.copyWith(isLoadingMore: value);
 }
 
-/// The server-side query bits (search + date range) as a record. Record
-/// equality means [LeadsList] only refetches when one of these changes — not
-/// when the client-side status/source chips toggle.
+/// The server-side query bits (search, status_id, source, quick_filter and
+/// date range) as a record. Record equality means [LeadsList] only refetches
+/// when one of these actually changes. The quick filters are joined into a
+/// stable, sorted string because two `Set` instances with the same elements are
+/// not `==` to each other (which would otherwise refetch on every rebuild).
 @riverpod
-(String, DateTime?, DateTime?) leadsServerQuery(Ref ref) {
+({
+  String search,
+  int? statusId,
+  String? source,
+  String quickFilters,
+  DateTime? fromDate,
+  DateTime? toDate,
+}) leadsServerQuery(Ref ref) {
   final f = ref.watch(leadsFilterProvider);
-  return (f.searchQuery, f.fromDate, f.toDate);
+  return (
+    search: f.searchQuery,
+    statusId: f.filterStatus?.statusId,
+    source: f.filterSource?.apiValue,
+    quickFilters: (f.quickFilters.toList()..sort()).join(','),
+    fromDate: f.fromDate,
+    toDate: f.toDate,
+  );
 }
 
 
@@ -105,17 +136,24 @@ class LeadsList extends _$LeadsList {
 
   // Active query, captured from the filter on each build so loadMore reuses it.
   String? _search;
+  int? _statusId;
+  String? _source;
+  List<String>? _quickFilters;
   String? _fromDate;
   String? _toDate;
 
   @override
   Future<List<LeadModel>> build() async {
-    // Re-fetch from page 1 whenever the search text or date range changes
-    // (record equality means status/source chip toggles don't refetch).
+    // Re-fetch from page 1 whenever any server-side filter changes (search,
+    // status_id, source, quick_filter or date range).
     final query = ref.watch(leadsServerQueryProvider);
-    _search = query.$1.trim().isEmpty ? null : query.$1.trim();
-    _fromDate = _fmtDate(query.$2);
-    _toDate = _fmtDate(query.$3);
+    _search = query.search.trim().isEmpty ? null : query.search.trim();
+    _statusId = query.statusId;
+    _source = query.source;
+    _quickFilters =
+        query.quickFilters.isEmpty ? null : query.quickFilters.split(',');
+    _fromDate = _fmtDate(query.fromDate);
+    _toDate = _fmtDate(query.toDate);
 
     final page = await _fetch(1);
     _pagination.setFromPage(page);
@@ -126,6 +164,9 @@ class LeadsList extends _$LeadsList {
     final result = await ref.read(leadsRepositoryProvider).getLeads(
           page: page,
           search: _search,
+          statusId: _statusId,
+          source: _source,
+          quickFilters: _quickFilters,
           fromDate: _fromDate,
           toDate: _toDate,
         );
@@ -160,6 +201,49 @@ class LeadsList extends _$LeadsList {
     } finally {
       _pagination.setLoadingMore(false);
     }
+  }
+
+  /// Patches a single loaded lead's priority in place (no refetch), so a
+  /// temperature change on the detail screen is reflected when returning to the
+  /// list — and re-seeds the detail screen correctly on re-entry.
+  void updatePriority(String id, String? priority) {
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncData([
+      for (final lead in current)
+        lead.id == id ? lead.copyWithPriority(priority) : lead,
+    ]);
+  }
+
+  /// Patches a single loaded lead's follow-up fields in place (no refetch), so a
+  /// newly scheduled follow-up shows on the list (and re-seeds the detail
+  /// screen) immediately, without waiting for a reload.
+  void updateFollowUp(
+    String id, {
+    DateTime? nextFollowUp,
+    String? currentUpdate,
+    String? nextAction,
+    String? followupRemarks,
+    int? currentUpdateId,
+    int? nextActionId,
+    int? interestScore,
+  }) {
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncData([
+      for (final lead in current)
+        lead.id == id
+            ? lead.copyWithFollowUp(
+                nextFollowUp: nextFollowUp,
+                currentUpdate: currentUpdate,
+                nextAction: nextAction,
+                followupRemarks: followupRemarks,
+                currentUpdateId: currentUpdateId,
+                nextActionId: nextActionId,
+                interestScore: interestScore,
+              )
+            : lead,
+    ]);
   }
 
   /// Reloads from page 1.
@@ -199,4 +283,48 @@ List<LeadModel> filteredLeads(Ref ref) {
     final matchSource = f.filterSource == null || lead.source == f.filterSource;
     return matchSearch && matchStatus && matchSource;
   }).toList();
+}
+
+/// The lead-source options for the Add-Lead dropdown (`GET /lead-sources`).
+/// Cached for the session; the form watches this to populate the dropdown.
+@riverpod
+Future<List<LeadSourceOption>> leadSources(Ref ref) async {
+  final result = await ref.watch(leadsRepositoryProvider).getLeadSources();
+  return switch (result) {
+    Success(:final data) => data,
+    Failure(:final error) => throw error,
+  };
+}
+
+/// The "Current Update" options for the Schedule Follow-up popup
+/// (`GET /current-updates`). Cached for the session.
+@riverpod
+Future<List<NamedLookup>> currentUpdates(Ref ref) async {
+  final result = await ref.watch(leadsRepositoryProvider).getCurrentUpdates();
+  return switch (result) {
+    Success(:final data) => data,
+    Failure(:final error) => throw error,
+  };
+}
+
+/// The "Next Action" options for the Schedule Follow-up popup
+/// (`GET /next-actions`). Cached for the session.
+@riverpod
+Future<List<NamedLookup>> nextActions(Ref ref) async {
+  final result = await ref.watch(leadsRepositoryProvider).getNextActions();
+  return switch (result) {
+    Success(:final data) => data,
+    Failure(:final error) => throw error,
+  };
+}
+
+/// The lead status options (`GET /statuses`) for the detail header chip/menu.
+/// Cached for the session.
+@riverpod
+Future<List<StatusOption>> leadStatuses(Ref ref) async {
+  final result = await ref.watch(leadsRepositoryProvider).getStatuses();
+  return switch (result) {
+    Success(:final data) => data,
+    Failure(:final error) => throw error,
+  };
 }

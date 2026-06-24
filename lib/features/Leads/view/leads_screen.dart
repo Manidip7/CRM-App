@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
+import '../data/leads_repository.dart';
 import '../model/lead_model.dart';
 import '../provider/leads_provider.dart';
 
@@ -23,6 +24,15 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
   final ScrollController _scrollController = ScrollController();
   late AnimationController _animController;
   Timer? _searchDebounce;
+
+  // Add-Lead form: the controllers live on the State (not inside the bottom
+  // sheet) so dismissing the sheet mid-animation can't dispose them too early.
+  final _addFormKey = GlobalKey<FormState>();
+  final _addFirstName = TextEditingController();
+  final _addLastName = TextEditingController();
+  final _addPhone = TextEditingController();
+  final _addEmail = TextEditingController();
+  final _addInterestedIn = TextEditingController();
 
   // Accent color — red theme when viewing backlog leads
   Color get _accent =>
@@ -72,6 +82,11 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     _searchController.dispose();
     _scrollController.dispose();
     _animController.dispose();
+    _addFirstName.dispose();
+    _addLastName.dispose();
+    _addPhone.dispose();
+    _addEmail.dispose();
+    _addInterestedIn.dispose();
     super.dispose();
   }
 
@@ -576,6 +591,41 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
   Widget _buildFilterChips() {
     final filter = ref.watch(leadsFilterProvider);
     final notifier = ref.read(leadsFilterProvider.notifier);
+
+    // No status, source or quick filter active.
+    final isAll = filter.filterStatus == null &&
+        filter.filterSource == null &&
+        filter.quickFilters.isEmpty;
+
+    // Status chips → `status_id`. Labels match the backend pipeline names.
+    final statusChips = <Widget>[
+      _statusChip('New', LeadStatus.newLead, AppColors.leadFunnelNew, filter,
+          notifier),
+      _statusChip('In Progress', LeadStatus.contacted,
+          AppColors.leadFunnelContacted, filter, notifier),
+      _statusChip('Interested', LeadStatus.qualified, AppColors.green, filter,
+          notifier),
+      _statusChip('Won', LeadStatus.won, const Color(0xFFFFB547), filter,
+          notifier),
+    ];
+
+    // Quick filter chips → repeated `quick_filter` params (multi-select).
+    final quickChips = <Widget>[
+      _quickChip('Today', 'today', filter, notifier),
+      _quickChip('Upcoming', 'upcoming', filter, notifier),
+      _quickChip('Overdue', 'overdue', filter, notifier),
+      _quickChip('My Leads', 'my_leads', filter, notifier),
+      _quickChip('Lost', 'lost', filter, notifier),
+    ];
+
+    // Source chips → `source`.
+    final sourceChips = <Widget>[
+      _sourceChip('Facebook', LeadSource.facebook, const Color(0xFF1877F2),
+          filter, notifier),
+      _sourceChip('Referral', LeadSource.referral, AppColors.leadFunnelQualified,
+          filter, notifier),
+    ];
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -595,54 +645,46 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
           ),
           _FilterChip(
             label: 'All',
-            isSelected:
-                filter.filterStatus == null && filter.filterSource == null,
+            isSelected: isAll,
             onTap: () => notifier.clearFilters(),
           ),
-          const SizedBox(width: 8),
-          _FilterChip(
-            label: 'New',
-            isSelected: filter.filterStatus == LeadStatus.newLead,
-            color: AppColors.leadFunnelNew,
-            onTap: () => notifier.toggleStatus(LeadStatus.newLead),
-          ),
-          const SizedBox(width: 8),
-          _FilterChip(
-            label: 'Contacted',
-            isSelected: filter.filterStatus == LeadStatus.contacted,
-            color: AppColors.leadFunnelContacted,
-            onTap: () => notifier.toggleStatus(LeadStatus.contacted),
-          ),
-          const SizedBox(width: 8),
-          _FilterChip(
-            label: 'Qualified',
-            isSelected: filter.filterStatus == LeadStatus.qualified,
-            color: AppColors.green,
-            onTap: () => notifier.toggleStatus(LeadStatus.qualified),
-          ),
-          const SizedBox(width: 8),
-          _FilterChip(
-            label: 'Won',
-            isSelected: filter.filterStatus == LeadStatus.won,
-            color: const Color(0xFFFFB547),
-            onTap: () => notifier.toggleStatus(LeadStatus.won),
-          ),
-          const SizedBox(width: 8),
-          _FilterChip(
-            label: 'Facebook',
-            isSelected: filter.filterSource == LeadSource.facebook,
-            color: const Color(0xFF1877F2),
-            onTap: () => notifier.toggleSource(LeadSource.facebook),
-          ),
-          const SizedBox(width: 8),
-          _FilterChip(
-            label: 'Referral',
-            isSelected: filter.filterSource == LeadSource.referral,
-            color: AppColors.leadFunnelQualified,
-            onTap: () => notifier.toggleSource(LeadSource.referral),
-          ),
+          for (final chip in [...statusChips, ...quickChips, ...sourceChips])
+            ...[const SizedBox(width: 8), chip],
         ],
       ),
+    );
+  }
+
+  /// A chip bound to a single `status_id` value (single-select / toggle).
+  Widget _statusChip(String label, LeadStatus status, Color color,
+      LeadsFilterState filter, LeadsFilter notifier) {
+    return _FilterChip(
+      label: label,
+      isSelected: filter.filterStatus == status,
+      color: color,
+      onTap: () => notifier.toggleStatus(status),
+    );
+  }
+
+  /// A chip bound to a `quick_filter` value (multi-select).
+  Widget _quickChip(String label, String value, LeadsFilterState filter,
+      LeadsFilter notifier) {
+    return _FilterChip(
+      label: label,
+      isSelected: filter.quickFilters.contains(value),
+      color: AppColors.primary,
+      onTap: () => notifier.toggleQuickFilter(value),
+    );
+  }
+
+  /// A chip bound to a `source` value (single-select / toggle).
+  Widget _sourceChip(String label, LeadSource source, Color color,
+      LeadsFilterState filter, LeadsFilter notifier) {
+    return _FilterChip(
+      label: label,
+      isSelected: filter.filterSource == source,
+      color: color,
+      onTap: () => notifier.toggleSource(source),
     );
   }
 
@@ -784,11 +826,495 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     );
   }
 
-  void _addLead() {
+  void _addLead() => _openAddLeadSheet();
+
+  /// Bottom sheet with the Add-Lead form. First/last name, phone, interest and
+  /// priority + source are mandatory; only email is optional.
+  Future<void> _openAddLeadSheet() async {
+    // Reuse the State-owned controllers; clear them for a fresh form.
+    final formKey = _addFormKey;
+    final firstName = _addFirstName..clear();
+    final lastName = _addLastName..clear();
+    final phone = _addPhone..clear();
+    final email = _addEmail..clear();
+    final interestedIn = _addInterestedIn..clear();
+    String? priority; // 'hot' | 'warm' | 'cold'
+    int? sourceId;
+    bool submitting = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.cardBackground,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            Future<void> submit() async {
+              if (submitting) return;
+              final formOk = formKey.currentState?.validate() ?? false;
+              if (!formOk) return;
+              if (priority == null) {
+                _toast('Please select a priority', AppColors.red);
+                return;
+              }
+              if (sourceId == null) {
+                _toast('Please select a lead source', AppColors.red);
+                return;
+              }
+
+              setSheetState(() => submitting = true);
+              final result =
+                  await ref.read(leadsRepositoryProvider).createLead(
+                        firstName: firstName.text.trim(),
+                        lastName: lastName.text.trim(),
+                        phone: phone.text.trim(),
+                        email: email.text.trim().isEmpty
+                            ? null
+                            : email.text.trim(),
+                        interestedIn: interestedIn.text.trim(),
+                        priority: priority!,
+                        leadSourceId: sourceId!,
+                      );
+              if (!ctx.mounted) return;
+              result.when(
+                success: (_) {
+                  Navigator.pop(ctx);
+                  ref.read(leadsListProvider.notifier).refresh();
+                  _toast('Lead created successfully', AppColors.green);
+                },
+                failure: (err) {
+                  setSheetState(() => submitting = false);
+                  _toast(err.message, AppColors.red);
+                },
+              );
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+                child: Form(
+                  key: formKey,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppColors.divider,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.person_add_alt_1_rounded,
+                                color: AppColors.primary, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Add Lead',
+                            style: GoogleFonts.poppins(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      // First + last name on one row.
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _leadField(
+                              label: 'First name',
+                              controller: firstName,
+                              hint: 'John',
+                              required: true,
+                              textCapitalization: TextCapitalization.words,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _leadField(
+                              label: 'Last name',
+                              controller: lastName,
+                              hint: 'Doe',
+                              required: true,
+                              textCapitalization: TextCapitalization.words,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      _leadField(
+                        label: 'Phone',
+                        controller: phone,
+                        hint: '+91 98765 43210',
+                        required: true,
+                        keyboardType: TextInputType.phone,
+                        validator: (v) {
+                          final digits =
+                              (v ?? '').replaceAll(RegExp(r'\D'), '');
+                          if (digits.isEmpty) return 'Required';
+                          if (digits.length < 10) {
+                            return 'Enter a valid phone number';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      _leadField(
+                        label: 'Email',
+                        controller: email,
+                        hint: 'john@example.com (optional)',
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (v) {
+                          final s = v?.trim() ?? '';
+                          if (s.isEmpty) return null; // optional
+                          final ok = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                              .hasMatch(s);
+                          return ok ? null : 'Enter a valid email';
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      _leadField(
+                        label: 'Interested in',
+                        controller: interestedIn,
+                        hint: 'e.g. CRM software, Web design',
+                        required: true,
+                        textCapitalization: TextCapitalization.sentences,
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Priority chips: Hot / Warm / Cold.
+                      _fieldLabel('Priority', required: true),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _priorityChip('Hot', 'hot', AppColors.red, priority,
+                              (v) => setSheetState(() => priority = v)),
+                          const SizedBox(width: 10),
+                          _priorityChip(
+                              'Warm',
+                              'warm',
+                              const Color(0xFFFFB547),
+                              priority,
+                              (v) => setSheetState(() => priority = v)),
+                          const SizedBox(width: 10),
+                          _priorityChip('Cold', 'cold', AppColors.primary,
+                              priority, (v) => setSheetState(() => priority = v)),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Lead source dropdown (from GET /lead-sources).
+                      _fieldLabel('Lead source', required: true),
+                      const SizedBox(height: 8),
+                      Consumer(
+                        builder: (context, ref, _) {
+                          final sourcesAsync = ref.watch(leadSourcesProvider);
+                          return sourcesAsync.when(
+                            loading: () => _sourceShell(
+                              const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                            error: (_, _) => _sourceShell(
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      "Couldn't load sources",
+                                      style: GoogleFonts.poppins(
+                                          fontSize: 13, color: AppColors.red),
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () =>
+                                        ref.invalidate(leadSourcesProvider),
+                                    child: Text(
+                                      'Retry',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            data: (sources) {
+                              // Preselect the backend's default source once.
+                              if (sourceId == null && sources.isNotEmpty) {
+                                final def = sources.firstWhere(
+                                  (s) => s.isDefault,
+                                  orElse: () => sources.first,
+                                );
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  if (mounted && sourceId == null) {
+                                    setSheetState(() => sourceId = def.id);
+                                  }
+                                });
+                              }
+                              return _sourceShell(
+                                DropdownButtonHideUnderline(
+                                  child: DropdownButton<int>(
+                                    value: sourceId,
+                                    isExpanded: true,
+                                    icon: const Icon(
+                                        Icons.keyboard_arrow_down_rounded,
+                                        color: AppColors.textSecondary),
+                                    hint: Text(
+                                      'Select source',
+                                      style: GoogleFonts.poppins(
+                                          fontSize: 14,
+                                          color: AppColors.textLight),
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        color: AppColors.textPrimary),
+                                    items: [
+                                      for (final s in sources)
+                                        DropdownMenuItem(
+                                          value: s.id,
+                                          child: Text(s.label),
+                                        ),
+                                    ],
+                                    onChanged: (v) =>
+                                        setSheetState(() => sourceId = v),
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 24),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: submitting ? null : submit,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            disabledBackgroundColor:
+                                AppColors.primary.withOpacity(0.5),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: submitting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Text(
+                                  'Create Lead',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// A labelled text field for the Add-Lead form.
+  Widget _leadField({
+    required String label,
+    required TextEditingController controller,
+    String? hint,
+    bool required = false,
+    TextInputType? keyboardType,
+    TextCapitalization textCapitalization = TextCapitalization.none,
+    String? Function(String?)? validator,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _fieldLabel(label, required: required),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
+          textCapitalization: textCapitalization,
+          validator: validator ??
+              (required
+                  ? (v) => (v == null || v.trim().isEmpty)
+                      ? 'Required'
+                      : null
+                  : null),
+          style: GoogleFonts.poppins(
+              fontSize: 14, color: AppColors.textPrimary),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: hint,
+            hintStyle: GoogleFonts.poppins(
+                fontSize: 13.5, color: AppColors.textLight),
+            filled: true,
+            fillColor: AppColors.background,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.divider, width: 0.8),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.divider, width: 0.8),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide:
+                  const BorderSide(color: AppColors.primary, width: 1.4),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.red, width: 1),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.red, width: 1.4),
+            ),
+            errorStyle: GoogleFonts.poppins(
+                fontSize: 11.5, color: AppColors.red),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A field label with an optional red asterisk for mandatory fields.
+  Widget _fieldLabel(String label, {bool required = false}) {
+    return RichText(
+      text: TextSpan(
+        text: label,
+        style: GoogleFonts.poppins(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textPrimary,
+        ),
+        children: required
+            ? [
+                TextSpan(
+                  text: ' *',
+                  style: GoogleFonts.poppins(
+                      fontSize: 13, color: AppColors.red),
+                ),
+              ]
+            : null,
+      ),
+    );
+  }
+
+  /// A selectable priority chip (Hot / Warm / Cold).
+  Widget _priorityChip(String label, String value, Color color,
+      String? selected, ValueChanged<String> onTap) {
+    final isSelected = selected == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onTap(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withOpacity(0.12) : AppColors.background,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? color : AppColors.divider,
+              width: isSelected ? 1.5 : 0.8,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                value == 'hot'
+                    ? Icons.local_fire_department_rounded
+                    : value == 'warm'
+                        ? Icons.wb_sunny_rounded
+                        : Icons.ac_unit_rounded,
+                size: 16,
+                color: isSelected ? color : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  color: isSelected ? color : AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The rounded outlined box that wraps the lead-source field in any state
+  /// (loading spinner / error / the dropdown itself).
+  Widget _sourceShell(Widget child) {
+    return Container(
+      height: 50,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider, width: 0.8),
+      ),
+      child: child,
+    );
+  }
+
+  /// Small floating snackbar helper.
+  void _toast(String message, [Color? color]) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Add Lead coming soon'),
-        backgroundColor: AppColors.primary,
+        content: Text(message),
+        backgroundColor: color ?? AppColors.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),

@@ -125,6 +125,106 @@ class LeadDetailBundle {
 enum LeadStatus { newLead, contacted, qualified, won, lost }
 enum LeadSource { facebook, manual, referral, email, website, cold }
 
+/// Maps the app's [LeadStatus] / [LeadSource] enums to the values the backend
+/// expects on `GET /leads` (`status_id`, `source`).
+extension LeadStatusApi on LeadStatus {
+  /// Backend `status_id`: New=1, In Progress=2, Interested=3, Lost=4, Won=5.
+  int get statusId => switch (this) {
+        LeadStatus.newLead => 1,
+        LeadStatus.contacted => 2, // "In Progress"
+        LeadStatus.qualified => 3, // "Interested"
+        LeadStatus.lost => 4,
+        LeadStatus.won => 5,
+      };
+}
+
+extension LeadSourceApi on LeadSource {
+  /// Backend `source` query value (lowercase enum name).
+  String get apiValue => name;
+}
+
+/// One option for the Add-Lead `lead_source_id` dropdown, from
+/// `GET /lead-sources`.
+class LeadSourceOption {
+  final int id;
+  final String label;
+  final bool isActive;
+  final bool isDefault;
+  final int sortOrder;
+
+  const LeadSourceOption({
+    required this.id,
+    required this.label,
+    this.isActive = true,
+    this.isDefault = false,
+    this.sortOrder = 0,
+  });
+
+  factory LeadSourceOption.fromJson(Map<String, dynamic> json) {
+    return LeadSourceOption(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      label: json['name'] as String? ?? '',
+      isActive: json['is_active'] as bool? ?? true,
+      isDefault: json['is_default'] as bool? ?? false,
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// A generic `{ id, name, is_active, sort_order }` lookup option used by the
+/// follow-up dropdowns, e.g. `GET /current-updates`.
+class NamedLookup {
+  final int id;
+  final String name;
+  final bool isActive;
+  final int sortOrder;
+
+  const NamedLookup({
+    required this.id,
+    required this.name,
+    this.isActive = true,
+    this.sortOrder = 0,
+  });
+
+  factory NamedLookup.fromJson(Map<String, dynamic> json) {
+    return NamedLookup(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: json['name'] as String? ?? '',
+      isActive: json['is_active'] as bool? ?? true,
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// A lead status option from `GET /statuses` (`type == "lead"`), used for the
+/// status chip/menu on the lead detail header. [colorHex] is the raw
+/// `#rrggbb` string; the UI converts it to a Color.
+class StatusOption {
+  final int id;
+  final String name;
+  final String type;
+  final String? colorHex;
+  final int sortOrder;
+
+  const StatusOption({
+    required this.id,
+    required this.name,
+    this.type = 'lead',
+    this.colorHex,
+    this.sortOrder = 0,
+  });
+
+  factory StatusOption.fromJson(Map<String, dynamic> json) {
+    return StatusOption(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: json['name'] as String? ?? '',
+      type: json['type'] as String? ?? 'lead',
+      colorHex: json['color_hex'] as String?,
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 // Pipeline status shown/edited on the detail screen
 enum LeadPipelineStatus { newLead, inProgress, interested, lost }
 
@@ -159,10 +259,23 @@ class LeadModel {
   final String? interestedIn;
   final String? priority;
 
+  /// Backend status id (from `GET /statuses`), used to show/select the status
+  /// chip on the detail header.
+  final int? statusId;
+
   // Follow-up fields.
   final String? currentUpdate;
   final String? nextAction;
   final String? followupRemarks;
+
+  /// Ids backing [currentUpdate] / [nextAction]. The detail API may return only
+  /// these ids (no name), in which case the UI resolves the label from the
+  /// `/current-updates` and `/next-actions` option lists.
+  final int? currentUpdateId;
+  final int? nextActionId;
+
+  /// Interest/engagement score (0–100), set when scheduling a follow-up.
+  final int? interestScore;
 
   LeadModel({
     required this.id,
@@ -187,10 +300,92 @@ class LeadModel {
     this.website,
     this.interestedIn,
     this.priority,
+    this.statusId,
     this.currentUpdate,
     this.nextAction,
     this.followupRemarks,
+    this.currentUpdateId,
+    this.nextActionId,
+    this.interestScore,
   });
+
+  /// Returns a copy with updated follow-up fields (after the detail screen
+  /// schedules a new follow-up), leaving every other field unchanged. Omitted
+  /// arguments keep their current value.
+  LeadModel copyWithFollowUp({
+    DateTime? nextFollowUp,
+    String? currentUpdate,
+    String? nextAction,
+    String? followupRemarks,
+    int? currentUpdateId,
+    int? nextActionId,
+    int? interestScore,
+  }) =>
+      LeadModel(
+        id: id,
+        leadNo: leadNo,
+        title: title,
+        contactName: contactName,
+        companyName: companyName,
+        phone: phone,
+        email: email,
+        status: status,
+        source: source,
+        nextFollowUp: nextFollowUp ?? this.nextFollowUp,
+        createdAt: createdAt,
+        dealValue: dealValue,
+        avatarInitials: avatarInitials,
+        avatarColorIndex: avatarColorIndex,
+        assigneeName: assigneeName,
+        assigneeEmail: assigneeEmail,
+        assigneeDesignation: assigneeDesignation,
+        alternatePhone: alternatePhone,
+        designation: designation,
+        website: website,
+        interestedIn: interestedIn,
+        priority: priority,
+        statusId: statusId,
+        currentUpdate: currentUpdate ?? this.currentUpdate,
+        nextAction: nextAction ?? this.nextAction,
+        followupRemarks: followupRemarks ?? this.followupRemarks,
+        currentUpdateId: currentUpdateId ?? this.currentUpdateId,
+        nextActionId: nextActionId ?? this.nextActionId,
+        interestScore: interestScore ?? this.interestScore,
+      );
+
+  /// Returns a copy with a new [priority] (e.g. after the detail screen updates
+  /// the lead's temperature), leaving every other field unchanged.
+  LeadModel copyWithPriority(String? priority) => LeadModel(
+        id: id,
+        leadNo: leadNo,
+        title: title,
+        contactName: contactName,
+        companyName: companyName,
+        phone: phone,
+        email: email,
+        status: status,
+        source: source,
+        nextFollowUp: nextFollowUp,
+        createdAt: createdAt,
+        dealValue: dealValue,
+        avatarInitials: avatarInitials,
+        avatarColorIndex: avatarColorIndex,
+        assigneeName: assigneeName,
+        assigneeEmail: assigneeEmail,
+        assigneeDesignation: assigneeDesignation,
+        alternatePhone: alternatePhone,
+        designation: designation,
+        website: website,
+        interestedIn: interestedIn,
+        priority: priority,
+        statusId: statusId,
+        currentUpdate: currentUpdate,
+        nextAction: nextAction,
+        followupRemarks: followupRemarks,
+        currentUpdateId: currentUpdateId,
+        nextActionId: nextActionId,
+        interestScore: interestScore,
+      );
 
   /// Builds a [LeadModel] from the backend JSON shape (the `/leads` list item).
   /// `status` and `source` arrive as nested objects (`{ "name": ... }`); the
@@ -237,16 +432,49 @@ class LeadModel {
       website: json['website'] as String?,
       interestedIn: json['interested_in'] as String?,
       priority: json['priority'] as String?,
-      currentUpdate: _nameOf(json['current_update']),
-      nextAction: _nameOf(json['next_action']),
-      followupRemarks: json['followup_remarks'] as String?,
+      statusId: _lookupId(json, const ['status_id', 'status']),
+      currentUpdate: _lookupName(
+          json, const ['current_update', 'currentUpdate', 'current_update_name']),
+      nextAction: _lookupName(
+          json, const ['next_action', 'nextAction', 'next_action_name']),
+      followupRemarks:
+          json['followup_remarks'] as String? ?? json['next_remark'] as String?,
+      currentUpdateId: _lookupId(
+          json, const ['current_update_id', 'current_update', 'currentUpdate']),
+      nextActionId: _lookupId(
+          json, const ['next_action_id', 'next_action', 'nextAction']),
+      interestScore: (json['interest_score'] as num?)?.toInt(),
     );
   }
 
-  /// Reads `.name` from a nested object, or treats the value itself as the name
-  /// when the API sends a plain string.
+  /// Returns the first non-empty name found across the given [keys] (handles
+  /// snake_case / camelCase / `*_name` variants the backend might use).
+  static String? _lookupName(Map<String, dynamic> json, List<String> keys) {
+    for (final k in keys) {
+      final v = _nameOf(json[k]);
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
+  /// Returns the first id found across the given [keys]: a plain numeric id
+  /// (`next_action_id`) or the `id` of a nested object (`next_action: {id}`).
+  static int? _lookupId(Map<String, dynamic> json, List<String> keys) {
+    for (final k in keys) {
+      final v = json[k];
+      if (v is num) return v.toInt();
+      if (v is Map && v['id'] is num) return (v['id'] as num).toInt();
+    }
+    return null;
+  }
+
+  /// Reads the display name from a nested object (trying `name` / `title` /
+  /// `label`), or treats the value itself as the name when the API sends a
+  /// plain string.
   static String? _nameOf(dynamic value) {
-    if (value is Map) return value['name'] as String?;
+    if (value is Map) {
+      return (value['name'] ?? value['title'] ?? value['label']) as String?;
+    }
     if (value is String) return value;
     return null;
   }

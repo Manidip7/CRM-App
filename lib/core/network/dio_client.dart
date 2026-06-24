@@ -24,6 +24,9 @@ class DioClient {
         sendTimeout: ApiConstants.sendTimeout,
         contentType: ApiConstants.contentType,
         responseType: ResponseType.json,
+        // Encode list query params as repeated keys without `[]` brackets,
+        // e.g. `quick_filter=today&quick_filter=upcoming`.
+        listFormat: ListFormat.multi,
         // Let our own error mapper decide what counts as a failure; Dio only
         // treats 2xx as success by default, which is what we want.
         validateStatus: (status) => status != null && status >= 200 && status < 300,

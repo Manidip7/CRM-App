@@ -14,7 +14,9 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$LeadsFilterState {
 
- String get searchQuery; LeadStatus? get filterStatus; LeadSource? get filterSource; bool get showBacklog;/// Server-side date range filter (`from_date` / `to_date`).
+ String get searchQuery; LeadStatus? get filterStatus; LeadSource? get filterSource;/// Server-side `quick_filter` values (today / upcoming / overdue /
+/// my_leads). Multiple can be active at once.
+ Set<String> get quickFilters; bool get showBacklog;/// Server-side date range filter (`from_date` / `to_date`).
  DateTime? get fromDate; DateTime? get toDate;
 /// Create a copy of LeadsFilterState
 /// with the given fields replaced by the non-null parameter values.
@@ -26,16 +28,16 @@ $LeadsFilterStateCopyWith<LeadsFilterState> get copyWith => _$LeadsFilterStateCo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LeadsFilterState&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.filterStatus, filterStatus) || other.filterStatus == filterStatus)&&(identical(other.filterSource, filterSource) || other.filterSource == filterSource)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.fromDate, fromDate) || other.fromDate == fromDate)&&(identical(other.toDate, toDate) || other.toDate == toDate));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LeadsFilterState&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.filterStatus, filterStatus) || other.filterStatus == filterStatus)&&(identical(other.filterSource, filterSource) || other.filterSource == filterSource)&&const DeepCollectionEquality().equals(other.quickFilters, quickFilters)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.fromDate, fromDate) || other.fromDate == fromDate)&&(identical(other.toDate, toDate) || other.toDate == toDate));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,searchQuery,filterStatus,filterSource,showBacklog,fromDate,toDate);
+int get hashCode => Object.hash(runtimeType,searchQuery,filterStatus,filterSource,const DeepCollectionEquality().hash(quickFilters),showBacklog,fromDate,toDate);
 
 @override
 String toString() {
-  return 'LeadsFilterState(searchQuery: $searchQuery, filterStatus: $filterStatus, filterSource: $filterSource, showBacklog: $showBacklog, fromDate: $fromDate, toDate: $toDate)';
+  return 'LeadsFilterState(searchQuery: $searchQuery, filterStatus: $filterStatus, filterSource: $filterSource, quickFilters: $quickFilters, showBacklog: $showBacklog, fromDate: $fromDate, toDate: $toDate)';
 }
 
 
@@ -46,7 +48,7 @@ abstract mixin class $LeadsFilterStateCopyWith<$Res>  {
   factory $LeadsFilterStateCopyWith(LeadsFilterState value, $Res Function(LeadsFilterState) _then) = _$LeadsFilterStateCopyWithImpl;
 @useResult
 $Res call({
- String searchQuery, LeadStatus? filterStatus, LeadSource? filterSource, bool showBacklog, DateTime? fromDate, DateTime? toDate
+ String searchQuery, LeadStatus? filterStatus, LeadSource? filterSource, Set<String> quickFilters, bool showBacklog, DateTime? fromDate, DateTime? toDate
 });
 
 
@@ -63,12 +65,13 @@ class _$LeadsFilterStateCopyWithImpl<$Res>
 
 /// Create a copy of LeadsFilterState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? searchQuery = null,Object? filterStatus = freezed,Object? filterSource = freezed,Object? showBacklog = null,Object? fromDate = freezed,Object? toDate = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? searchQuery = null,Object? filterStatus = freezed,Object? filterSource = freezed,Object? quickFilters = null,Object? showBacklog = null,Object? fromDate = freezed,Object? toDate = freezed,}) {
   return _then(_self.copyWith(
 searchQuery: null == searchQuery ? _self.searchQuery : searchQuery // ignore: cast_nullable_to_non_nullable
 as String,filterStatus: freezed == filterStatus ? _self.filterStatus : filterStatus // ignore: cast_nullable_to_non_nullable
 as LeadStatus?,filterSource: freezed == filterSource ? _self.filterSource : filterSource // ignore: cast_nullable_to_non_nullable
-as LeadSource?,showBacklog: null == showBacklog ? _self.showBacklog : showBacklog // ignore: cast_nullable_to_non_nullable
+as LeadSource?,quickFilters: null == quickFilters ? _self.quickFilters : quickFilters // ignore: cast_nullable_to_non_nullable
+as Set<String>,showBacklog: null == showBacklog ? _self.showBacklog : showBacklog // ignore: cast_nullable_to_non_nullable
 as bool,fromDate: freezed == fromDate ? _self.fromDate : fromDate // ignore: cast_nullable_to_non_nullable
 as DateTime?,toDate: freezed == toDate ? _self.toDate : toDate // ignore: cast_nullable_to_non_nullable
 as DateTime?,
@@ -156,10 +159,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  Set<String> quickFilters,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _LeadsFilterState() when $default != null:
-return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.showBacklog,_that.fromDate,_that.toDate);case _:
+return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.quickFilters,_that.showBacklog,_that.fromDate,_that.toDate);case _:
   return orElse();
 
 }
@@ -177,10 +180,10 @@ return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.sh
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  Set<String> quickFilters,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate)  $default,) {final _that = this;
 switch (_that) {
 case _LeadsFilterState():
-return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.showBacklog,_that.fromDate,_that.toDate);case _:
+return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.quickFilters,_that.showBacklog,_that.fromDate,_that.toDate);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -197,10 +200,10 @@ return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.sh
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  Set<String> quickFilters,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate)?  $default,) {final _that = this;
 switch (_that) {
 case _LeadsFilterState() when $default != null:
-return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.showBacklog,_that.fromDate,_that.toDate);case _:
+return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.quickFilters,_that.showBacklog,_that.fromDate,_that.toDate);case _:
   return null;
 
 }
@@ -212,12 +215,23 @@ return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.sh
 
 
 class _LeadsFilterState extends LeadsFilterState {
-  const _LeadsFilterState({this.searchQuery = '', this.filterStatus, this.filterSource, this.showBacklog = false, this.fromDate, this.toDate}): super._();
+  const _LeadsFilterState({this.searchQuery = '', this.filterStatus, this.filterSource, final  Set<String> quickFilters = const <String>{}, this.showBacklog = false, this.fromDate, this.toDate}): _quickFilters = quickFilters,super._();
   
 
 @override@JsonKey() final  String searchQuery;
 @override final  LeadStatus? filterStatus;
 @override final  LeadSource? filterSource;
+/// Server-side `quick_filter` values (today / upcoming / overdue /
+/// my_leads). Multiple can be active at once.
+ final  Set<String> _quickFilters;
+/// Server-side `quick_filter` values (today / upcoming / overdue /
+/// my_leads). Multiple can be active at once.
+@override@JsonKey() Set<String> get quickFilters {
+  if (_quickFilters is EqualUnmodifiableSetView) return _quickFilters;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableSetView(_quickFilters);
+}
+
 @override@JsonKey() final  bool showBacklog;
 /// Server-side date range filter (`from_date` / `to_date`).
 @override final  DateTime? fromDate;
@@ -233,16 +247,16 @@ _$LeadsFilterStateCopyWith<_LeadsFilterState> get copyWith => __$LeadsFilterStat
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LeadsFilterState&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.filterStatus, filterStatus) || other.filterStatus == filterStatus)&&(identical(other.filterSource, filterSource) || other.filterSource == filterSource)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.fromDate, fromDate) || other.fromDate == fromDate)&&(identical(other.toDate, toDate) || other.toDate == toDate));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LeadsFilterState&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.filterStatus, filterStatus) || other.filterStatus == filterStatus)&&(identical(other.filterSource, filterSource) || other.filterSource == filterSource)&&const DeepCollectionEquality().equals(other._quickFilters, _quickFilters)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.fromDate, fromDate) || other.fromDate == fromDate)&&(identical(other.toDate, toDate) || other.toDate == toDate));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,searchQuery,filterStatus,filterSource,showBacklog,fromDate,toDate);
+int get hashCode => Object.hash(runtimeType,searchQuery,filterStatus,filterSource,const DeepCollectionEquality().hash(_quickFilters),showBacklog,fromDate,toDate);
 
 @override
 String toString() {
-  return 'LeadsFilterState(searchQuery: $searchQuery, filterStatus: $filterStatus, filterSource: $filterSource, showBacklog: $showBacklog, fromDate: $fromDate, toDate: $toDate)';
+  return 'LeadsFilterState(searchQuery: $searchQuery, filterStatus: $filterStatus, filterSource: $filterSource, quickFilters: $quickFilters, showBacklog: $showBacklog, fromDate: $fromDate, toDate: $toDate)';
 }
 
 
@@ -253,7 +267,7 @@ abstract mixin class _$LeadsFilterStateCopyWith<$Res> implements $LeadsFilterSta
   factory _$LeadsFilterStateCopyWith(_LeadsFilterState value, $Res Function(_LeadsFilterState) _then) = __$LeadsFilterStateCopyWithImpl;
 @override @useResult
 $Res call({
- String searchQuery, LeadStatus? filterStatus, LeadSource? filterSource, bool showBacklog, DateTime? fromDate, DateTime? toDate
+ String searchQuery, LeadStatus? filterStatus, LeadSource? filterSource, Set<String> quickFilters, bool showBacklog, DateTime? fromDate, DateTime? toDate
 });
 
 
@@ -270,12 +284,13 @@ class __$LeadsFilterStateCopyWithImpl<$Res>
 
 /// Create a copy of LeadsFilterState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? searchQuery = null,Object? filterStatus = freezed,Object? filterSource = freezed,Object? showBacklog = null,Object? fromDate = freezed,Object? toDate = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? searchQuery = null,Object? filterStatus = freezed,Object? filterSource = freezed,Object? quickFilters = null,Object? showBacklog = null,Object? fromDate = freezed,Object? toDate = freezed,}) {
   return _then(_LeadsFilterState(
 searchQuery: null == searchQuery ? _self.searchQuery : searchQuery // ignore: cast_nullable_to_non_nullable
 as String,filterStatus: freezed == filterStatus ? _self.filterStatus : filterStatus // ignore: cast_nullable_to_non_nullable
 as LeadStatus?,filterSource: freezed == filterSource ? _self.filterSource : filterSource // ignore: cast_nullable_to_non_nullable
-as LeadSource?,showBacklog: null == showBacklog ? _self.showBacklog : showBacklog // ignore: cast_nullable_to_non_nullable
+as LeadSource?,quickFilters: null == quickFilters ? _self._quickFilters : quickFilters // ignore: cast_nullable_to_non_nullable
+as Set<String>,showBacklog: null == showBacklog ? _self.showBacklog : showBacklog // ignore: cast_nullable_to_non_nullable
 as bool,fromDate: freezed == fromDate ? _self.fromDate : fromDate // ignore: cast_nullable_to_non_nullable
 as DateTime?,toDate: freezed == toDate ? _self.toDate : toDate // ignore: cast_nullable_to_non_nullable
 as DateTime?,

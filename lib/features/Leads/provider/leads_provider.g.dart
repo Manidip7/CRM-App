@@ -41,7 +41,7 @@ final class LeadsFilterProvider
   }
 }
 
-String _$leadsFilterHash() => r'f5c139bb68c45669a33d7b4f7bedb99095dc1b30';
+String _$leadsFilterHash() => r'206d0edfc04711ec5f7cd06040f1b227fbc7c35a';
 
 abstract class _$LeadsFilter extends $Notifier<LeadsFilterState> {
   LeadsFilterState build();
@@ -114,28 +114,65 @@ abstract class _$LeadsPaginationState extends $Notifier<LeadsPagination> {
   }
 }
 
-/// The server-side query bits (search + date range) as a record. Record
-/// equality means [LeadsList] only refetches when one of these changes — not
-/// when the client-side status/source chips toggle.
+/// The server-side query bits (search, status_id, source, quick_filter and
+/// date range) as a record. Record equality means [LeadsList] only refetches
+/// when one of these actually changes. The quick filters are joined into a
+/// stable, sorted string because two `Set` instances with the same elements are
+/// not `==` to each other (which would otherwise refetch on every rebuild).
 
 @ProviderFor(leadsServerQuery)
 final leadsServerQueryProvider = LeadsServerQueryProvider._();
 
-/// The server-side query bits (search + date range) as a record. Record
-/// equality means [LeadsList] only refetches when one of these changes — not
-/// when the client-side status/source chips toggle.
+/// The server-side query bits (search, status_id, source, quick_filter and
+/// date range) as a record. Record equality means [LeadsList] only refetches
+/// when one of these actually changes. The quick filters are joined into a
+/// stable, sorted string because two `Set` instances with the same elements are
+/// not `==` to each other (which would otherwise refetch on every rebuild).
 
 final class LeadsServerQueryProvider
     extends
         $FunctionalProvider<
-          (String, DateTime?, DateTime?),
-          (String, DateTime?, DateTime?),
-          (String, DateTime?, DateTime?)
+          ({
+            DateTime? fromDate,
+            String quickFilters,
+            String search,
+            String? source,
+            int? statusId,
+            DateTime? toDate,
+          }),
+          ({
+            DateTime? fromDate,
+            String quickFilters,
+            String search,
+            String? source,
+            int? statusId,
+            DateTime? toDate,
+          }),
+          ({
+            DateTime? fromDate,
+            String quickFilters,
+            String search,
+            String? source,
+            int? statusId,
+            DateTime? toDate,
+          })
         >
-    with $Provider<(String, DateTime?, DateTime?)> {
-  /// The server-side query bits (search + date range) as a record. Record
-  /// equality means [LeadsList] only refetches when one of these changes — not
-  /// when the client-side status/source chips toggle.
+    with
+        $Provider<
+          ({
+            DateTime? fromDate,
+            String quickFilters,
+            String search,
+            String? source,
+            int? statusId,
+            DateTime? toDate,
+          })
+        > {
+  /// The server-side query bits (search, status_id, source, quick_filter and
+  /// date range) as a record. Record equality means [LeadsList] only refetches
+  /// when one of these actually changes. The quick filters are joined into a
+  /// stable, sorted string because two `Set` instances with the same elements are
+  /// not `==` to each other (which would otherwise refetch on every rebuild).
   LeadsServerQueryProvider._()
     : super(
         from: null,
@@ -152,43 +189,67 @@ final class LeadsServerQueryProvider
 
   @$internal
   @override
-  $ProviderElement<(String, DateTime?, DateTime?)> $createElement(
-    $ProviderPointer pointer,
-  ) => $ProviderElement(pointer);
+  $ProviderElement<
+    ({
+      DateTime? fromDate,
+      String quickFilters,
+      String search,
+      String? source,
+      int? statusId,
+      DateTime? toDate,
+    })
+  >
+  $createElement($ProviderPointer pointer) => $ProviderElement(pointer);
 
   @override
-  (String, DateTime?, DateTime?) create(Ref ref) {
+  ({
+    DateTime? fromDate,
+    String quickFilters,
+    String search,
+    String? source,
+    int? statusId,
+    DateTime? toDate,
+  })
+  create(Ref ref) {
     return leadsServerQuery(ref);
   }
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue((String, DateTime?, DateTime?) value) {
+  Override overrideWithValue(
+    ({
+      DateTime? fromDate,
+      String quickFilters,
+      String search,
+      String? source,
+      int? statusId,
+      DateTime? toDate,
+    })
+    value,
+  ) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<(String, DateTime?, DateTime?)>(
-        value,
-      ),
+      providerOverride:
+          $SyncValueProvider<
+            ({
+              DateTime? fromDate,
+              String quickFilters,
+              String search,
+              String? source,
+              int? statusId,
+              DateTime? toDate,
+            })
+          >(value),
     );
   }
 }
 
-String _$leadsServerQueryHash() => r'38b468d056e670e65ca2009732114c69c55baec8';
-
-/// Loads leads from `GET /leads` with page-based pagination, accumulating each
-/// fetched page into one growing list. Call [LeadsList.loadMore] when the user
-/// scrolls near the bottom, and [LeadsList.refresh] for pull-to-refresh.
+String _$leadsServerQueryHash() => r'636bc74068a29e8a7efc6439e9f65d4426b26d8e';
 
 @ProviderFor(LeadsList)
 final leadsListProvider = LeadsListProvider._();
 
-/// Loads leads from `GET /leads` with page-based pagination, accumulating each
-/// fetched page into one growing list. Call [LeadsList.loadMore] when the user
-/// scrolls near the bottom, and [LeadsList.refresh] for pull-to-refresh.
 final class LeadsListProvider
     extends $AsyncNotifierProvider<LeadsList, List<LeadModel>> {
-  /// Loads leads from `GET /leads` with page-based pagination, accumulating each
-  /// fetched page into one growing list. Call [LeadsList.loadMore] when the user
-  /// scrolls near the bottom, and [LeadsList.refresh] for pull-to-refresh.
   LeadsListProvider._()
     : super(
         from: null,
@@ -208,11 +269,7 @@ final class LeadsListProvider
   LeadsList create() => LeadsList();
 }
 
-String _$leadsListHash() => r'f2d7be9f5162f2fc68780ca043a813240aec38c6';
-
-/// Loads leads from `GET /leads` with page-based pagination, accumulating each
-/// fetched page into one growing list. Call [LeadsList.loadMore] when the user
-/// scrolls near the bottom, and [LeadsList.refresh] for pull-to-refresh.
+String _$leadsListHash() => r'd5541e00649f6042040bbb3e1254bd2077c263e4';
 
 abstract class _$LeadsList extends $AsyncNotifier<List<LeadModel>> {
   FutureOr<List<LeadModel>> build();
@@ -325,3 +382,199 @@ final class FilteredLeadsProvider
 }
 
 String _$filteredLeadsHash() => r'66e7199beb031238f5583d51ea4a037e725da678';
+
+/// The lead-source options for the Add-Lead dropdown (`GET /lead-sources`).
+/// Cached for the session; the form watches this to populate the dropdown.
+
+@ProviderFor(leadSources)
+final leadSourcesProvider = LeadSourcesProvider._();
+
+/// The lead-source options for the Add-Lead dropdown (`GET /lead-sources`).
+/// Cached for the session; the form watches this to populate the dropdown.
+
+final class LeadSourcesProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<List<LeadSourceOption>>,
+          List<LeadSourceOption>,
+          FutureOr<List<LeadSourceOption>>
+        >
+    with
+        $FutureModifier<List<LeadSourceOption>>,
+        $FutureProvider<List<LeadSourceOption>> {
+  /// The lead-source options for the Add-Lead dropdown (`GET /lead-sources`).
+  /// Cached for the session; the form watches this to populate the dropdown.
+  LeadSourcesProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'leadSourcesProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$leadSourcesHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<List<LeadSourceOption>> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<List<LeadSourceOption>> create(Ref ref) {
+    return leadSources(ref);
+  }
+}
+
+String _$leadSourcesHash() => r'9472c89da361c70d0b0594ea0a84056457d4c58a';
+
+/// The "Current Update" options for the Schedule Follow-up popup
+/// (`GET /current-updates`). Cached for the session.
+
+@ProviderFor(currentUpdates)
+final currentUpdatesProvider = CurrentUpdatesProvider._();
+
+/// The "Current Update" options for the Schedule Follow-up popup
+/// (`GET /current-updates`). Cached for the session.
+
+final class CurrentUpdatesProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<List<NamedLookup>>,
+          List<NamedLookup>,
+          FutureOr<List<NamedLookup>>
+        >
+    with
+        $FutureModifier<List<NamedLookup>>,
+        $FutureProvider<List<NamedLookup>> {
+  /// The "Current Update" options for the Schedule Follow-up popup
+  /// (`GET /current-updates`). Cached for the session.
+  CurrentUpdatesProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'currentUpdatesProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$currentUpdatesHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<List<NamedLookup>> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<List<NamedLookup>> create(Ref ref) {
+    return currentUpdates(ref);
+  }
+}
+
+String _$currentUpdatesHash() => r'805e2b6b3a5997809e845a2ee23fb1e07db70394';
+
+/// The "Next Action" options for the Schedule Follow-up popup
+/// (`GET /next-actions`). Cached for the session.
+
+@ProviderFor(nextActions)
+final nextActionsProvider = NextActionsProvider._();
+
+/// The "Next Action" options for the Schedule Follow-up popup
+/// (`GET /next-actions`). Cached for the session.
+
+final class NextActionsProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<List<NamedLookup>>,
+          List<NamedLookup>,
+          FutureOr<List<NamedLookup>>
+        >
+    with
+        $FutureModifier<List<NamedLookup>>,
+        $FutureProvider<List<NamedLookup>> {
+  /// The "Next Action" options for the Schedule Follow-up popup
+  /// (`GET /next-actions`). Cached for the session.
+  NextActionsProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'nextActionsProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$nextActionsHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<List<NamedLookup>> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<List<NamedLookup>> create(Ref ref) {
+    return nextActions(ref);
+  }
+}
+
+String _$nextActionsHash() => r'21ee22a21084127bd238a77f7b44028f61c50d77';
+
+/// The lead status options (`GET /statuses`) for the detail header chip/menu.
+/// Cached for the session.
+
+@ProviderFor(leadStatuses)
+final leadStatusesProvider = LeadStatusesProvider._();
+
+/// The lead status options (`GET /statuses`) for the detail header chip/menu.
+/// Cached for the session.
+
+final class LeadStatusesProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<List<StatusOption>>,
+          List<StatusOption>,
+          FutureOr<List<StatusOption>>
+        >
+    with
+        $FutureModifier<List<StatusOption>>,
+        $FutureProvider<List<StatusOption>> {
+  /// The lead status options (`GET /statuses`) for the detail header chip/menu.
+  /// Cached for the session.
+  LeadStatusesProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'leadStatusesProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$leadStatusesHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<List<StatusOption>> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<List<StatusOption>> create(Ref ref) {
+    return leadStatuses(ref);
+  }
+}
+
+String _$leadStatusesHash() => r'3ec70e1bcdfe6afdc4ab0e795d55bdc2b87be76a';
