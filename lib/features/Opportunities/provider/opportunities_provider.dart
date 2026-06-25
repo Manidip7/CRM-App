@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../../core/network/api_result.dart';
+import '../data/opportunities_repository.dart';
 import '../model/opportunity_model.dart';
 
 part 'opportunities_provider.freezed.dart';
@@ -16,24 +20,99 @@ abstract class OpportunitiesState with _$OpportunitiesState {
     @Default('') String searchQuery,
     @Default('Newest first') String sortLabel,
     @Default(false) bool showBacklog,
+
+    // Pagination / loading (API-backed pipeline list).
+    @Default(1) int currentPage,
+    @Default(1) int lastPage,
+    @Default(0) int total,
+    @Default(true) bool isLoading,
+    @Default(false) bool isLoadingMore,
+    Object? error,
   }) = _OpportunitiesState;
+
+  const OpportunitiesState._();
+
+  bool get hasMore => currentPage < lastPage;
 }
 
 /// Kept alive so opportunities converted from leads survive navigation.
 @Riverpod(keepAlive: true)
 class Opportunities extends _$Opportunities {
+  Timer? _searchDebounce;
+
   @override
-  OpportunitiesState build() =>
-      const OpportunitiesState(items: _seed, backlogItems: _backlogSeed);
+  OpportunitiesState build() {
+    ref.onDispose(() => _searchDebounce?.cancel());
+    // Kick off the first page after build returns, so `state` is initialized
+    // before `_load` reads `searchQuery`.
+    Future.microtask(() => _load(1));
+    return const OpportunitiesState(
+        backlogItems: _backlogSeed, isLoading: true);
+  }
+
+  /// Loads [page]: replaces the list on page 1, appends on later pages. The
+  /// active search query is sent server-side.
+  Future<void> _load(int page) async {
+    final search = state.searchQuery.trim();
+    final result =
+        await ref.read(opportunitiesRepositoryProvider).getOpportunities(
+              page: page,
+              search: search.isEmpty ? null : search,
+            );
+    result.when(
+      success: (data) {
+        state = state.copyWith(
+          items:
+              page == 1 ? data.items : [...state.items, ...data.items],
+          currentPage: data.currentPage,
+          lastPage: data.lastPage,
+          total: data.total,
+          isLoading: false,
+          isLoadingMore: false,
+          error: null,
+        );
+      },
+      failure: (e) {
+        state = state.copyWith(
+            isLoading: false, isLoadingMore: false, error: e);
+      },
+    );
+  }
+
+  /// Fetches and appends the next page. No-op while loading, on the last page,
+  /// or while viewing the backlog.
+  Future<void> loadMore() async {
+    if (state.isLoadingMore || !state.hasMore || state.showBacklog) return;
+    state = state.copyWith(isLoadingMore: true);
+    await _load(state.currentPage + 1);
+  }
+
+  /// Reloads from page 1.
+  Future<void> refresh() async {
+    state = state.copyWith(isLoading: true, error: null);
+    await _load(1);
+  }
 
   void setStage(OpportunityStage? stage) =>
       state = state.copyWith(selectedStage: stage);
 
-  void setSearch(String q) => state = state.copyWith(searchQuery: q);
+  /// Updates the search query and, for the API-backed pipeline, debounces a
+  /// reload from page 1 with the server-side `search` param.
+  void setSearch(String q) {
+    state = state.copyWith(searchQuery: q);
+    if (state.showBacklog) return; // backlog is sample data, filtered locally
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      state = state.copyWith(isLoading: true, items: const [], error: null);
+      _load(1);
+    });
+  }
 
   /// Adds a freshly converted opportunity to the top of the active list.
-  void addOpportunity(OpportunityModel opp) =>
-      state = state.copyWith(items: [opp, ...state.items]);
+  void addOpportunity(OpportunityModel opp) => state = state.copyWith(
+        items: [opp, ...state.items],
+        total: state.total + 1,
+      );
 
   /// Switches between the live pipeline and the backlog, resetting filters.
   void toggleBacklog() => state = state.copyWith(
@@ -62,93 +141,6 @@ class Opportunities extends _$Opportunities {
     final list = state.showBacklog ? state.backlogItems : state.items;
     return list.where((o) => o.stage == s).length;
   }
-
-  static const List<OpportunityModel> _seed = [
-    OpportunityModel(
-      id: '1',
-      title: 'Website Opportunity',
-      contactName: 'Tanweer Khan',
-      value: 76.58,
-      probability: 70,
-      stage: OpportunityStage.proposal,
-      source: SourceType.manual,
-      timeAgo: '1w',
-      nextFollowUp: 'Jun 2, 10:00 AM',
-      phone: '+91 98765 43210',
-      avatarInitials: 'TK',
-      avatarColor: Color(0xFFE53935),
-    ),
-    OpportunityModel(
-      id: '2',
-      title: 'Mindverge Software Deal',
-      contactName: 'Rahul Sharma',
-      value: 45000,
-      probability: 85,
-      stage: OpportunityStage.negotiation,
-      source: SourceType.facebook,
-      timeAgo: '1w',
-      nextFollowUp: 'Jun 3, 9:00 AM',
-      phone: '+91 98765 43210',
-      avatarInitials: 'RS',
-      avatarColor: Color(0xFF7B72E9),
-    ),
-    OpportunityModel(
-      id: '3',
-      title: 'PeploHr Enterprise Plan',
-      contactName: 'Priya Menon',
-      value: 28000,
-      probability: 60,
-      stage: OpportunityStage.qualified,
-      source: SourceType.facebook,
-      timeAgo: '2w',
-      nextFollowUp: 'Jun 4, 2:00 PM',
-      phone: '+91 87654 32109',
-      avatarInitials: 'PM',
-      avatarColor: Color(0xFF2DD4A0),
-    ),
-    OpportunityModel(
-      id: '4',
-      title: 'Cloud Migration Project',
-      contactName: 'Arjun Patel',
-      value: 120000,
-      probability: 90,
-      stage: OpportunityStage.won,
-      source: SourceType.website,
-      timeAgo: '3w',
-      nextFollowUp: 'Jun 5, 11:00 AM',
-      phone: '+91 76543 21098',
-      avatarInitials: 'AP',
-      avatarColor: Color(0xFFFF7043),
-    ),
-    OpportunityModel(
-      id: '5',
-      title: 'Annual Support Contract',
-      contactName: 'Neha Singh',
-      value: 55000,
-      probability: 40,
-      stage: OpportunityStage.proposal,
-      source: SourceType.referral,
-      timeAgo: '3d',
-      nextFollowUp: 'Jun 6, 3:30 PM',
-      phone: '+91 90123 45678',
-      avatarInitials: 'NS',
-      avatarColor: Color(0xFF26C6DA),
-    ),
-    OpportunityModel(
-      id: '6',
-      title: 'UI/UX Redesign',
-      contactName: 'Vikram Iyer',
-      value: 18500,
-      probability: 55,
-      stage: OpportunityStage.negotiation,
-      source: SourceType.email,
-      timeAgo: '5d',
-      nextFollowUp: 'Jun 7, 4:00 PM',
-      phone: '+91 81234 56789',
-      avatarInitials: 'VI',
-      avatarColor: Color(0xFFAB47BC),
-    ),
-  ];
 
   // Backlog — stalled / overdue deals that have slipped and need attention.
   static const List<OpportunityModel> _backlogSeed = [
@@ -225,14 +217,16 @@ class Opportunities extends _$Opportunities {
   ];
 }
 
-/// Opportunities filtered by the active search query + selected stage.
+/// Opportunities filtered by the selected stage. Text search is server-side for
+/// the live pipeline; only the local backlog is searched client-side here.
 @riverpod
 List<OpportunityModel> filteredOpportunities(Ref ref) {
   final s = ref.watch(opportunitiesProvider);
   final source = s.showBacklog ? s.backlogItems : s.items;
   final query = s.searchQuery.toLowerCase();
   return source.where((o) {
-    final matchesSearch = query.isEmpty ||
+    final matchesSearch = !s.showBacklog ||
+        query.isEmpty ||
         o.title.toLowerCase().contains(query) ||
         o.contactName.toLowerCase().contains(query) ||
         o.phone.contains(query);

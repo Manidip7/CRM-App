@@ -22,6 +22,7 @@ class OpportunitiesScreen extends ConsumerStatefulWidget {
 class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
     with SingleTickerProviderStateMixin {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
@@ -41,13 +42,24 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
     _animController.forward();
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _animController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// Loads the next page when scrolled near the bottom.
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
+      ref.read(opportunitiesProvider.notifier).loadMore();
+    }
   }
 
   int _countByStage(OpportunityStage s) =>
@@ -59,9 +71,9 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
           ? AppColors.red
           : AppColors.green;
 
-  // Length of the currently active list (live pipeline or backlog).
+  // Total count: API total for the live pipeline, list length for the backlog.
   int get _activeTotal => ref.watch(opportunitiesProvider
-      .select((s) => (s.showBacklog ? s.backlogItems : s.items).length));
+      .select((s) => s.showBacklog ? s.backlogItems.length : s.total));
 
   // ── Formatting ──
   String _formatValue(double v) {
@@ -73,6 +85,15 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   @override
   Widget build(BuildContext context) {
     final list = ref.watch(filteredOpportunitiesProvider);
+    final oppState = ref.watch(opportunitiesProvider);
+    final showBacklog = oppState.showBacklog;
+    // First-load and error states apply only to the API-backed pipeline.
+    final firstLoading =
+        !showBacklog && oppState.isLoading && oppState.items.isEmpty;
+    final loadError = !showBacklog &&
+        oppState.error != null &&
+        oppState.items.isEmpty;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -85,29 +106,55 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
               children: [
                 _buildHeader(),
                 Expanded(
-                  child: CustomScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    slivers: [
-                      SliverToBoxAdapter(child: _buildStatCards()),
-                      SliverToBoxAdapter(child: _buildSearchBar()),
-                      SliverToBoxAdapter(child: _buildFilterTabs()),
-                      SliverToBoxAdapter(child: _buildListHeader()),
-                      if (list.isEmpty)
-                        SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: _buildEmptyState(),
-                        )
-                      else
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                          sliver: SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (ctx, i) => _buildCard(list[i]),
-                              childCount: list.length,
+                  child: RefreshIndicator(
+                    color: AppColors.green,
+                    onRefresh: () =>
+                        ref.read(opportunitiesProvider.notifier).refresh(),
+                    child: CustomScrollView(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics()),
+                      slivers: [
+                        SliverToBoxAdapter(child: _buildStatCards()),
+                        SliverToBoxAdapter(child: _buildSearchBar()),
+                        SliverToBoxAdapter(child: _buildFilterTabs()),
+                        SliverToBoxAdapter(child: _buildListHeader()),
+                        if (firstLoading)
+                          const SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                  color: AppColors.green),
+                            ),
+                          )
+                        else if (loadError)
+                          SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: _buildErrorState(),
+                          )
+                        else if (list.isEmpty)
+                          SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: _buildEmptyState(),
+                          )
+                        else
+                          SliverPadding(
+                            padding:
+                                const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                            sliver: SliverList(
+                              delegate: SliverChildBuilderDelegate(
+                                (ctx, i) {
+                                  if (i == list.length) {
+                                    return _buildLoadMoreIndicator(oppState);
+                                  }
+                                  return _buildCard(list[i]);
+                                },
+                                childCount: list.length + 1,
+                              ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -116,6 +163,48 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
         ),
       ),
       floatingActionButton: _buildFAB(),
+    );
+  }
+
+  /// Footer under the list: a spinner while the next page loads, else nothing.
+  Widget _buildLoadMoreIndicator(OpportunitiesState s) {
+    if (s.isLoadingMore) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+                strokeWidth: 2.4, color: AppColors.green),
+          ),
+        ),
+      );
+    }
+    return const SizedBox(height: 8);
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.cloud_off_rounded,
+              size: 46, color: AppColors.red),
+          const SizedBox(height: 12),
+          const Text(
+            'Could not load opportunities',
+            style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () =>
+                ref.read(opportunitiesProvider.notifier).refresh(),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
     );
   }
 

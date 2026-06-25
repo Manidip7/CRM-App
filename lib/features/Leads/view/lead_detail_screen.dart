@@ -645,6 +645,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     final lead = widget.lead;
     final opp = OpportunityModel(
       id: 'OPP-${lead.id}',
+      leadId: lead.id,
       title: lead.companyName != null
           ? '${lead.companyName} Deal'
           : '${lead.contactName} Opportunity',

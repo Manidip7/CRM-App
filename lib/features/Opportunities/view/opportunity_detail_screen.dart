@@ -330,8 +330,8 @@ class _OpportunityDetailScreenState
               children: [
                 // Opportunity ID
                 _Chip(
-                  label: 'OPP-${opp.id}',
-                  color: AppColors.green,
+                  label: 'Lead-${opp.leadId}',
+                  color: AppColors.primary,
                   icon: Icons.tag_rounded,
                   filled: true,
                 ),

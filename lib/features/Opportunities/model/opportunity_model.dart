@@ -121,6 +121,10 @@ class OpportunityProduct {
 
 class OpportunityModel {
   final String id;
+
+  /// The originating lead's id (`lead_id`). Used for lead-scoped actions on the
+  /// detail screen (notes / tasks / follow-up), which the backend keys by lead.
+  final String? leadId;
   final String title;
   final String contactName;
   final double value;
@@ -135,6 +139,7 @@ class OpportunityModel {
 
   const OpportunityModel({
     required this.id,
+    this.leadId,
     required this.title,
     required this.contactName,
     required this.value,
@@ -148,8 +153,128 @@ class OpportunityModel {
     required this.avatarColor,
   });
 
+  static const List<Color> _avatarColors = [
+    Color(0xFF4B3FC7),
+    Color(0xFF2DD4A0),
+    Color(0xFFFF4D6A),
+    Color(0xFFFFB547),
+    Color(0xFF7B72E9),
+    Color(0xFF4CAF9A),
+  ];
+
+  /// Builds an [OpportunityModel] from the `GET /opportunities` list item.
+  /// Contact/phone/source come from the nested `lead`; `expected_value` arrives
+  /// as a string; the stage is derived from `stage` + `is_won` / `is_lost`.
+  factory OpportunityModel.fromJson(Map<String, dynamic> json) {
+    final lead = (json['lead'] as Map?)?.cast<String, dynamic>();
+    final contact = [
+      lead?['first_name'] as String? ?? '',
+      lead?['last_name'] as String? ?? '',
+    ].where((s) => s.trim().isNotEmpty).join(' ').trim();
+    final contactName =
+        contact.isNotEmpty ? contact : (json['title'] as String? ?? '—');
+    final sourceName = (lead?['source'] as Map?)?['name'] as String?;
+    final createdAt =
+        DateTime.tryParse(json['created_at'] as String? ?? '')?.toLocal();
+    final nextRaw = json['next_followup_at'] ?? lead?['next_followup_at'];
+    final nextDate =
+        nextRaw is String ? DateTime.tryParse(nextRaw)?.toLocal() : null;
+    final idStr = '${json['id']}';
+
+    return OpportunityModel(
+      id: idStr,
+      leadId: json['lead_id'] != null ? '${json['lead_id']}' : null,
+      title: json['title'] as String? ?? '',
+      contactName: contactName,
+      value: double.tryParse('${json['expected_value']}') ?? 0,
+      probability: (json['probability'] as num?)?.toInt() ?? 0,
+      stage: _stageFrom(
+        json['stage'] as String?,
+        json['is_won'] == true,
+        json['is_lost'] == true,
+      ),
+      source: _sourceFrom(sourceName),
+      timeAgo: createdAt != null ? _timeAgo(createdAt) : '',
+      nextFollowUp: nextDate != null ? _fmtDate(nextDate) : '—',
+      phone: lead?['phone'] as String? ?? '—',
+      avatarInitials: _initials(contactName),
+      avatarColor:
+          _avatarColors[(int.tryParse(idStr) ?? 0) % _avatarColors.length],
+    );
+  }
+
+  static OpportunityStage _stageFrom(String? s, bool isWon, bool isLost) {
+    if (isWon) return OpportunityStage.won;
+    if (isLost) return OpportunityStage.lost;
+    switch (s?.toLowerCase().trim()) {
+      case 'won':
+        return OpportunityStage.won;
+      case 'lost':
+        return OpportunityStage.lost;
+      case 'negotiation':
+        return OpportunityStage.negotiation;
+      case 'proposal':
+        return OpportunityStage.proposal;
+      case 'prospecting':
+      case 'qualified':
+      case 'qualification':
+        return OpportunityStage.qualified;
+      default:
+        return OpportunityStage.qualified;
+    }
+  }
+
+  static SourceType _sourceFrom(String? name) {
+    switch (name?.toLowerCase().trim()) {
+      case 'facebook':
+        return SourceType.facebook;
+      case 'website':
+        return SourceType.website;
+      case 'referral':
+        return SourceType.referral;
+      case 'email':
+        return SourceType.email;
+      case 'manual':
+      default:
+        return SourceType.manual;
+    }
+  }
+
+  static String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+  }
+
+  static String _timeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inDays >= 7) return '${diff.inDays ~/ 7}w';
+    if (diff.inDays >= 1) return '${diff.inDays}d';
+    if (diff.inHours >= 1) return '${diff.inHours}h';
+    if (diff.inMinutes >= 1) return '${diff.inMinutes}m';
+    return 'now';
+  }
+
+  static String _fmtDate(DateTime dt) {
+    const months = [
+      'Jan','Feb','Mar','Apr','May','Jun',
+      'Jul','Aug','Sep','Oct','Nov','Dec'
+    ];
+    final h = dt.hour > 12
+        ? dt.hour - 12
+        : dt.hour == 0
+            ? 12
+            : dt.hour;
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '${months[dt.month - 1]} ${dt.day}, $h:$min $ampm';
+  }
+
   OpportunityModel copyWith({
     String? id,
+    String? leadId,
     String? title,
     String? contactName,
     double? value,
@@ -164,6 +289,7 @@ class OpportunityModel {
   }) {
     return OpportunityModel(
       id: id ?? this.id,
+      leadId: leadId ?? this.leadId,
       title: title ?? this.title,
       contactName: contactName ?? this.contactName,
       value: value ?? this.value,
