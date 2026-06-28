@@ -44,7 +44,7 @@ final class OpportunitiesProvider
   }
 }
 
-String _$opportunitiesHash() => r'5031fa5473687ae44a89e23c3f4ac05262ff32dc';
+String _$opportunitiesHash() => r'de343d25d29538491debe659c73e4e64b3766fca';
 
 /// Kept alive so opportunities converted from leads survive navigation.
 
@@ -66,12 +66,14 @@ abstract class _$Opportunities extends $Notifier<OpportunitiesState> {
   }
 }
 
-/// Opportunities filtered by the active search query + selected stage.
+/// Opportunities filtered by the selected stage. Text search is server-side for
+/// the live pipeline; only the local backlog is searched client-side here.
 
 @ProviderFor(filteredOpportunities)
 final filteredOpportunitiesProvider = FilteredOpportunitiesProvider._();
 
-/// Opportunities filtered by the active search query + selected stage.
+/// Opportunities filtered by the selected stage. Text search is server-side for
+/// the live pipeline; only the local backlog is searched client-side here.
 
 final class FilteredOpportunitiesProvider
     extends
@@ -81,7 +83,8 @@ final class FilteredOpportunitiesProvider
           List<OpportunityModel>
         >
     with $Provider<List<OpportunityModel>> {
-  /// Opportunities filtered by the active search query + selected stage.
+  /// Opportunities filtered by the selected stage. Text search is server-side for
+  /// the live pipeline; only the local backlog is searched client-side here.
   FilteredOpportunitiesProvider._()
     : super(
         from: null,
@@ -117,4 +120,4 @@ final class FilteredOpportunitiesProvider
 }
 
 String _$filteredOpportunitiesHash() =>
-    r'8c375f9368e4d39b3143676b4232623fe7dd1603';
+    r'c8804be5e6266beb10701e0a278ce1f1b1f5db29';

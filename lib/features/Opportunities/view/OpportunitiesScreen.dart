@@ -87,12 +87,13 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
     final list = ref.watch(filteredOpportunitiesProvider);
     final oppState = ref.watch(opportunitiesProvider);
     final showBacklog = oppState.showBacklog;
-    // First-load and error states apply only to the API-backed pipeline.
-    final firstLoading =
-        !showBacklog && oppState.isLoading && oppState.items.isEmpty;
-    final loadError = !showBacklog &&
-        oppState.error != null &&
-        oppState.items.isEmpty;
+    // First-load and error states — both lists are API-backed.
+    final firstLoading = showBacklog
+        ? oppState.backlogLoading && oppState.backlogItems.isEmpty
+        : oppState.isLoading && oppState.items.isEmpty;
+    final loadError = showBacklog
+        ? oppState.backlogError != null && oppState.backlogItems.isEmpty
+        : oppState.error != null && oppState.items.isEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -107,7 +108,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
                 _buildHeader(),
                 Expanded(
                   child: RefreshIndicator(
-                    color: AppColors.green,
+                    color: _accent,
                     onRefresh: () =>
                         ref.read(opportunitiesProvider.notifier).refresh(),
                     child: CustomScrollView(
@@ -120,11 +121,11 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
                         SliverToBoxAdapter(child: _buildFilterTabs()),
                         SliverToBoxAdapter(child: _buildListHeader()),
                         if (firstLoading)
-                          const SliverFillRemaining(
+                          SliverFillRemaining(
                             hasScrollBody: false,
                             child: Center(
-                              child: CircularProgressIndicator(
-                                  color: AppColors.green),
+                              child:
+                                  CircularProgressIndicator(color: _accent),
                             ),
                           )
                         else if (loadError)
@@ -169,14 +170,14 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   /// Footer under the list: a spinner while the next page loads, else nothing.
   Widget _buildLoadMoreIndicator(OpportunitiesState s) {
     if (s.isLoadingMore) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
         child: Center(
           child: SizedBox(
             width: 22,
             height: 22,
             child: CircularProgressIndicator(
-                strokeWidth: 2.4, color: AppColors.green),
+                strokeWidth: 2.4, color: _accent),
           ),
         ),
       );
@@ -320,7 +321,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   Widget _buildStatCards() {
     final total = _activeTotal;
     final stats = [
-      _StatCard(value: '$total', label: 'Total', color: AppColors.green),
+      _StatCard(value: '$total', label: 'Total', color: _accent),
       _StatCard(
           value: '${_countByStage(OpportunityStage.proposal)}',
           label: 'Proposal',
@@ -645,9 +646,9 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
                           const SizedBox(width: 6),
                           Text(
                             _formatValue(opp.value),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12.5,
-                              color: AppColors.green,
+                              color: _accent,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -788,19 +789,20 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   //  FAB
   // ─────────────────────────────────────────────
   Widget _buildFAB() {
+    final accent = _accent;
     return Container(
       width: 56,
       height: 56,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [AppColors.green, AppColors.leadFunnelWon],
+          colors: [accent, accent.withOpacity(0.7)],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: AppColors.green.withOpacity(0.4),
+            color: accent.withOpacity(0.4),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),

@@ -34,11 +34,13 @@ class OpportunitiesRepository {
 
   static const int perPage = 15;
 
-  /// GET /opportunities?page=N&per_page=15&search=... — one paginated page,
-  /// optionally filtered by a server-side [search] query.
+  /// GET /opportunities?page=N&per_page=15&search=...&category=... — one
+  /// paginated page, optionally filtered by a server-side [search] query and/or
+  /// a [category] (e.g. `backlog` for overdue deals needing attention).
   Future<ApiResult<OpportunitiesPage>> getOpportunities({
     int page = 1,
     String? search,
+    String? category,
   }) {
     return _api.get<OpportunitiesPage>(
       ApiConstants.opportunities,
@@ -46,6 +48,7 @@ class OpportunitiesRepository {
         'page': page,
         'per_page': perPage,
         if (search != null && search.isNotEmpty) 'search': search,
+        if (category != null && category.isNotEmpty) 'category': category,
       },
       decoder: _decodePage,
     );
