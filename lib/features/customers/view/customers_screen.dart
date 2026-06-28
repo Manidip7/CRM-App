@@ -3,14 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
-import '../model/customer_model.dart';
-import '../provider/customers_provider.dart';
+import '../model/customer_list_item.dart';
+import '../provider/customers_api_provider.dart';
 
-/// Lists every customer with a search field. Each row shows the contact's
-/// name, company, status, location and total deal value.
+/// Lists every customer (API-backed, `GET /customers`) with a server-side
+/// search field. Scrolling to the bottom fetches the next page; pull-to-refresh
+/// reloads from page 1. Each row shows the contact's name, location, email,
+/// phone and linked-contacts count.
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
 
@@ -20,16 +23,32 @@ class CustomersScreen extends ConsumerStatefulWidget {
 
 class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
+      ref.read(customersApiProvider.notifier).loadMore();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final customers = ref.watch(filteredCustomersProvider);
+    final apiState = ref.watch(customersApiProvider);
 
     // Back button returns to the Dashboard overview tab.
     return PopScope(
@@ -44,19 +63,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(customers.length),
+              _buildHeader(apiState.total),
               _buildSearchRow(),
               const SizedBox(height: 4),
-              Expanded(
-                child: customers.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 90),
-                        itemCount: customers.length,
-                        itemBuilder: (ctx, i) => _buildCard(customers[i]),
-                      ),
-              ),
+              Expanded(child: _buildBody(apiState)),
             ],
           ),
         ),
@@ -77,6 +87,78 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBody(CustomersApiState apiState) {
+    // First-page load.
+    if (apiState.isLoading && apiState.items.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    // First-page error.
+    if (apiState.error != null && apiState.items.isEmpty) {
+      return _buildError(apiState.error!);
+    }
+    final customers = apiState.items;
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: () => ref.read(customersApiProvider.notifier).refresh(),
+      child: customers.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  child: _buildEmptyState(),
+                ),
+              ],
+            )
+          : ListView.builder(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 90),
+              itemCount: customers.length + (apiState.hasMore ? 1 : 0),
+              itemBuilder: (ctx, i) {
+                if (i >= customers.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                return _buildCard(customers[i]);
+              },
+            ),
+    );
+  }
+
+  Widget _buildError(Object error) {
+    final message =
+        error is ApiException ? error.message : 'Could not load customers.';
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.cloud_off_rounded, color: AppColors.red, size: 40),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                  fontSize: 14, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () => ref.read(customersApiProvider.notifier).refresh(),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: Text('Retry', style: GoogleFonts.poppins(fontSize: 14)),
+          ),
+        ],
       ),
     );
   }
@@ -158,9 +240,6 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
   // ── Search ──
   Widget _buildSearchRow() {
-    final hasQuery = ref.watch(
-      customerSearchProvider.select((q) => q.isNotEmpty),
-    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: Container(
@@ -172,11 +251,14 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         ),
         child: TextField(
           controller: _searchController,
-          onChanged: (v) =>
-              ref.read(customerSearchProvider.notifier).setSearch(v),
+          onChanged: (v) {
+            ref.read(customersApiProvider.notifier).setSearch(v);
+            // Rebuild so the clear (×) button shows/hides with the text.
+            setState(() {});
+          },
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
           decoration: InputDecoration(
-            hintText: 'Search by name, company, email...',
+            hintText: 'Search by name, email, phone...',
             hintStyle: const TextStyle(
               color: AppColors.textLight,
               fontSize: 13.5,
@@ -186,7 +268,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               color: AppColors.textLight,
               size: 20,
             ),
-            suffixIcon: !hasQuery
+            suffixIcon: _searchController.text.isEmpty
                 ? null
                 : IconButton(
                     icon: const Icon(
@@ -196,7 +278,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     ),
                     onPressed: () {
                       _searchController.clear();
-                      ref.read(customerSearchProvider.notifier).setSearch('');
+                      ref.read(customersApiProvider.notifier).setSearch('');
+                      setState(() {});
                     },
                   ),
             border: InputBorder.none,
@@ -211,16 +294,19 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   }
 
   // ── Customer card ──
-  Widget _buildCard(CustomerModel c) {
-    final accent = c.status.color;
+  Widget _buildCard(CustomerListItem c) {
+    const accent = AppColors.primary;
     return GestureDetector(
-      onTap: () => context.push(AppRoutes.customerDetail, extra: c),
+      onTap: () => context.push(
+        AppRoutes.customerDetail,
+        extra: c.toCustomerModel(),
+      ),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: AppColors.cardBackground,
           borderRadius: BorderRadius.circular(16),
-          border: Border(left: BorderSide(color: accent, width: 3.5)),
+          border: const Border(left: BorderSide(color: accent, width: 3.5)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
@@ -275,14 +361,14 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         Row(
                           children: [
                             const Icon(
-                              Icons.business_rounded,
+                              Icons.location_on_outlined,
                               size: 13,
                               color: AppColors.textSecondary,
                             ),
                             const SizedBox(width: 4),
                             Flexible(
                               child: Text(
-                                c.company,
+                                c.location,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: GoogleFonts.poppins(
@@ -296,41 +382,15 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       ],
                     ),
                   ),
-                  _tag(c.status.label, accent),
+                  _tag('${c.contactsCount} contact${c.contactsCount == 1 ? '' : 's'}',
+                      accent),
                 ],
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: Divider(color: AppColors.divider, height: 1),
               ),
-              // Contact + value row
-              Row(
-                children: [
-                  const Icon(
-                    Icons.location_on_outlined,
-                    size: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    c.location,
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    c.valueLabel,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
+              // Email + phone row
               Row(
                 children: [
                   const Icon(
@@ -341,7 +401,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   const SizedBox(width: 4),
                   Flexible(
                     child: Text(
-                      c.email,
+                      c.displayEmail,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
@@ -358,7 +418,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    c.phone,
+                    c.displayPhone,
                     style: GoogleFonts.poppins(
                       fontSize: 12,
                       color: AppColors.textSecondary,

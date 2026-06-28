@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../model/TaskStatus.dart';
+import '../model/task_item_model.dart';
 import '../provider/task_filter_provider.dart';
-import '../provider/task_provider.dart';
+import '../provider/task_list_api_provider.dart';
 
-/// Full task list with search, status & assignee dropdowns, a from/to date
-/// range and per-row edit / delete actions. Reached from the "Task List"
-/// button on the Task (Today's Agenda) screen.
+/// Full task list (API-backed, `GET /tasks`) with search, status & assignee
+/// dropdowns and a from/to date range. Filters are applied over the pages
+/// loaded so far; scrolling to the bottom fetches the next page. Reached from
+/// the "Task List" button on the Task (Today's Agenda) screen.
 class TaskListScreen extends ConsumerStatefulWidget {
   const TaskListScreen({super.key});
 
@@ -19,23 +22,65 @@ class TaskListScreen extends ConsumerStatefulWidget {
 
 class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
+      ref.read(taskListApiProvider.notifier).loadMore();
+    }
+  }
+
+  // ── Filtering over the loaded pages ──
+  DateTime _dayStart(DateTime d) => DateTime(d.year, d.month, d.day);
+  DateTime _dayEnd(DateTime d) => DateTime(d.year, d.month, d.day, 23, 59, 59);
+
+  List<TaskItem> _applyFilters(List<TaskItem> tasks, TaskFilterState f) {
+    // Keep the API order (newest first); search is server-side (`?search=`),
+    // so here we only apply status / assignee / date filters, no re-sort.
+    final result = tasks.where((t) {
+      if (f.status != null && t.derivedStatus != f.status) return false;
+      if (f.assignee != null && t.assigneeName != f.assignee) return false;
+      final due = t.dueAt?.toLocal();
+      if (f.fromDate != null &&
+          (due == null || due.isBefore(_dayStart(f.fromDate!)))) {
+        return false;
+      }
+      if (f.toDate != null &&
+          (due == null || due.isAfter(_dayEnd(f.toDate!)))) {
+        return false;
+      }
+      return true;
+    }).toList();
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final tasks = ref.watch(filteredTasksProvider);
+    final apiState = ref.watch(taskListApiProvider);
+    final filter = ref.watch(taskFilterProvider);
+    final tasks = _applyFilters(apiState.items, filter);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeader(tasks.length),
+            _buildHeader(tasks.length, apiState.total),
             _buildSearchRow(),
             AnimatedSize(
               duration: const Duration(milliseconds: 200),
@@ -45,31 +90,92 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildStatusAssigneeRow(),
+                        _buildStatusAssigneeRow(apiState.items),
                         _buildDateRow(),
                       ],
                     )
                   : const SizedBox(width: double.infinity),
             ),
             const SizedBox(height: 4),
-            Expanded(
-              child: tasks.isEmpty
-                  ? _buildEmptyState()
-                  : ListView.builder(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
-                      itemCount: tasks.length,
-                      itemBuilder: (ctx, i) => _buildTaskCard(tasks[i]),
-                    ),
-            ),
+            Expanded(child: _buildBody(apiState, tasks)),
           ],
         ),
       ),
     );
   }
 
+  Widget _buildBody(TaskListApiState apiState, List<TaskItem> tasks) {
+    // First-page load.
+    if (apiState.isLoading && apiState.items.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    // First-page error.
+    if (apiState.error != null && apiState.items.isEmpty) {
+      return _buildError(apiState.error!);
+    }
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: () => ref.read(taskListApiProvider.notifier).refresh(),
+      child: tasks.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
+              children: [
+                SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.6,
+                    child: _buildEmptyState()),
+              ],
+            )
+          : ListView.builder(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+              itemCount: tasks.length + (apiState.hasMore ? 1 : 0),
+              itemBuilder: (ctx, i) {
+                if (i >= tasks.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                return _buildTaskCard(tasks[i]);
+              },
+            ),
+    );
+  }
+
+  Widget _buildError(Object error) {
+    final message =
+        error is ApiException ? error.message : 'Could not load tasks.';
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.cloud_off_rounded, color: AppColors.red, size: 40),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                  fontSize: 14, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () => ref.read(taskListApiProvider.notifier).refresh(),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: Text('Retry', style: GoogleFonts.poppins(fontSize: 14)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Header ──
-  Widget _buildHeader(int count) {
+  Widget _buildHeader(int shownCount, int total) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
       child: Row(
@@ -104,27 +210,11 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '$count',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'All your tasks in one place',
+                  total > 0 ? 'All your tasks · $total total' : 'All your tasks',
                   style: GoogleFonts.poppins(
                     fontSize: 12.5,
                     color: AppColors.textSecondary,
@@ -205,7 +295,11 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
         ),
         child: TextField(
           controller: _searchController,
-          onChanged: (v) => ref.read(taskFilterProvider.notifier).setSearch(v),
+          onChanged: (v) {
+            // Track text for the clear button; fire the server-side search.
+            ref.read(taskFilterProvider.notifier).setSearch(v);
+            ref.read(taskListApiProvider.notifier).setSearch(v);
+          },
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
           decoration: InputDecoration(
             hintText: 'Search tasks...',
@@ -221,6 +315,7 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
                     onPressed: () {
                       _searchController.clear();
                       ref.read(taskFilterProvider.notifier).setSearch('');
+                      ref.read(taskListApiProvider.notifier).setSearch('');
                     },
                   ),
             border: InputBorder.none,
@@ -233,9 +328,15 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   }
 
   // ── Status + Assignee dropdowns ──
-  Widget _buildStatusAssigneeRow() {
+  Widget _buildStatusAssigneeRow(List<TaskItem> items) {
     final f = ref.watch(taskFilterProvider);
-    final assignees = ref.watch(taskAssigneesProvider);
+    final assignees = (items
+            .map((t) => t.assigneeName)
+            .whereType<String>()
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort());
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: Row(
@@ -291,11 +392,13 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   }
 
   Widget _buildAssigneeDropdown(String? selected, List<String> assignees) {
+    // Guard: the selected assignee may not exist in the freshly-loaded list.
+    final value = assignees.contains(selected) ? selected : null;
     return _dropdownShell(
       icon: Icons.person_outline_rounded,
-      accent: selected == null ? AppColors.textSecondary : AppColors.primary,
+      accent: value == null ? AppColors.textSecondary : AppColors.primary,
       child: DropdownButton<String?>(
-        value: selected,
+        value: value,
         isExpanded: true,
         isDense: true,
         icon: const Icon(Icons.keyboard_arrow_down_rounded,
@@ -424,9 +527,11 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   }
 
   // ── Task card ──
-  Widget _buildTaskCard(TaskModel task) {
-    final accent = task.status.color;
-    final isCompleted = task.status == TaskStatus.completed;
+  Widget _buildTaskCard(TaskItem task) {
+    final status = task.derivedStatus;
+    final priority = task.priorityEnum;
+    final accent = status.color;
+    final isCompleted = status == TaskStatus.completed;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -464,76 +569,75 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                _tag(task.status.label, accent),
+                _tag(status.label, accent),
               ],
             ),
-            const SizedBox(height: 4),
-            // Details
-            Text(
-              '${task.nextAction} · ${task.remark}',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textSecondary,
+            if (task.description != null && task.description!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                task.description!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
               ),
-            ),
+            ],
             const SizedBox(height: 10),
-            // Priority + assignee chips
+            // Priority + assignee + linked record chips
             Wrap(
               spacing: 8,
               runSpacing: 6,
               children: [
                 _chip(
                   Icons.outlined_flag_rounded,
-                  '${task.priority.label} priority',
-                  task.priority.color,
+                  '${priority.label} priority',
+                  priority.color,
                 ),
-                _chip(
-                  Icons.person_outline_rounded,
-                  task.assignee,
-                  AppColors.textSecondary,
-                ),
+                if (task.assigneeName != null && task.assigneeName!.isNotEmpty)
+                  _chip(
+                    Icons.person_outline_rounded,
+                    task.assigneeName!,
+                    AppColors.textSecondary,
+                  ),
+                if (task.taskableTitle != null &&
+                    task.taskableTitle!.isNotEmpty)
+                  _chip(
+                    task.isOpportunity
+                        ? Icons.workspaces_outline
+                        : Icons.person_pin_circle_outlined,
+                    '${task.linkedLabel}: ${task.taskableTitle}',
+                    AppColors.primary,
+                  ),
               ],
             ),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Divider(color: AppColors.divider, height: 1),
             ),
-            // Due date + actions
+            // Due date
             Row(
               children: [
                 Icon(
                   Icons.event_rounded,
                   size: 14,
-                  color: task.status == TaskStatus.overdue
+                  color: status == TaskStatus.overdue
                       ? AppColors.red
                       : AppColors.textSecondary,
                 ),
                 const SizedBox(width: 5),
                 Text(
-                  'Due ${_formatDate(task.dueDate)}',
+                  task.dueAt != null
+                      ? 'Due ${_formatDate(task.dueAt!)}'
+                      : 'No due date',
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: task.status == TaskStatus.overdue
+                    color: status == TaskStatus.overdue
                         ? AppColors.red
                         : AppColors.textSecondary,
                   ),
-                ),
-                const Spacer(),
-                _actionIcon(
-                  icon: Icons.edit_outlined,
-                  color: AppColors.green,
-                  tooltip: 'Edit',
-                  onTap: () => _onEdit(task),
-                ),
-                const SizedBox(width: 6),
-                _actionIcon(
-                  icon: Icons.delete_outline_rounded,
-                  color: AppColors.red,
-                  tooltip: 'Delete',
-                  onTap: () => _onDelete(task),
                 ),
               ],
             ),
@@ -563,48 +667,34 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   }
 
   Widget _chip(IconData icon, String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: GoogleFonts.poppins(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w500,
-              color: color,
+    return ConstrainedBox(
+      // Keep a chip from exceeding the card width when its label is long
+      // (e.g. a long linked Lead/Opportunity title) so the Wrap can lay it out.
+      constraints: const BoxConstraints(maxWidth: 280),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.poppins(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                  color: color,
+                ),
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _actionIcon({
-    required IconData icon,
-    required Color color,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, size: 18, color: color),
+          ],
         ),
       ),
     );
@@ -649,71 +739,6 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
     }
   }
 
-  void _onEdit(TaskModel task) {
-    ref.read(taskEditProvider.notifier).start(task);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _EditTaskSheet(
-        task: task,
-        onSave: (updated) {
-          ref.read(taskListProvider.notifier).updateTask(updated);
-          _toast('Task updated');
-        },
-      ),
-    );
-  }
-
-  Future<void> _onDelete(TaskModel task) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Delete task?',
-            style: GoogleFonts.poppins(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary)),
-        content: Text(
-          '"${task.title}" will be permanently removed.',
-          style: GoogleFonts.poppins(
-              fontSize: 13.5, color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete',
-                style: TextStyle(
-                    color: AppColors.red, fontWeight: FontWeight.w600)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    ref.read(taskListProvider.notifier).deleteTask(task);
-    _toast('Task deleted');
-  }
-
-  void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message,
-            style: const TextStyle(fontSize: 13, color: Colors.white)),
-        backgroundColor: AppColors.primary,
-        behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
   String _shortDate(DateTime d) {
     const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -722,7 +747,8 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
     return '${months[d.month - 1]} ${d.day}, ${d.year}';
   }
 
-  String _formatDate(DateTime dt) {
+  String _formatDate(DateTime dtUtc) {
+    final dt = dtUtc.toLocal();
     const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -735,286 +761,5 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
     final ampm = dt.hour >= 12 ? 'PM' : 'AM';
     final min = dt.minute.toString().padLeft(2, '0');
     return '${months[dt.month - 1]} ${dt.day}, $hour:$min $ampm';
-  }
-}
-
-/// Bottom sheet used to edit a task's title, status, priority, assignee and
-/// due date. Selection state lives in [taskEditProvider] (Riverpod), so the
-/// dropdowns and date picker drive the UI without any local [setState].
-class _EditTaskSheet extends ConsumerStatefulWidget {
-  final TaskModel task;
-  final ValueChanged<TaskModel> onSave;
-
-  const _EditTaskSheet({required this.task, required this.onSave});
-
-  @override
-  ConsumerState<_EditTaskSheet> createState() => _EditTaskSheetState();
-}
-
-class _EditTaskSheetState extends ConsumerState<_EditTaskSheet> {
-  late final TextEditingController _titleController;
-  late final TextEditingController _assigneeController;
-
-  @override
-  void initState() {
-    super.initState();
-    _titleController = TextEditingController(text: widget.task.title);
-    _assigneeController = TextEditingController(text: widget.task.assignee);
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _assigneeController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Falls back to the original task if the draft was somehow not seeded.
-    final draft = ref.watch(taskEditProvider);
-    final status = draft?.status ?? widget.task.status;
-    final priority = draft?.priority ?? widget.task.priority;
-    final dueDate = draft?.dueDate ?? widget.task.dueDate;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: AppColors.divider,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Text(
-                'Edit Task',
-                style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _label('Title'),
-              _textField(_titleController, 'Task title'),
-              const SizedBox(height: 14),
-              _label('Assignee'),
-              _textField(_assigneeController, 'Assignee name'),
-              const SizedBox(height: 14),
-              _label('Status'),
-              _sheetDropdown<TaskStatus>(
-                value: status,
-                items: TaskStatus.values,
-                labelOf: (s) => s.label,
-                colorOf: (s) => s.color,
-                onChanged: (s) =>
-                    ref.read(taskEditProvider.notifier).setStatus(s),
-              ),
-              const SizedBox(height: 14),
-              _label('Priority'),
-              _sheetDropdown<TaskPriority>(
-                value: priority,
-                items: TaskPriority.values,
-                labelOf: (p) => p.label,
-                colorOf: (p) => p.color,
-                onChanged: (p) =>
-                    ref.read(taskEditProvider.notifier).setPriority(p),
-              ),
-              const SizedBox(height: 14),
-              _label('Due date'),
-              GestureDetector(
-                onTap: _pickDueDate,
-                child: Container(
-                  height: 48,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(
-                    color: AppColors.cardBackground,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.divider),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today_rounded,
-                          size: 16, color: AppColors.textSecondary),
-                      const SizedBox(width: 10),
-                      Text(
-                        _dueLabel(dueDate),
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 22),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _save,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: Text(
-                    'Save Changes',
-                    style: GoogleFonts.poppins(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(
-          text,
-          style: GoogleFonts.poppins(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
-          ),
-        ),
-      );
-
-  Widget _textField(TextEditingController c, String hint) {
-    return TextField(
-      controller: c,
-      style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.textLight, fontSize: 13.5),
-        filled: true,
-        fillColor: AppColors.cardBackground,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.divider),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.divider),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.primary),
-        ),
-      ),
-    );
-  }
-
-  Widget _sheetDropdown<T>({
-    required T value,
-    required List<T> items,
-    required String Function(T) labelOf,
-    required Color Function(T) colorOf,
-    required ValueChanged<T> onChanged,
-  }) {
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
-          value: value,
-          isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded,
-              color: AppColors.textSecondary),
-          style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
-          items: items
-              .map((it) => DropdownMenuItem<T>(
-                    value: it,
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 9,
-                          height: 9,
-                          margin: const EdgeInsets.only(right: 10),
-                          decoration: BoxDecoration(
-                              color: colorOf(it), shape: BoxShape.circle),
-                        ),
-                        Text(labelOf(it)),
-                      ],
-                    ),
-                  ))
-              .toList(),
-          onChanged: (v) {
-            if (v != null) onChanged(v);
-          },
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickDueDate() async {
-    final current = ref.read(taskEditProvider)?.dueDate ?? widget.task.dueDate;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: current,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030, 12, 31),
-    );
-    if (picked == null) return;
-    ref.read(taskEditProvider.notifier).setDueDate(
-          DateTime(picked.year, picked.month, picked.day, current.hour,
-              current.minute),
-        );
-  }
-
-  void _save() {
-    final draft = ref.read(taskEditProvider);
-    final title = _titleController.text.trim();
-    final assignee = _assigneeController.text.trim();
-    widget.onSave(
-      widget.task.copyWith(
-        title: title.isEmpty ? widget.task.title : title,
-        assignee: assignee.isEmpty ? widget.task.assignee : assignee,
-        status: draft?.status ?? widget.task.status,
-        priority: draft?.priority ?? widget.task.priority,
-        dueDate: draft?.dueDate ?? widget.task.dueDate,
-      ),
-    );
-    Navigator.pop(context);
-  }
-
-  String _dueLabel(DateTime d) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return '${months[d.month - 1]} ${d.day}, ${d.year}';
   }
 }

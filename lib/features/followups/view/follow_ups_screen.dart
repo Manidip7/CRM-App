@@ -2,15 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
-import '../model/follow_up_item.dart';
+import '../model/next_followup_model.dart';
 import '../provider/follow_ups_provider.dart';
+import '../provider/next_followups_api_provider.dart';
 
-/// Lists every upcoming follow-up (from Leads + Opportunities) with search,
-/// a from/to date range, a status dropdown and an All / Lead / Opportunity
-/// source filter. Cards open the matching lead/opportunity detail screen.
+/// Lists upcoming follow-ups from `GET /next-followups` with search, a from/to
+/// date range (sent to the server) and a status dropdown / All-Lead-Opportunity
+/// source filter (applied over the loaded pages). Scrolling to the bottom
+/// fetches the next page. Cards open the matching lead detail screen.
 class FollowUpsScreen extends ConsumerStatefulWidget {
   const FollowUpsScreen({super.key});
 
@@ -20,15 +23,32 @@ class FollowUpsScreen extends ConsumerStatefulWidget {
 
 class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
+      ref.read(followUpsApiProvider.notifier).loadMore();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final apiState = ref.watch(followUpsApiProvider);
     final list = ref.watch(filteredFollowUpsProvider);
 
     // Back button → return to the Dashboard overview tab instead of exiting.
@@ -44,7 +64,7 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(),
+              _buildHeader(list, apiState.total),
               _buildSearchRow(),
               AnimatedSize(
                 duration: const Duration(milliseconds: 200),
@@ -55,16 +75,7 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
                     : const SizedBox(width: double.infinity),
               ),
               _buildFilterTabs(),
-              Expanded(
-                child: list.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                        itemCount: list.length,
-                        itemBuilder: (ctx, i) => _buildCard(list[i]),
-                      ),
-              ),
+              Expanded(child: _buildBody(apiState, list)),
             ],
           ),
         ),
@@ -72,9 +83,79 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
     );
   }
 
+  Widget _buildBody(FollowUpsApiState apiState, List<NextFollowUp> list) {
+    // First-page load.
+    if (apiState.isLoading && apiState.items.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    // First-page error.
+    if (apiState.error != null && apiState.items.isEmpty) {
+      return _buildError(apiState.error!);
+    }
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: () => ref.read(followUpsApiProvider.notifier).refresh(),
+      child: list.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  child: _buildEmptyState(),
+                ),
+              ],
+            )
+          : ListView.builder(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+              itemCount: list.length + (apiState.hasMore ? 1 : 0),
+              itemBuilder: (ctx, i) {
+                if (i >= list.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                return _buildCard(list[i]);
+              },
+            ),
+    );
+  }
+
+  Widget _buildError(Object error) {
+    final message =
+        error is ApiException ? error.message : 'Could not load follow-ups.';
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.cloud_off_rounded, color: AppColors.red, size: 40),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () => ref.read(followUpsApiProvider.notifier).refresh(),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Retry', style: TextStyle(fontSize: 14)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Header ──
-  Widget _buildHeader() {
-    final list = ref.watch(filteredFollowUpsProvider);
+  Widget _buildHeader(List<NextFollowUp> list, int total) {
     final overdue = list.where((i) => i.isOverdue).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
@@ -121,7 +202,7 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        '${list.length}',
+                        total > 0 ? '$total' : '${list.length}',
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -133,13 +214,11 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  overdue > 0
-                      ? '$overdue overdue · stay on top of your pipeline'
-                      : 'Stay on top of your pipeline',
+                  'Review upcoming follow-ups.',
                   style: TextStyle(
                     fontSize: 12.5,
                     color:
-                        overdue > 0 ? AppColors.red : AppColors.textSecondary,
+                        overdue > 0 ? AppColors.textLight : AppColors.textSecondary,
                     fontWeight:
                         overdue > 0 ? FontWeight.w500 : FontWeight.w400,
                   ),
@@ -158,8 +237,10 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
   Widget _buildFilterToggle() {
     final f = ref.watch(followUpFilterProvider);
     final showFilters = ref.watch(followUpFiltersExpandedProvider);
-    final hasActiveFilters =
-        f.status != null || f.fromDate != null || f.toDate != null;
+    final notifier = ref.read(followUpsApiProvider.notifier);
+    final hasActiveFilters = f.status != null ||
+        notifier.dateFrom != null ||
+        notifier.dateTo != null;
     final active = showFilters || hasActiveFilters;
     return GestureDetector(
       onTap: () =>
@@ -202,7 +283,7 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
     );
   }
 
-  // ── Search bar (name / company) ──
+  // ── Search bar (name / company / phone) — filters the loaded pages ──
   Widget _buildSearchRow() {
     final hasQuery =
         ref.watch(followUpFilterProvider.select((f) => f.search.isNotEmpty));
@@ -222,7 +303,7 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
           style:
               const TextStyle(fontSize: 14, color: AppColors.textPrimary),
           decoration: InputDecoration(
-            hintText: 'Search name or company...',
+            hintText: 'Search name, company or phone...',
             hintStyle:
                 const TextStyle(color: AppColors.textLight, fontSize: 13.5),
             prefixIcon: const Icon(Icons.search_rounded,
@@ -248,9 +329,11 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
     );
   }
 
-  // ── From / To date pickers + status dropdown ──
+  // ── From / To date pickers (server-side) + status dropdown ──
   Widget _buildDateAndStatusRow() {
-    final f = ref.watch(followUpFilterProvider);
+    final notifier = ref.watch(followUpsApiProvider.notifier);
+    final from = notifier.dateFrom;
+    final to = notifier.dateTo;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: Column(
@@ -260,7 +343,7 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
               Expanded(
                 child: _dateField(
                   label: 'From',
-                  value: f.fromDate,
+                  value: from,
                   onTap: () => _pickDate(isFrom: true),
                 ),
               ),
@@ -268,15 +351,15 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
               Expanded(
                 child: _dateField(
                   label: 'To',
-                  value: f.toDate,
+                  value: to,
                   onTap: () => _pickDate(isFrom: false),
                 ),
               ),
-              if (f.fromDate != null || f.toDate != null) ...[
+              if (from != null || to != null) ...[
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: () =>
-                      ref.read(followUpFilterProvider.notifier).clearDates(),
+                      ref.read(followUpsApiProvider.notifier).clearDates(),
                   child: Container(
                     width: 44,
                     height: 44,
@@ -292,7 +375,7 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          _buildStatusDropdown(f.status),
+          _buildStatusDropdown(),
         ],
       ),
     );
@@ -339,7 +422,11 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
     );
   }
 
-  Widget _buildStatusDropdown(FollowUpStatus? selected) {
+  Widget _buildStatusDropdown() {
+    final selected = ref.watch(followUpFilterProvider).status;
+    final options = ref.watch(followUpStatusOptionsProvider);
+    // Guard: the selected status may not be present in the freshly-loaded list.
+    final value = options.contains(selected) ? selected : null;
     return Container(
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -352,12 +439,14 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
         children: [
           Icon(Icons.flag_outlined,
               size: 16,
-              color: selected?.color ?? AppColors.textSecondary),
+              color: value == null
+                  ? AppColors.textSecondary
+                  : AppColors.primary),
           const SizedBox(width: 10),
           Expanded(
             child: DropdownButtonHideUnderline(
-              child: DropdownButton<FollowUpStatus?>(
-                value: selected,
+              child: DropdownButton<String?>(
+                value: value,
                 isExpanded: true,
                 isDense: true,
                 icon: const Icon(Icons.keyboard_arrow_down_rounded,
@@ -368,27 +457,14 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
                     style: TextStyle(
                         fontSize: 13.5, color: AppColors.textPrimary)),
                 items: [
-                  const DropdownMenuItem<FollowUpStatus?>(
+                  const DropdownMenuItem<String?>(
                     value: null,
                     child: Text('All Status'),
                   ),
-                  ...FollowUpStatus.values.map(
-                    (s) => DropdownMenuItem<FollowUpStatus?>(
+                  ...options.map(
+                    (s) => DropdownMenuItem<String?>(
                       value: s,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            margin: const EdgeInsets.only(right: 8),
-                            decoration: BoxDecoration(
-                              color: s.color,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          Text(s.label),
-                        ],
-                      ),
+                      child: Text(s, overflow: TextOverflow.ellipsis),
                     ),
                   ),
                 ],
@@ -405,19 +481,23 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
   // ── Filter tabs: All / Lead / Opportunity ──
   Widget _buildFilterTabs() {
     final selected = ref.watch(followUpFilterProvider).type;
-    final filters = <FollowUpType?>[null, ...FollowUpType.values];
+    const types = <String?>[null, 'Lead', 'Opportunity'];
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: Row(
-        children: filters.map((f) {
-          final isSelected = selected == f;
-          final label = f == null ? 'All' : f.label;
-          final activeColor = f == null ? AppColors.primary : f.color;
+        children: types.map((t) {
+          final isSelected = selected == t;
+          final label = t ?? 'All';
+          final activeColor =
+              t == 'Opportunity' ? AppColors.green : AppColors.primary;
+          final icon = t == 'Opportunity'
+              ? Icons.trending_up_rounded
+              : Icons.person_outline_rounded;
           return GestureDetector(
             onTap: () =>
-                ref.read(followUpFilterProvider.notifier).setType(f),
+                ref.read(followUpFilterProvider.notifier).setType(t),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               margin: const EdgeInsets.only(right: 8),
@@ -436,8 +516,8 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (f != null) ...[
-                    Icon(f.icon,
+                  if (t != null) ...[
+                    Icon(icon,
                         size: 14,
                         color: isSelected
                             ? activeColor
@@ -482,8 +562,11 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
   }
 
   // ── Follow-up card ──
-  Widget _buildCard(FollowUpItem item) {
-    final accent = item.type.color;
+  Widget _buildCard(NextFollowUp item) {
+    final isOpportunity = item.itemType.toLowerCase() == 'opportunity';
+    final accent = isOpportunity ? AppColors.green : AppColors.primary;
+    final statusColor = item.statusColor ?? AppColors.textSecondary;
+    final avatarColor = accent;
     return GestureDetector(
       onTap: () => _openDetail(item),
       child: Container(
@@ -513,16 +596,16 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: item.avatarColor.withOpacity(0.18),
+                      color: avatarColor.withOpacity(0.18),
                       borderRadius: BorderRadius.circular(13),
                     ),
                     child: Center(
                       child: Text(
-                        item.avatarInitials,
+                        item.initials,
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
-                          color: item.avatarColor,
+                          color: avatarColor,
                         ),
                       ),
                     ),
@@ -550,9 +633,9 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
                             const SizedBox(width: 4),
                             Flexible(
                               child: Text(
-                                item.companyName == null
-                                    ? item.contactName
-                                    : '${item.contactName} · ${item.companyName}',
+                                item.contactName.isEmpty
+                                    ? (item.lead.leadNo ?? '—')
+                                    : item.contactName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -563,10 +646,32 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
                             ),
                           ],
                         ),
+                        if (item.company != null) ...[
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              const Icon(Icons.business_rounded,
+                                  size: 13, color: AppColors.textSecondary),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  item.company!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                  _buildTag(item.type.label.toUpperCase(), accent,
+                  _buildTag(item.itemType.toUpperCase(), accent,
                       accent.withOpacity(0.12)),
                 ],
               ),
@@ -576,8 +681,8 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
               // Status tag
               Row(
                 children: [
-                  _buildTag(item.status.tagLabel, item.status.color,
-                      item.status.color.withOpacity(0.12)),
+                  _buildTag(item.statusLabel.toUpperCase(), statusColor,
+                      statusColor.withOpacity(0.12)),
                 ],
               ),
 
@@ -596,7 +701,7 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
                           : AppColors.textSecondary),
                   const SizedBox(width: 5),
                   Text(
-                    'Next: ${item.dueLabel}',
+                    _dueLabel(item.nextFollowUpAt),
                     style: TextStyle(
                       fontSize: 12,
                       color: item.isOverdue
@@ -651,8 +756,9 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
   //  Actions
   // ─────────────────────────────────────────────
   Future<void> _pickDate({required bool isFrom}) async {
-    final f = ref.read(followUpFilterProvider);
-    final initial = (isFrom ? f.fromDate : f.toDate) ?? DateTime.now();
+    final notifier = ref.read(followUpsApiProvider.notifier);
+    final initial =
+        (isFrom ? notifier.dateFrom : notifier.dateTo) ?? DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -660,27 +766,34 @@ class _FollowUpsScreenState extends ConsumerState<FollowUpsScreen> {
       lastDate: DateTime(2030, 12, 31),
     );
     if (picked == null) return;
-    final notifier = ref.read(followUpFilterProvider.notifier);
-    if (isFrom) {
-      notifier.setFromDate(picked);
-    } else {
-      notifier.setToDate(picked);
-    }
+    notifier.setDateRange(
+      from: isFrom ? picked : notifier.dateFrom,
+      to: isFrom ? notifier.dateTo : picked,
+    );
   }
 
-  void _openDetail(FollowUpItem item) {
-    if (item.lead != null) {
-      context.push(AppRoutes.leadDetail, extra: item.lead!);
-    } else if (item.opportunity != null) {
-      context.push(AppRoutes.opportunityDetail, extra: item.opportunity!);
+  void _openDetail(NextFollowUp item) {
+    if (item.isLead) {
+      context.push(AppRoutes.leadDetail, extra: item.lead);
     }
   }
 
   String _shortDate(DateTime d) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+    return '${_months[d.month - 1]} ${d.day}, ${d.year}';
   }
+
+  /// Human-readable due text shown on the card, e.g. "Jun 15, 2026 05:07 PM".
+  String _dueLabel(DateTime? utc) {
+    if (utc == null) return 'No date';
+    final d = utc.toLocal();
+    final hour12 = (d.hour % 12 == 0 ? 12 : d.hour % 12).toString().padLeft(2, '0');
+    final minute = d.minute.toString().padLeft(2, '0');
+    final period = d.hour < 12 ? 'AM' : 'PM';
+    return '${_months[d.month - 1]} ${d.day}, ${d.year} $hour12:$minute $period';
+  }
+
+  static const List<String> _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
 }

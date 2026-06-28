@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
+import '../../Leads/view/schedule_follow_up_sheet.dart';
+import '../data/opportunities_repository.dart';
+import '../model/opportunity_detail_model.dart';
 import '../model/opportunity_model.dart';
 import '../provider/opportunities_provider.dart';
 import '../provider/opportunity_detail_provider.dart';
@@ -37,8 +42,13 @@ class _OpportunityDetailScreenState
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
   }
+
+  /// The full detail bundle from `GET /opportunities/{id}`, watched so the
+  /// header and every tab fill in once it loads.
+  AsyncValue<OpportunityDetailBundle> get _bundle =>
+      ref.watch(opportunityDetailBundleProvider(_opp.id));
 
   @override
   void dispose() {
@@ -78,14 +88,6 @@ class _OpportunityDetailScreenState
             ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddMenu(context),
-        backgroundColor: AppColors.green,
-        elevation: 4,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
     );
   }
@@ -480,6 +482,47 @@ class _OpportunityDetailScreenState
     _showSnack('Opportunity marked as won 🎉');
   }
 
+  /// Opens the same Schedule Follow-up popup used on the Lead detail screen.
+  /// Follow-ups are lead-scoped on the backend, so it's keyed by the
+  /// opportunity's originating `lead_id`.
+  Future<void> _showScheduleFollowUpSheet() async {
+    final data = _bundle.asData?.value;
+
+    final result = await showModalBottomSheet<FollowUpFormResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ScheduleFollowUpSheet(
+        id: _opp.id,
+        color: AppColors.green,
+        initialCurrentUpdateId: data?.currentUpdateId,
+        initialNextActionId: data?.nextActionId,
+        initialRemark: data?.followupRemarks,
+        initialDate: data?.nextFollowupAt?.toLocal() ?? DateTime.now(),
+        onSubmit: ({
+          int? currentUpdateId,
+          int? nextActionId,
+          String? followupRemarks,
+          required String nextFollowUpAt,
+          required int interestScore,
+        }) =>
+            ref.read(opportunitiesRepositoryProvider).scheduleFollowUp(
+                  _opp.id,
+                  currentUpdateId: currentUpdateId,
+                  nextActionId: nextActionId,
+                  followupRemarks: followupRemarks,
+                  nextFollowUpAt: nextFollowUpAt,
+                  interestScore: interestScore,
+                ),
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    // Reload the detail bundle so the new follow-up (and timeline entry) show.
+    ref.invalidate(opportunityDetailBundleProvider(_opp.id));
+    _showSnack('Follow-up scheduled for ${_fmtDate(result.scheduleDate)}');
+  }
+
   Color _probabilityColor(int prob) => prob >= 70
       ? AppColors.green
       : prob >= 50
@@ -497,7 +540,7 @@ class _OpportunityDetailScreenState
             label: 'Call',
             bgColor: AppColors.primary.withOpacity(0.1),
             iconColor: AppColors.primary,
-            onTap: () => _showSnack('Calling ${_opp.contactName}...'),
+            onTap: _call,
           ),
           const SizedBox(width: 10),
           _ActionButton(
@@ -505,7 +548,7 @@ class _OpportunityDetailScreenState
             label: 'WhatsApp',
             bgColor: const Color(0xFF25D366).withOpacity(0.1),
             iconColor: const Color(0xFF25D366),
-            onTap: () => _showSnack('Opening WhatsApp...'),
+            onTap: _whatsapp,
           ),
           const SizedBox(width: 10),
           _ActionButton(
@@ -513,7 +556,7 @@ class _OpportunityDetailScreenState
             label: 'Email',
             bgColor: AppColors.leadFunnelContacted.withOpacity(0.1),
             iconColor: AppColors.leadFunnelContacted,
-            onTap: () => _showSnack('Composing email...'),
+            onTap: _email,
           ),
           const SizedBox(width: 10),
           _ActionButton(
@@ -521,16 +564,89 @@ class _OpportunityDetailScreenState
             label: 'SMS',
             bgColor: AppColors.red.withOpacity(0.1),
             iconColor: AppColors.red,
-            onTap: () => _showSnack('Opening SMS...'),
+            onTap: _sms,
           ),
         ],
       ),
     );
   }
 
+  // ── Quick Action handlers ─────────────────────────────────────────────────────
+
+  /// The contact phone: the server `lead.phone` when loaded, else the
+  /// navigation model's phone.
+  String? get _contactPhone {
+    final phone = _bundle.asData?.value.phone;
+    return (phone != null && phone.isNotEmpty) ? phone : _opp.phone;
+  }
+
+  /// The contact email from the loaded detail bundle.
+  String? get _contactEmail => _bundle.asData?.value.email;
+
+  /// Strips a phone string to digits/`+`, returning null if empty.
+  String? _digits(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final digits = raw.replaceAll(RegExp(r'[^0-9+]'), '');
+    return digits.isEmpty ? null : digits;
+  }
+
+  Future<void> _call() async {
+    final phone = _digits(_contactPhone);
+    if (phone == null) return _showSnack('No phone number for this contact.');
+    await _launch(Uri(scheme: 'tel', path: phone), 'phone dialer');
+  }
+
+  Future<void> _sms() async {
+    final phone = _digits(_contactPhone);
+    if (phone == null) return _showSnack('No phone number for this contact.');
+    await _launch(Uri(scheme: 'sms', path: phone), 'messaging app');
+  }
+
+  Future<void> _whatsapp() async {
+    final phone = _digits(_contactPhone);
+    if (phone == null) return _showSnack('No phone number for this contact.');
+    // wa.me requires the number without a leading '+' or spaces.
+    final waNumber = phone.replaceAll('+', '');
+    await _launch(Uri.parse('https://wa.me/$waNumber'), 'WhatsApp');
+  }
+
+  Future<void> _email() async {
+    final email = _contactEmail;
+    if (email == null || email.trim().isEmpty) {
+      return _showSnack('No email address for this contact.');
+    }
+    await _launch(Uri(scheme: 'mailto', path: email), 'email app');
+  }
+
+  /// Launches [uri] externally, showing a friendly message if it can't open.
+  /// Tries the external-application mode first, then the platform default.
+  Future<void> _launch(Uri uri, String target) async {
+    try {
+      var ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) {
+        ok = await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+      if (!ok && mounted) _showSnack('Could not open $target.');
+    } catch (_) {
+      if (mounted) _showSnack('Could not open $target.');
+    }
+  }
+
   // ── Contact Details Card ─────────────────────────────────────────────────────
   Widget _buildContactDetailsCard() {
     final opp = _opp;
+    final data = _bundle.asData?.value;
+    final assignees = data?.assignees ?? const <OpportunityAssignee>[];
+    final primaryAssignee = assignees.isNotEmpty ? assignees.first : null;
+    final assignedLabel = primaryAssignee?.name ?? 'Admin Owner';
+    final assignedSub = assignees.length > 1
+        ? '+${assignees.length - 1} more'
+        : (primaryAssignee?.designation ?? 'Sales Manager');
+    final email = data?.email;
+    final phone = (data?.phone?.isNotEmpty ?? false) ? data!.phone! : opp.phone;
+    final contactName = (data?.contactName?.isNotEmpty ?? false)
+        ? data!.contactName!
+        : opp.contactName;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -585,9 +701,25 @@ class _OpportunityDetailScreenState
             iconBg: AppColors.green.withOpacity(0.1),
             iconColor: AppColors.green,
             label: 'Contact',
-            value: opp.contactName,
+            value: contactName,
             isLink: false,
           ),
+          // Email (only when present)
+          if (email != null && email.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Divider(height: 0, color: AppColors.divider),
+            ),
+            _ContactRow(
+              icon: Icons.alternate_email_rounded,
+              iconBg: AppColors.leadFunnelContacted.withOpacity(0.1),
+              iconColor: AppColors.leadFunnelContacted,
+              label: 'Email',
+              value: email,
+              isLink: true,
+              onTap: _email,
+            ),
+          ],
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: Divider(height: 0, color: AppColors.divider),
@@ -598,9 +730,9 @@ class _OpportunityDetailScreenState
             iconBg: AppColors.primary.withOpacity(0.1),
             iconColor: AppColors.primary,
             label: 'Phone',
-            value: opp.phone,
+            value: phone,
             isLink: true,
-            onTap: () => _showSnack('Calling ${opp.phone}'),
+            onTap: _call,
           ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
@@ -612,8 +744,8 @@ class _OpportunityDetailScreenState
             iconBg: AppColors.leadFunnelContacted.withOpacity(0.1),
             iconColor: AppColors.leadFunnelContacted,
             label: 'Assigned To',
-            value: 'Admin Owner',
-            subValue: 'Sales Manager',
+            value: assignedLabel,
+            subValue: assignedSub,
             isLink: false,
           ),
           const SizedBox(height: 4),
@@ -626,6 +758,12 @@ class _OpportunityDetailScreenState
   }
 
   Widget _buildFollowUpBanner() {
+    final data = _bundle.asData?.value;
+    final followUpLabel = data?.nextFollowupAt != null
+        ? _fmtDate(data!.nextFollowupAt!)
+        : _opp.nextFollowUp;
+    final remarks = data?.followupRemarks;
+    final score = data?.interestScore;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 14),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -656,7 +794,7 @@ class _OpportunityDetailScreenState
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  _opp.nextFollowUp,
+                  followUpLabel,
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -666,12 +804,46 @@ class _OpportunityDetailScreenState
               ),
             ],
           ),
+          if (remarks != null && remarks.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.notes_rounded,
+                    size: 14, color: AppColors.green),
+                const SizedBox(width: 8),
+                Text(
+                  'Remarks: ',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    remarks,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textPrimary,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (score != null && score > 0) ...[
+            const SizedBox(height: 10),
+            _buildInterestScore(score),
+          ],
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
             height: 44,
             child: ElevatedButton.icon(
-              onPressed: () => _showSnack('Schedule follow-up'),
+              onPressed: _showScheduleFollowUpSheet,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.green,
                 foregroundColor: Colors.white,
@@ -696,7 +868,14 @@ class _OpportunityDetailScreenState
 
   // ── Tab Bar ───────────────────────────────────────────────────────────────────
   Widget _buildTabBar() {
-    final tabs = ['Information', 'Product', 'Timeline', 'Notes', 'Tasks'];
+    final tabs = [
+      'Information',
+      'Products',
+      'Quotes',
+      'Timeline',
+      'Notes',
+      'Tasks'
+    ];
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       height: 42,
@@ -741,10 +920,12 @@ class _OpportunityDetailScreenState
           case 1:
             return _buildProductTab();
           case 2:
-            return _buildTimelineTab();
+            return _buildQuotesTab();
           case 3:
-            return _buildNotesTab();
+            return _buildTimelineTab();
           case 4:
+            return _buildNotesTab();
+          case 5:
             return _buildTasksTab();
           default:
             return _buildInformationTab();
@@ -757,6 +938,15 @@ class _OpportunityDetailScreenState
     final stage = ref.watch(_detailProvider.select((s) => s.stage));
     final probability =
         ref.watch(_detailProvider.select((s) => s.probability));
+    final data = _bundle.asData?.value;
+    final dealValue = data?.expectedValue ?? _opp.value;
+    final owner = data?.assignees.isNotEmpty ?? false
+        ? data!.assignees.map((a) => a.name).join(', ')
+        : 'Admin Owner';
+    final nextFollowUp = data?.nextFollowupAt != null
+        ? _fmtDate(data!.nextFollowupAt!)
+        : _opp.nextFollowUp;
+    final source = data?.sourceName ?? _opp.source.label;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -817,7 +1007,7 @@ class _OpportunityDetailScreenState
                 ),
               ),
               const SizedBox(height: 14),
-              _InfoField(label: 'DEAL VALUE', value: _formatValue(_opp.value)),
+              _InfoField(label: 'DEAL VALUE', value: _formatValue(dealValue)),
               const SizedBox(height: 12),
               _InfoField(label: 'WIN PROBABILITY', value: '$probability%'),
               const SizedBox(height: 12),
@@ -826,6 +1016,32 @@ class _OpportunityDetailScreenState
           ),
         ),
         const SizedBox(height: 10),
+        // Lead Info
+        if (data != null) ...[
+          _SectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'LEAD INFO',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.green,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _InfoField(label: 'LEAD NO', value: data.leadNo),
+                const SizedBox(height: 12),
+                _InfoField(label: 'INTERESTED IN', value: data.interestedIn),
+                const SizedBox(height: 12),
+                _InfoField(label: 'CONTACT', value: data.contactName),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         // Classification
         _SectionCard(
           child: Column(
@@ -841,11 +1057,11 @@ class _OpportunityDetailScreenState
                 ),
               ),
               const SizedBox(height: 14),
-              _InfoField(label: 'SOURCE', value: _opp.source.label),
+              _InfoField(label: 'SOURCE', value: source),
               const SizedBox(height: 12),
-              _InfoField(label: 'OWNER', value: 'Admin Owner'),
+              _InfoField(label: 'OWNER', value: owner),
               const SizedBox(height: 12),
-              _InfoField(label: 'NEXT FOLLOW-UP', value: _opp.nextFollowUp),
+              _InfoField(label: 'NEXT FOLLOW-UP', value: nextFollowUp),
             ],
           ),
         ),
@@ -909,8 +1125,13 @@ class _OpportunityDetailScreenState
 
   // ── Product Tab ───────────────────────────────────────────────────────────────
   Widget _buildProductTab() {
-    final products = ref.watch(_detailProvider.select((s) => s.products));
-    final total = products.fold<double>(0, (sum, p) => sum + p.total);
+    // Locally-added (UI-only) products, plus the server-side `items`.
+    final localProducts = ref.watch(_detailProvider.select((s) => s.products));
+    final items = _bundle.asData?.value.items ?? const <OpportunityItem>[];
+    final localTotal = localProducts.fold<double>(0, (sum, p) => sum + p.total);
+    final itemsTotal = items.fold<double>(0, (sum, i) => sum + i.total);
+    final total = localTotal + itemsTotal;
+    final isEmpty = localProducts.isEmpty && items.isEmpty;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
@@ -967,7 +1188,7 @@ class _OpportunityDetailScreenState
               ],
             ),
             const SizedBox(height: 16),
-            if (products.isEmpty)
+            if (isEmpty)
               Center(
                 child: Column(
                   children: [
@@ -986,8 +1207,11 @@ class _OpportunityDetailScreenState
                 ),
               )
             else ...[
-              ...List.generate(products.length, (i) {
-                return _buildProductRow(products[i], i);
+              // Server-side line items.
+              ...items.map(_buildItemRow),
+              // Locally-added products (UI only).
+              ...List.generate(localProducts.length, (i) {
+                return _buildProductRow(localProducts[i], i);
               }),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 4),
@@ -1018,6 +1242,64 @@ class _OpportunityDetailScreenState
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// A read-only line item from the server (`items` array). Labelled by item id
+  /// since the API does not return a product name.
+  Widget _buildItemRow(OpportunityItem item) {
+    final qty = item.quantity == item.quantity.roundToDouble()
+        ? item.quantity.toInt().toString()
+        : item.quantity.toStringAsFixed(2);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.green.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.inventory_2_rounded,
+                color: AppColors.green, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Item #${item.itemId}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$qty × ${_formatValue(item.price)}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _formatValue(item.total),
+            style: GoogleFonts.poppins(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1097,266 +1379,652 @@ class _OpportunityDetailScreenState
     }
   }
 
-  Widget _buildTimelineTab() {
-    final events = [
-      _TimelineEvent(
-        icon: Icons.add_circle_outline_rounded,
-        title: 'Opportunity Created',
-        subtitle: 'Created from ${_opp.source.label} source',
-        time: '${_opp.timeAgo} ago',
-        color: AppColors.green,
-      ),
-      _TimelineEvent(
-        icon: Icons.assignment_ind_rounded,
-        title: 'Assigned',
-        subtitle: 'Assigned to Admin Owner',
-        time: '${_opp.timeAgo} ago',
-        color: AppColors.primary,
-      ),
-      _TimelineEvent(
-        icon: Icons.access_time_rounded,
-        title: 'Follow-up Scheduled',
-        subtitle: 'Next follow-up set for ${_opp.nextFollowUp}',
-        time: 'upcoming',
-        color: AppColors.leadFunnelContacted,
-      ),
-    ];
+  // ── Shared async helpers (used by Quotes / Timeline / Notes / Tasks) ──────────
+  Widget _tabLoading() => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(child: CircularProgressIndicator()),
+      );
 
+  Widget _tabError(Object error) {
+    final message = error is ApiException
+        ? error.message
+        : 'Could not load opportunity details.';
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        children: List.generate(events.length, (i) {
-          final e = events[i];
-          final isLast = i == events.length - 1;
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Center(
+        child: Column(
+          children: [
+            const Icon(Icons.cloud_off_rounded, color: AppColors.red, size: 34),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                  fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () =>
+                  ref.invalidate(opportunityDetailBundleProvider(_opp.id)),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: Text('Retry', style: GoogleFonts.poppins(fontSize: 13)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyTabState(IconData icon, String message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(icon, color: AppColors.textLight, size: 40),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                  fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tabSectionHeader(IconData icon, String title, int count,
+      {String? addLabel, VoidCallback? onAdd}) {
+    return Row(
+      children: [
+        Icon(icon, color: AppColors.green, size: 18),
+        const SizedBox(width: 8),
+        Text(
+          count > 0 ? '$title ($count)' : title,
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const Spacer(),
+        if (addLabel != null)
+          GestureDetector(
+            onTap: onAdd,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
                 children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: e.color.withOpacity(0.12),
-                      shape: BoxShape.circle,
+                  const Icon(Icons.add, color: AppColors.green, size: 14),
+                  const SizedBox(width: 4),
+                  Text(
+                    addLabel,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: AppColors.green,
+                      fontWeight: FontWeight.w600,
                     ),
-                    child: Icon(e.icon, color: e.color, size: 17),
                   ),
-                  if (!isLast)
-                    Container(
-                      width: 2,
-                      height: 40,
-                      color: AppColors.divider,
-                    ),
                 ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBackground,
-                      borderRadius: BorderRadius.circular(12),
-                      border:
-                          Border.all(color: AppColors.divider, width: 0.8),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── Quotes Tab ────────────────────────────────────────────────────────────────
+  Widget _buildQuotesTab() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: _bundle.when(
+        loading: _tabLoading,
+        error: (e, _) => _tabError(e),
+        data: (data) {
+          final quotes = data.quotations;
+          if (quotes.isEmpty) {
+            return _emptyTabState(Icons.request_quote_outlined,
+                'No quotations for this opportunity.');
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: quotes.map(_buildQuotationCard).toList(),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildQuotationCard(OpportunityQuotation q) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.divider, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.request_quote_rounded,
+                  color: AppColors.donutTeal, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                q.quotationNumber,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              if (q.isSelectedFinal)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.green.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'FINAL',
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.green,
+                      letterSpacing: 0.5,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  ),
+                ),
+            ],
+          ),
+          if (q.customerName != null && q.customerName!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              q.customerName!,
+              style: GoogleFonts.poppins(
+                  fontSize: 12, color: AppColors.textSecondary),
+            ),
+          ],
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: AppColors.divider),
+          const SizedBox(height: 10),
+          _quoteRow('Subtotal', _formatValue(q.subtotal)),
+          const SizedBox(height: 6),
+          _quoteRow('Tax', _formatValue(q.taxTotal)),
+          const SizedBox(height: 6),
+          _quoteRow('Grand Total', _formatValue(q.grandTotal), bold: true),
+          if (q.date != null || q.validUntil != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.event_rounded,
+                    size: 13, color: AppColors.textLight),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    [
+                      if (q.date != null) 'Issued ${_fmtDate(q.date!)}',
+                      if (q.validUntil != null)
+                        'Valid till ${_fmtDate(q.validUntil!)}',
+                    ].join('  •  '),
+                    style: GoogleFonts.poppins(
+                        fontSize: 11, color: AppColors.textLight),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _quoteRow(String label, String value, {bool bold = false}) {
+    return Row(
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: bold ? 14 : 13,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+            color: bold ? AppColors.textPrimary : AppColors.textSecondary,
+          ),
+        ),
+        const Spacer(),
+        Text(
+          value,
+          style: GoogleFonts.poppins(
+            fontSize: bold ? 15 : 13,
+            fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+            color: bold ? AppColors.green : AppColors.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Timeline Tab ──────────────────────────────────────────────────────────────
+  Widget _buildTimelineTab() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: _bundle.when(
+        loading: _tabLoading,
+        error: (e, _) => _tabError(e),
+        data: (data) {
+          final activities = data.activities;
+          if (activities.isEmpty) {
+            return _emptyTabState(Icons.history_rounded,
+                'No activity yet for this opportunity.');
+          }
+          return Column(
+            children: List.generate(activities.length, (i) {
+              final a = activities[i];
+              final isLast = i == activities.length - 1;
+              final cfg = _activityConfig(a.action);
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Column(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: cfg.$1.withOpacity(0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(cfg.$2, color: cfg.$1, size: 17),
+                      ),
+                      if (!isLast)
+                        Container(
+                            width: 2, height: 40, color: AppColors.divider),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.cardBackground,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: AppColors.divider, width: 0.8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              e.title,
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    a.actionLabel,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                if (a.createdAt != null)
+                                  Text(
+                                    _timeAgo(a.createdAt!),
+                                    style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        color: AppColors.textLight),
+                                  ),
+                              ],
+                            ),
+                            if (a.description.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                a.description,
+                                style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                    height: 1.4),
                               ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              e.time,
-                              style: GoogleFonts.poppins(
-                                  fontSize: 11, color: AppColors.textLight),
-                            ),
+                            ],
+                            if (a.userName != null &&
+                                a.userName!.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  const Icon(Icons.person_outline_rounded,
+                                      size: 12, color: AppColors.textLight),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    a.userName!,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          e.subtitle,
-                          style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: AppColors.textSecondary),
-                        ),
-                      ],
+                      ),
                     ),
+                  ),
+                ],
+              );
+            }),
+          );
+        },
+      ),
+    );
+  }
+
+  // ── Notes Tab ─────────────────────────────────────────────────────────────────
+  Widget _buildNotesTab() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: _bundle.when(
+        loading: _tabLoading,
+        error: (e, _) => _tabError(e),
+        data: (data) {
+          final notes = data.notes;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _tabSectionHeader(
+                  Icons.sticky_note_2_outlined, 'Notes', notes.length,
+                  addLabel: 'Add Note', onAdd: () => _showSnack('Add note')),
+              const SizedBox(height: 12),
+              if (notes.isEmpty)
+                _emptyTabState(Icons.notes_rounded,
+                    'No notes yet. Tap Add Note to get started.')
+              else
+                ...notes.map(_buildNoteCard),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildNoteCard(OpportunityNote note) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            note.content,
+            style: GoogleFonts.poppins(
+                fontSize: 13, color: AppColors.textPrimary, height: 1.4),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.person_outline_rounded,
+                  size: 12, color: AppColors.textLight),
+              const SizedBox(width: 4),
+              Text(
+                note.userName ?? 'Unknown',
+                style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary),
+              ),
+              const Spacer(),
+              if (note.createdAt != null)
+                Text(
+                  _timeAgo(note.createdAt!),
+                  style: GoogleFonts.poppins(
+                      fontSize: 11, color: AppColors.textLight),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Tasks Tab ─────────────────────────────────────────────────────────────────
+  Widget _buildTasksTab() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: _bundle.when(
+        loading: _tabLoading,
+        error: (e, _) => _tabError(e),
+        data: (data) {
+          final tasks = data.tasks;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _tabSectionHeader(Icons.task_alt_rounded, 'Tasks', tasks.length,
+                  addLabel: 'Add Task', onAdd: () => _showSnack('Add task')),
+              const SizedBox(height: 12),
+              if (tasks.isEmpty)
+                _emptyTabState(Icons.assignment_outlined,
+                    'No tasks linked to this opportunity.')
+              else
+                ...tasks.map(_buildTaskCard),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTaskCard(OpportunityTask task) {
+    final cfg = _taskStatusConfig(task.status);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  task.title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: cfg.$1.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  cfg.$2,
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: cfg.$1,
+                    letterSpacing: 0.3,
                   ),
                 ),
               ),
             ],
-          );
-        }),
+          ),
+          if (task.description != null && task.description!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              task.description!,
+              style: GoogleFonts.poppins(
+                  fontSize: 12, color: AppColors.textSecondary, height: 1.4),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (task.priority != null) ...[
+                Icon(Icons.flag_rounded,
+                    size: 12, color: _priorityColor(task.priority!)),
+                const SizedBox(width: 4),
+                Text(
+                  task.priority!.toUpperCase(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _priorityColor(task.priority!),
+                  ),
+                ),
+              ],
+              const Spacer(),
+              if (task.dueAt != null) ...[
+                const Icon(Icons.event_rounded,
+                    size: 12, color: AppColors.textLight),
+                const SizedBox(width: 4),
+                Text(
+                  'Due ${_fmtDate(task.dueAt!)}',
+                  style: GoogleFonts.poppins(
+                      fontSize: 11, color: AppColors.textLight),
+                ),
+              ],
+            ],
+          ),
+          if (task.assigneeName != null && task.assigneeName!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.person_outline_rounded,
+                    size: 12, color: AppColors.textLight),
+                const SizedBox(width: 4),
+                Text(
+                  task.assigneeName!,
+                  style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
 
-  Widget _buildNotesTab() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.divider, width: 0.8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.sticky_note_2_outlined,
-                    color: AppColors.green, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'Notes',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => _showSnack('Add note'),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: AppColors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.add,
-                            color: AppColors.green, size: 14),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Add Note',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            color: AppColors.green,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Center(
-              child: Column(
-                children: [
-                  Icon(Icons.notes_rounded,
-                      color: AppColors.textLight, size: 40),
-                  const SizedBox(height: 8),
-                  Text(
-                    'No notes yet. Tap Add Note to get started.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                        fontStyle: FontStyle.italic),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  /// (Color, label) for a task status code.
+  (Color, String) _taskStatusConfig(String? status) {
+    switch (status?.toLowerCase()) {
+      case 'completed':
+      case 'done':
+        return (AppColors.green, 'DONE');
+      case 'in_progress':
+        return (AppColors.primary, 'IN PROGRESS');
+      case 'backlog':
+        return (AppColors.textSecondary, 'BACKLOG');
+      case 'todo':
+        return (AppColors.leadFunnelContacted, 'TO DO');
+      default:
+        return (
+          AppColors.textSecondary,
+          (status ?? 'OPEN').toUpperCase(),
+        );
+    }
   }
 
-  Widget _buildTasksTab() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.divider, width: 0.8),
-        ),
-        child: Column(
+  Color _priorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high':
+        return AppColors.red;
+      case 'medium':
+        return const Color(0xFFFFB547);
+      case 'low':
+        return AppColors.green;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  /// Interest-score row: a label, a colour-coded percentage badge, and a thin
+  /// progress bar. Mirrors the lead detail screen.
+  Widget _buildInterestScore(int score) {
+    final clamped = score.clamp(0, 100);
+    final color = clamped < 40
+        ? AppColors.red
+        : clamped < 70
+            ? const Color(0xFFFFB547)
+            : AppColors.green;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                const Icon(Icons.task_alt_rounded,
-                    color: AppColors.green, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'Tasks',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => _showSnack('Add task'),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: AppColors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.add,
-                            color: AppColors.green, size: 14),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Add Task',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            color: AppColors.green,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+            const Icon(Icons.percent_rounded, size: 14, color: AppColors.green),
+            const SizedBox(width: 8),
+            Text(
+              'Interest Score: ',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
             ),
-            const SizedBox(height: 16),
-            Center(
-              child: Column(
-                children: [
-                  Icon(Icons.assignment_outlined,
-                      color: AppColors.textLight, size: 40),
-                  const SizedBox(height: 8),
-                  Text(
-                    'No tasks linked to this opportunity.',
-                    style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                        fontStyle: FontStyle.italic),
-                  ),
-                ],
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '$clamped%',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
               ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: clamped / 100,
+            minHeight: 6,
+            backgroundColor: AppColors.divider,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1370,6 +2038,62 @@ class _OpportunityDetailScreenState
     if (v >= 100000) return '₹${(v / 100000).toStringAsFixed(1)}L';
     if (v >= 1000) return '₹${(v / 1000).toStringAsFixed(0)}k';
     return '₹${v.toStringAsFixed(2)}';
+  }
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+
+  /// e.g. "Jun 24, 2026, 5:05 PM" — for the follow-up banner / quotation dates.
+  String _fmtDate(DateTime dtUtc) {
+    final dt = dtUtc.toLocal();
+    final h = dt.hour > 12
+        ? dt.hour - 12
+        : dt.hour == 0
+            ? 12
+            : dt.hour;
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '${_months[dt.month - 1]} ${dt.day}, ${dt.year}, $h:$min $ampm';
+  }
+
+  /// Short "x ago" label for timeline / note timestamps.
+  String _timeAgo(DateTime dtUtc) {
+    final diff = DateTime.now().difference(dtUtc.toLocal());
+    if (diff.inDays >= 7) return '${diff.inDays ~/ 7}w ago';
+    if (diff.inDays >= 1) return '${diff.inDays}d ago';
+    if (diff.inHours >= 1) return '${diff.inHours}h ago';
+    if (diff.inMinutes >= 1) return '${diff.inMinutes}m ago';
+    return 'just now';
+  }
+
+  /// Picks an icon + color for an activity based on its action code.
+  (Color, IconData) _activityConfig(String action) {
+    switch (action) {
+      case 'created':
+      case 'created_from_conversion':
+        return (AppColors.green, Icons.add_circle_outline_rounded);
+      case 'assignment':
+        return (AppColors.primary, Icons.assignment_ind_rounded);
+      case 'followup_scheduled':
+        return (AppColors.leadFunnelContacted, Icons.access_time_rounded);
+      case 'note_added':
+        return (const Color(0xFFFFB547), Icons.sticky_note_2_outlined);
+      case 'priority_changed':
+        return (AppColors.red, Icons.local_fire_department_rounded);
+      case 'status_change':
+      case 'stage_updated':
+        return (AppColors.primary, Icons.swap_horiz_rounded);
+      case 'won':
+        return (AppColors.leadFunnelWon, Icons.emoji_events_rounded);
+      case 'quotation_created':
+        return (AppColors.donutTeal, Icons.request_quote_outlined);
+      case 'updated':
+        return (AppColors.primary, Icons.edit_outlined);
+      default:
+        return (AppColors.textSecondary, Icons.circle_notifications_outlined);
+    }
   }
 
   void _showSnack(String msg) {
@@ -1397,23 +2121,6 @@ class _OpportunityDetailScreenState
               Icons.archive_outlined, 'Archive', AppColors.textSecondary),
           _MenuItem(
               Icons.delete_outline_rounded, 'Delete Opportunity', AppColors.red),
-        ],
-        onSelected: (label) => _showSnack(label),
-      ),
-    );
-  }
-
-  void _showAddMenu(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _MenuSheet(
-        items: [
-          _MenuItem(Icons.task_alt_rounded, 'Add Task', AppColors.green),
-          _MenuItem(
-              Icons.sticky_note_2_outlined, 'Add Note', AppColors.primary),
-          _MenuItem(Icons.calendar_month_rounded, 'Schedule Follow-up',
-              AppColors.leadFunnelContacted),
         ],
         onSelected: (label) => _showSnack(label),
       ),
@@ -1675,24 +2382,6 @@ class _SectionCard extends StatelessWidget {
       child: child,
     );
   }
-}
-
-// ── Timeline Event ────────────────────────────────────────────────────────────
-
-class _TimelineEvent {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String time;
-  final Color color;
-
-  _TimelineEvent({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.time,
-    required this.color,
-  });
 }
 
 // ── Menu Sheet ────────────────────────────────────────────────────────────────

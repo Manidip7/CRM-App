@@ -42,8 +42,11 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
     _customerCompanyController =
         TextEditingController(text: q.companyName ?? '');
     _notesController = TextEditingController(text: q.notes);
-    // Seed the reactive form state from the quotation being edited.
-    ref.read(editQuotationFormProvider.notifier).seed(q);
+    // Seed the reactive form state after the first frame — modifying a provider
+    // during initState/build throws in Riverpod.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(editQuotationFormProvider.notifier).seed(q);
+    });
   }
 
   @override

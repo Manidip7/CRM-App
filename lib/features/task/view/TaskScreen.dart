@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../model/TaskStatus.dart';
-import '../provider/task_provider.dart';
+import '../model/agenda_model.dart';
+import '../provider/agenda_provider.dart';
 
 
 class TaskScreen extends ConsumerStatefulWidget {
@@ -17,41 +19,14 @@ class TaskScreen extends ConsumerStatefulWidget {
 }
 
 class _TaskScreenState extends ConsumerState<TaskScreen> {
-  List<TaskModel> get _tasks => ref.read(taskListProvider).tasks;
-
-  List<TaskModel> get _overdue =>
-      _tasks.where((t) => t.status == TaskStatus.overdue).toList();
-  List<TaskModel> get _dueToday =>
-      _tasks.where((t) => t.status == TaskStatus.dueToday).toList();
-  List<TaskModel> get _upcoming =>
-      _tasks.where((t) => t.status == TaskStatus.upcoming).toList();
-  List<TaskModel> get _completed =>
-      _tasks.where((t) => t.status == TaskStatus.completed).toList();
-
-  int get _total => _tasks.length;
-
-  int get _selectedTab => ref.read(taskListProvider).selectedTab;
-
-  void _openCreateTask() async {
-    // final result = await Navigator.push<TaskModel>(
-    //   context,
-    //   MaterialPageRoute(builder: (_) => const CreateTaskScreen()),
-    // );
-    // if (result != null) {
-    //   ref.read(taskListProvider.notifier).addTask(result);
-    // }
+  void _openCreateTask() {
+    // Create-task flow not wired yet.
   }
-
-  void _markComplete(TaskModel task) =>
-      ref.read(taskListProvider.notifier).markComplete(task);
-
-  void _deleteTask(TaskModel task) =>
-      ref.read(taskListProvider.notifier).deleteTask(task);
 
   @override
   Widget build(BuildContext context) {
-    // Watch so the whole subtree rebuilds when tasks/tab change.
-    ref.watch(taskListProvider);
+    final view = ref.watch(agendaViewProvider);
+    final agendaAsync = ref.watch(agendaProvider(view));
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -59,51 +34,31 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
           children: [
             _buildHeader(),
             Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 12),
-                    _buildTabToggle(),
-                    const SizedBox(height: 16),
-                    _buildTaskListButton(),
-                    const SizedBox(height: 16),
-                    _buildTaskOverviewCard(),
-                    const SizedBox(height: 20),
-                    if (_overdue.isNotEmpty) ...[
-                      _buildSectionHeader(
-                        'ATTENTION NEEDED (OVERDUE)',
-                        AppColors.red,
+              child: RefreshIndicator(
+                color: AppColors.primary,
+                onRefresh: () async => ref.refresh(agendaProvider(view).future),
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics()),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 12),
+                      _buildTabToggle(view),
+                      const SizedBox(height: 16),
+                      _buildTaskListButton(),
+                      const SizedBox(height: 16),
+                      agendaAsync.when(
+                        loading: () => const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 60),
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                        error: (e, _) => _buildError(e, view),
+                        data: _buildAgenda,
                       ),
-                      const SizedBox(height: 10),
-                      ..._overdue.map((t) => _buildTaskCard(t)),
-                      const SizedBox(height: 20),
                     ],
-                    _buildSectionHeader('DUE TODAY', AppColors.primary),
-                    const SizedBox(height: 10),
-                    if (_dueToday.isEmpty)
-                      _buildEmptyState()
-                    else
-                      ..._dueToday.map((t) => _buildTaskCard(t)),
-                    const SizedBox(height: 20),
-                    if (_upcoming.isNotEmpty) ...[
-                      _buildSectionHeader('UPCOMING', AppColors.green),
-                      const SizedBox(height: 10),
-                      ..._upcoming.map((t) => _buildTaskCard(t)),
-                      const SizedBox(height: 20),
-                    ],
-                    if (_completed.isNotEmpty) ...[
-                      _buildSectionHeader(
-                          'COMPLETED', AppColors.textSecondary),
-                      const SizedBox(height: 10),
-                      ..._completed.map((t) => _buildTaskCard(t)),
-                      const SizedBox(height: 20),
-                    ],
-                    _buildProTipCard(),
-                    const SizedBox(height: 20),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -116,6 +71,76 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: const Icon(Icons.add, color: Colors.white, size: 28),
+      ),
+    );
+  }
+
+  // ── Agenda content (data state) ───────────────────────────────────────────────
+  Widget _buildAgenda(AgendaBundle bundle) {
+    final overdue = bundle.overdue;
+    final today = bundle.today;
+    final upcoming = bundle.upcoming;
+    final completed = bundle.completed;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTaskOverviewCard(bundle),
+        const SizedBox(height: 20),
+        if (overdue.isNotEmpty) ...[
+          _buildSectionHeader('ATTENTION NEEDED (OVERDUE)', AppColors.red),
+          const SizedBox(height: 10),
+          ...overdue.map(_buildTaskCard),
+          const SizedBox(height: 20),
+        ],
+        _buildSectionHeader('DUE TODAY', AppColors.primary),
+        const SizedBox(height: 10),
+        if (today.isEmpty)
+          _buildEmptyState()
+        else
+          ...today.map(_buildTaskCard),
+        const SizedBox(height: 20),
+        if (upcoming.isNotEmpty) ...[
+          _buildSectionHeader('UPCOMING', AppColors.green),
+          const SizedBox(height: 10),
+          ...upcoming.map(_buildTaskCard),
+          const SizedBox(height: 20),
+        ],
+        if (completed.isNotEmpty) ...[
+          _buildSectionHeader('COMPLETED', AppColors.textSecondary),
+          const SizedBox(height: 10),
+          ...completed.map(_buildTaskCard),
+          const SizedBox(height: 20),
+        ],
+        _buildProTipCard(),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _buildError(Object error, String view) {
+    final message =
+        error is ApiException ? error.message : 'Could not load agenda.';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
+      child: Center(
+        child: Column(
+          children: [
+            const Icon(Icons.cloud_off_rounded, color: AppColors.red, size: 36),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                  fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () => ref.invalidate(agendaProvider(view)),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: Text('Retry', style: GoogleFonts.poppins(fontSize: 13)),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -211,7 +236,7 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
     );
   }
 
-  Widget _buildTabToggle() {
+  Widget _buildTabToggle(String view) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
@@ -229,20 +254,21 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
         children: [
           _TabButton(
             label: 'My Tasks',
-            isSelected: _selectedTab == 0,
-            onTap: () => ref.read(taskListProvider.notifier).selectTab(0),
+            isSelected: view == 'my',
+            onTap: () => ref.read(agendaViewProvider.notifier).set('my'),
           ),
           _TabButton(
             label: 'Team View',
-            isSelected: _selectedTab == 1,
-            onTap: () => ref.read(taskListProvider.notifier).selectTab(1),
+            isSelected: view == 'team',
+            onTap: () => ref.read(agendaViewProvider.notifier).set('team'),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTaskOverviewCard() {
+  Widget _buildTaskOverviewCard(AgendaBundle bundle) {
+    final counts = bundle.counts;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -279,7 +305,7 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  'Total: $_total',
+                  'Total: ${counts.total}',
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -291,7 +317,7 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
           ),
           const SizedBox(height: 14),
           // Stacked progress bar
-          _buildStackedBar(),
+          _buildStackedBar(counts),
           const SizedBox(height: 16),
           // Legend grid
           Row(
@@ -300,14 +326,14 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                 child: _LegendItem(
                   color: AppColors.red,
                   label: 'Overdue',
-                  count: _overdue.length,
+                  count: counts.overdue,
                 ),
               ),
               Expanded(
                 child: _LegendItem(
                   color: AppColors.primary,
                   label: 'Due Today',
-                  count: _dueToday.length,
+                  count: counts.today,
                 ),
               ),
             ],
@@ -319,14 +345,14 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                 child: _LegendItem(
                   color: AppColors.green,
                   label: 'Upcoming',
-                  count: _upcoming.length,
+                  count: counts.upcoming,
                 ),
               ),
               Expanded(
                 child: _LegendItem(
                   color: AppColors.textLight,
                   label: 'Completed',
-                  count: _completed.length,
+                  count: counts.completed,
                 ),
               ),
             ],
@@ -336,32 +362,32 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
     );
   }
 
-  Widget _buildStackedBar() {
-    final total = _total == 0 ? 1 : _total;
+  Widget _buildStackedBar(AgendaCounts counts) {
+    final total = counts.total == 0 ? 1 : counts.total;
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: SizedBox(
         height: 14,
         child: Row(
           children: [
-            if (_overdue.isNotEmpty)
+            if (counts.overdue > 0)
               Flexible(
-                flex: _overdue.length * 100 ~/ total,
+                flex: counts.overdue * 100 ~/ total,
                 child: Container(color: AppColors.red),
               ),
-            if (_dueToday.isNotEmpty)
+            if (counts.today > 0)
               Flexible(
-                flex: _dueToday.length * 100 ~/ total,
+                flex: counts.today * 100 ~/ total,
                 child: Container(color: AppColors.primary),
               ),
-            if (_upcoming.isNotEmpty)
+            if (counts.upcoming > 0)
               Flexible(
-                flex: _upcoming.length * 100 ~/ total,
+                flex: counts.upcoming * 100 ~/ total,
                 child: Container(color: AppColors.green),
               ),
-            if (_completed.isNotEmpty)
+            if (counts.completed > 0)
               Flexible(
-                flex: _completed.length * 100 ~/ total,
+                flex: counts.completed * 100 ~/ total,
                 child: Container(color: AppColors.textLight),
               ),
             // Fill remainder
@@ -397,9 +423,9 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
     );
   }
 
-  Widget _buildTaskCard(TaskModel task) {
-    final isOverdue = task.status == TaskStatus.overdue;
-    final isCompleted = task.status == TaskStatus.completed;
+  Widget _buildTaskCard(AgendaTask task) {
+    final isOverdue = task.group == TaskStatus.overdue;
+    final isCompleted = task.group == TaskStatus.completed;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -408,11 +434,7 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
         borderRadius: BorderRadius.circular(14),
         border: Border(
           left: BorderSide(
-            color: isOverdue
-                ? AppColors.red
-                : isCompleted
-                    ? AppColors.green
-                    : AppColors.primary,
+            color: task.group.color,
             width: 3.5,
           ),
         ),
@@ -447,48 +469,36 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                     ),
                   ),
                 ),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert,
-                      color: AppColors.textSecondary, size: 20),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: 'complete',
-                      child: Row(children: [
-                        const Icon(Icons.check_circle_outline,
-                            color: AppColors.green, size: 18),
-                        const SizedBox(width: 8),
-                        Text('Mark Complete',
-                            style: GoogleFonts.poppins(fontSize: 13)),
-                      ]),
+                if (task.priority != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _priorityColor(task.priority!).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Row(children: [
-                        const Icon(Icons.delete_outline,
-                            color: AppColors.red, size: 18),
-                        const SizedBox(width: 8),
-                        Text('Delete',
-                            style: GoogleFonts.poppins(fontSize: 13)),
-                      ]),
+                    child: Text(
+                      task.priority!.toUpperCase(),
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: _priorityColor(task.priority!),
+                        letterSpacing: 0.3,
+                      ),
                     ),
-                  ],
-                  onSelected: (val) {
-                    if (val == 'complete') _markComplete(task);
-                    if (val == 'delete') _deleteTask(task);
-                  },
-                ),
+                  ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Next Action: ${task.nextAction}. Remark: ${task.remark}',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textSecondary,
+            if (task.description != null && task.description!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                task.description!,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
               ),
-            ),
+            ],
             const SizedBox(height: 10),
             Row(
               children: [
@@ -499,17 +509,17 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  _formatDate(task.dueDate),
+                  task.dueAt != null ? _formatDate(task.dueAt!) : 'No due date',
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: isOverdue ? AppColors.red : AppColors.textSecondary,
                   ),
                 ),
-                if (task.leadName != null) ...[
+                if (task.taskableTitle != null &&
+                    task.taskableTitle!.isNotEmpty) ...[
                   const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: () {},
+                  Flexible(
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
@@ -525,12 +535,15 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                           const Icon(Icons.open_in_new,
                               size: 11, color: AppColors.primary),
                           const SizedBox(width: 4),
-                          Text(
-                            'Lead: ${task.leadName}',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.primary,
+                          Flexible(
+                            child: Text(
+                              '${task.linkedLabel}: ${task.taskableTitle}',
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.primary,
+                              ),
                             ),
                           ),
                         ],
@@ -540,6 +553,25 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                 ],
               ],
             ),
+            if (task.assigneeName != null &&
+                task.assigneeName!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.person_outline_rounded,
+                      size: 12, color: AppColors.textLight),
+                  const SizedBox(width: 4),
+                  Text(
+                    task.assigneeName!,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -685,7 +717,21 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
     );
   }
 
-  String _formatDate(DateTime dt) {
+  Color _priorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'high':
+        return AppColors.red;
+      case 'medium':
+        return AppColors.primary;
+      case 'low':
+        return AppColors.green;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  String _formatDate(DateTime dtUtc) {
+    final dt = dtUtc.toLocal();
     final months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'

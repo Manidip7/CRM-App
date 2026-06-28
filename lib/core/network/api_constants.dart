@@ -46,9 +46,21 @@ class ApiConstants {
   // Opportunities
   static const String opportunities = '/opportunities';
   static String opportunityDetail(String id) => '/opportunities/$id';
+  static String opportunityFollowup(String id) => '/opportunities/$id/followup';
 
   // Tasks
   static const String tasks = '/tasks';
+  static const String agenda = '/agenda';
+
+  // Follow-ups
+  static const String nextFollowups = '/next-followups';
+
+  // Customers
+  static const String customers = '/customers';
+
+  // Quotations
+  static const String quotations = '/quotations';
+  static String quotationDownload(String id) => '/quotations/$id/download';
 
   // Dashboard
   static const String dashboard = '/dashboard';

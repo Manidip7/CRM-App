@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/quotations_repository.dart';
 import '../model/quotation_model.dart';
 
 /// Special selection used by the status dropdown. It carries either a concrete
@@ -91,28 +92,127 @@ final quotationFiltersExpandedProvider =
     NotifierProvider<QuotationFiltersExpanded, bool>(
         QuotationFiltersExpanded.new);
 
-/// Holds the (mutable) master list of quotations so cards can be deleted.
-class QuotationsNotifier extends Notifier<List<QuotationModel>> {
+/// State for the API-backed Quotations list: the loaded pages plus paginator
+/// info and loading / error flags.
+class QuotationsState {
+  final List<QuotationModel> items;
+  final int currentPage;
+  final int lastPage;
+  final int total;
+  final bool isLoading;
+  final bool isLoadingMore;
+  final Object? error;
+
+  const QuotationsState({
+    this.items = const [],
+    this.currentPage = 1,
+    this.lastPage = 1,
+    this.total = 0,
+    this.isLoading = true,
+    this.isLoadingMore = false,
+    this.error,
+  });
+
+  bool get hasMore => currentPage < lastPage;
+
+  QuotationsState copyWith({
+    List<QuotationModel>? items,
+    int? currentPage,
+    int? lastPage,
+    int? total,
+    bool? isLoading,
+    bool? isLoadingMore,
+    Object? error,
+    bool clearError = false,
+  }) {
+    return QuotationsState(
+      items: items ?? this.items,
+      currentPage: currentPage ?? this.currentPage,
+      lastPage: lastPage ?? this.lastPage,
+      total: total ?? this.total,
+      isLoading: isLoading ?? this.isLoading,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      error: clearError ? null : (error ?? this.error),
+    );
+  }
+}
+
+/// Loads `GET /quotations` page by page (replace on page 1, append after) and
+/// holds the list so cards can be deleted / updated locally.
+class QuotationsNotifier extends Notifier<QuotationsState> {
   @override
-  List<QuotationModel> build() => QuotationModel.sampleQuotations();
+  QuotationsState build() {
+    Future.microtask(() => _load(1));
+    return const QuotationsState(isLoading: true);
+  }
 
-  void delete(String id) =>
-      state = state.where((q) => q.id != id).toList();
+  Future<void> _load(int page) async {
+    final result =
+        await ref.read(quotationsRepositoryProvider).getQuotations(page: page);
+    result.when(
+      success: (data) {
+        state = state.copyWith(
+          items: page == 1 ? data.items : [...state.items, ...data.items],
+          currentPage: data.currentPage,
+          lastPage: data.lastPage,
+          total: data.total,
+          isLoading: false,
+          isLoadingMore: false,
+          clearError: true,
+        );
+      },
+      failure: (e) {
+        state = state.copyWith(
+            isLoading: false, isLoadingMore: false, error: e);
+      },
+    );
+  }
 
-  /// Replaces the quotation sharing [updated]'s id with the new version.
-  void update(QuotationModel updated) => state = [
-        for (final q in state) if (q.id == updated.id) updated else q,
-      ];
+  /// Fetches and appends the next page. No-op while loading or on the last page.
+  Future<void> loadMore() async {
+    if (state.isLoading || state.isLoadingMore || !state.hasMore) return;
+    state = state.copyWith(isLoadingMore: true);
+    await _load(state.currentPage + 1);
+  }
+
+  /// Reloads from page 1.
+  Future<void> refresh() async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    await _load(1);
+  }
+
+  void delete(String id) => state = state.copyWith(
+        items: state.items.where((q) => q.id != id).toList(),
+        total: state.total > 0 ? state.total - 1 : 0,
+      );
+
+  /// Upserts [updated]: replaces the quotation sharing its id, or prepends it to
+  /// the list when no match exists (a newly created quote). Note: this is a
+  /// local change only — there is no create/update API call yet, so it is lost
+  /// on the next refresh.
+  void update(QuotationModel updated) {
+    final exists = state.items.any((q) => q.id == updated.id);
+    if (exists) {
+      state = state.copyWith(items: [
+        for (final q in state.items) if (q.id == updated.id) updated else q,
+      ]);
+    } else {
+      state = state.copyWith(
+        items: [updated, ...state.items],
+        total: state.total + 1,
+      );
+    }
+  }
 }
 
 final quotationsProvider =
-    NotifierProvider<QuotationsNotifier, List<QuotationModel>>(
+    NotifierProvider<QuotationsNotifier, QuotationsState>(
         QuotationsNotifier.new);
 
 /// Quotations after applying every active filter, newest first.
 final filteredQuotationsProvider = Provider<List<QuotationModel>>((ref) {
   final f = ref.watch(quotationFilterProvider);
-  final items = ref.watch(quotationsProvider);
+  final items = ref.watch(quotationsProvider).items;
   final q = f.search.trim().toLowerCase();
 
   final result = items.where((item) {

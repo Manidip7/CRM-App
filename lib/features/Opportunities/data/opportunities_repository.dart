@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -5,6 +6,7 @@ import '../../../core/network/api_constants.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_result.dart';
 import '../../../core/network/network_providers.dart';
+import '../model/opportunity_detail_model.dart';
 import '../model/opportunity_model.dart';
 
 /// One page of opportunities plus the Laravel paginator metadata.
@@ -46,6 +48,58 @@ class OpportunitiesRepository {
         if (search != null && search.isNotEmpty) 'search': search,
       },
       decoder: _decodePage,
+    );
+  }
+
+  /// GET /opportunities/{id} → the full detail bundle (record fields plus its
+  /// nested assignees, items, activities, tasks, quotations and notes).
+  Future<ApiResult<OpportunityDetailBundle>> getOpportunityDetail(String id) {
+    return _api.get<OpportunityDetailBundle>(
+      ApiConstants.opportunityDetail(id),
+      decoder: (json) {
+        final map = json is Map && json['data'] is Map ? json['data'] : json;
+        if (map is! Map) {
+          throw ApiException.unexpected(
+              'Opportunity detail response had no "data" object.');
+        }
+        return OpportunityDetailBundle.fromJson(map.cast<String, dynamic>());
+      },
+    );
+  }
+
+  /// POST /opportunities/{id}/followup — schedules the next follow-up for an
+  /// opportunity. Sent as an `x-www-form-urlencoded` body. [nextFollowUpAt] must
+  /// already be formatted as `yyyy-MM-dd HH:mm:ss`.
+  Future<ApiResult<void>> scheduleFollowUp(
+    String id, {
+    int? currentUpdateId,
+    int? nextActionId,
+    String? followupRemarks,
+    required String nextFollowUpAt,
+    required int interestScore,
+  }) {
+    return _api.post<void>(
+      ApiConstants.opportunityFollowup(id),
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+      data: {
+        if (currentUpdateId != null) 'current_update_id': currentUpdateId,
+        if (nextActionId != null) 'next_action_id': nextActionId,
+        if (followupRemarks != null && followupRemarks.isNotEmpty)
+          'followup_remarks': followupRemarks,
+        'next_followup_at': nextFollowUpAt,
+        'interest_score': interestScore,
+      },
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message:
+                json['message'] as String? ?? 'Could not schedule follow-up.',
+            raw: json,
+          );
+        }
+        return null;
+      },
     );
   }
 

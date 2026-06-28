@@ -1,9 +1,17 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 
+import '../../../core/network/api_exception.dart';
+import '../../../core/platform/downloads_saver.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
+import '../data/quotations_repository.dart';
 import '../../Opportunities/model/opportunity_model.dart';
 import '../../Opportunities/provider/opportunities_provider.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
@@ -22,15 +30,32 @@ class QuotationsScreen extends ConsumerStatefulWidget {
 
 class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
+      ref.read(quotationsProvider.notifier).loadMore();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final apiState = ref.watch(quotationsProvider);
     final list = ref.watch(filteredQuotationsProvider);
 
     // Back button → return to the Dashboard overview tab instead of exiting.
@@ -42,11 +67,21 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _onAdd,
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text(
+            'New Quote',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
         body: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(),
+              _buildHeader(apiState.total),
               _buildSearchRow(),
               AnimatedSize(
                 duration: const Duration(milliseconds: 200),
@@ -56,16 +91,7 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
                     ? _buildDateAndStatusRow()
                     : const SizedBox(width: double.infinity),
               ),
-              Expanded(
-                child: list.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                        itemCount: list.length,
-                        itemBuilder: (ctx, i) => _buildCard(list[i]),
-                      ),
-              ),
+              Expanded(child: _buildBody(apiState, list)),
             ],
           ),
         ),
@@ -73,8 +99,79 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
     );
   }
 
+  Widget _buildBody(QuotationsState apiState, List<QuotationModel> list) {
+    // First-page load.
+    if (apiState.isLoading && apiState.items.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    // First-page error.
+    if (apiState.error != null && apiState.items.isEmpty) {
+      return _buildError(apiState.error!);
+    }
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: () => ref.read(quotationsProvider.notifier).refresh(),
+      child: list.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  child: _buildEmptyState(),
+                ),
+              ],
+            )
+          : ListView.builder(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics()),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+              itemCount: list.length + (apiState.hasMore ? 1 : 0),
+              itemBuilder: (ctx, i) {
+                if (i >= list.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                return _buildCard(list[i]);
+              },
+            ),
+    );
+  }
+
+  Widget _buildError(Object error) {
+    final message =
+        error is ApiException ? error.message : 'Could not load quotations.';
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.cloud_off_rounded, color: AppColors.red, size: 40),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 14, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () => ref.read(quotationsProvider.notifier).refresh(),
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Retry', style: TextStyle(fontSize: 14)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Header ──
-  Widget _buildHeader() {
+  Widget _buildHeader(int total) {
     final list = ref.watch(filteredQuotationsProvider);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
@@ -121,7 +218,7 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        '${list.length}',
+                        total > 0 ? '$total' : '${list.length}',
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -524,8 +621,8 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
               children: [
                 _metaChip(Icons.tag_rounded, item.number),
                 const SizedBox(width: 8),
-                _metaChip(Icons.inventory_2_outlined,
-                    '${item.effectiveItemCount} item${item.effectiveItemCount == 1 ? '' : 's'}'),
+                // _metaChip(Icons.inventory_2_outlined,
+                //     '${item.effectiveItemCount} item${item.effectiveItemCount == 1 ? '' : 's'}'),
                 const Spacer(),
                 Text(
                   item.amountLabel,
@@ -656,6 +753,24 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
   // ─────────────────────────────────────────────
   //  Actions
   // ─────────────────────────────────────────────
+  /// Opens the quotation form with a fresh, blank quote to create a new one.
+  void _onAdd() {
+    final now = DateTime.now();
+    final blank = QuotationModel(
+      id: 'new-${now.millisecondsSinceEpoch}',
+      number: '',
+      title: '',
+      clientName: '',
+      amount: 0,
+      itemCount: 0,
+      status: QuotationStatus.draft,
+      createdDate: now,
+      validUntil: now.add(const Duration(days: 30)),
+      currency: '₹',
+    );
+    context.push(AppRoutes.editQuotation, extra: blank);
+  }
+
   Future<void> _pickDate({required bool isFrom}) async {
     final f = ref.read(quotationFilterProvider);
     final initial = (isFrom ? f.fromDate : f.toDate) ?? DateTime.now();
@@ -674,9 +789,69 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
     }
   }
 
-  void _onDownload(QuotationModel item) {
+  Future<void> _onDownload(QuotationModel item) async {
     _toast('Downloading ${item.number}...');
+    final result =
+        await ref.read(quotationsRepositoryProvider).downloadQuotation(item.id);
+    if (!mounted) return;
+    await result.when(
+      success: (file) async {
+        if (file.bytes.isEmpty) {
+          _toast('Downloaded file was empty');
+          return;
+        }
+        final bytes = Uint8List.fromList(file.bytes);
+        final filename = _ensurePdf(file.filename);
+
+        // 1) Write a private copy and open it in the system PDF viewer.
+        String? viewPath;
+        try {
+          viewPath = await _saveForViewing(bytes, filename);
+          await OpenFilex.open(viewPath, type: 'application/pdf');
+        } catch (_) {
+          // Ignore — we still try to save a public copy and report below.
+        }
+
+        // 2) Save a copy to the public Downloads folder.
+        String? publicPath;
+        try {
+          publicPath = await DownloadsSaver.saveToDownloads(
+            bytes: bytes,
+            filename: filename,
+          );
+        } on PlatformException catch (e) {
+          publicPath = null;
+          if (mounted) _toast('Could not save to Downloads: ${e.message}');
+        }
+
+        if (!mounted) return;
+        if (publicPath != null) {
+          _toast('Saved to $publicPath');
+        } else if (viewPath != null) {
+          _toast('Saved to $viewPath');
+        } else {
+          _toast('Could not save the file');
+        }
+      },
+      failure: (e) async => _toast(e.message),
+    );
   }
+
+  /// Writes [bytes] to a private app directory so the file can be opened by the
+  /// system PDF viewer, and returns the saved path.
+  Future<String> _saveForViewing(Uint8List bytes, String filename) async {
+    final dir = Platform.isAndroid
+        ? (await getExternalStorageDirectory() ??
+            await getApplicationDocumentsDirectory())
+        : await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  /// Ensures the file name ends with `.pdf` so the viewer picks the right app.
+  String _ensurePdf(String name) =>
+      name.toLowerCase().endsWith('.pdf') ? name : '$name.pdf';
 
   void _onEdit(QuotationModel item) {
     context.push(AppRoutes.editQuotation, extra: item);

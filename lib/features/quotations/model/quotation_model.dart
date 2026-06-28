@@ -140,6 +140,56 @@ class QuotationModel {
   /// Item count to show in summaries — prefers the explicit [items] list.
   int get effectiveItemCount => items.isNotEmpty ? items.length : itemCount;
 
+  /// Builds a [QuotationModel] from a `GET /quotations` list row. The title /
+  /// client come from the linked opportunity → lead when present, otherwise the
+  /// quotation's own customer fields. Amounts are INR strings (e.g. "8496.00").
+  factory QuotationModel.fromJson(Map<String, dynamic> json) {
+    final opp = (json['opportunity'] as Map?)?.cast<String, dynamic>();
+    final validUntil = _parseDate(json['valid_until']);
+    final isFinal = json['is_selected_final'] == true;
+
+    // Status: explicit "final" wins, otherwise expired-by-date, else "sent".
+    QuotationStatus status;
+    if (isFinal) {
+      status = QuotationStatus.finalized;
+    } else if (validUntil != null && validUntil.isBefore(DateTime.now())) {
+      status = QuotationStatus.expired;
+    } else {
+      status = QuotationStatus.sent;
+    }
+
+    final customerCompany = (json['customer_company'] as String?)?.trim();
+
+    return QuotationModel(
+      id: '${json['id']}',
+      number: json['quotation_number'] as String? ?? '—',
+      title: (opp?['title'] as String?)?.trim().isNotEmpty == true
+          ? (opp!['title'] as String).trim()
+          : (json['customer_name'] as String? ?? 'Quotation'),
+      clientName: json['customer_name'] as String? ?? '—',
+      companyName: (customerCompany?.isEmpty ?? true) ? null : customerCompany,
+      amount: _parseAmount(json['grand_total']),
+      currency: '₹',
+      itemCount: 0,
+      status: status,
+      createdDate:
+          _parseDate(json['date']) ?? _parseDate(json['created_at']) ?? DateTime.now(),
+      validUntil: validUntil ?? DateTime.now(),
+      notes: json['notes'] as String? ?? '',
+      opportunityId:
+          json['opportunity_id'] == null ? null : '${json['opportunity_id']}',
+    );
+  }
+
+  static double _parseAmount(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  static DateTime? _parseDate(dynamic value) =>
+      value is String ? DateTime.tryParse(value) : null;
+
   QuotationModel copyWith({
     String? id,
     String? number,

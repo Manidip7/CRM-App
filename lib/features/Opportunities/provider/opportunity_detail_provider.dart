@@ -1,10 +1,27 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../../core/network/api_result.dart';
+import '../data/opportunities_repository.dart';
+import '../model/opportunity_detail_model.dart';
 import '../model/opportunity_model.dart';
 
 part 'opportunity_detail_provider.freezed.dart';
 part 'opportunity_detail_provider.g.dart';
+
+/// Loads an opportunity's full detail bundle from `GET /opportunities/{id}`,
+/// keyed by opportunity id. Watched by the header, Information, Products,
+/// Quotes, Timeline, Notes and Tasks sections of the detail screen.
+final opportunityDetailBundleProvider = FutureProvider.autoDispose
+    .family<OpportunityDetailBundle, String>((ref, id) async {
+  final result =
+      await ref.watch(opportunitiesRepositoryProvider).getOpportunityDetail(id);
+  return switch (result) {
+    Success(:final data) => data,
+    Failure(:final error) => throw error,
+  };
+});
 
 @freezed
 abstract class OpportunityDetailState with _$OpportunityDetailState {
