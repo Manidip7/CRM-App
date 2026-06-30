@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,6 +13,8 @@ import '../model/opportunity_detail_model.dart';
 import '../model/opportunity_model.dart';
 import '../provider/opportunities_provider.dart';
 import '../provider/opportunity_detail_provider.dart';
+import '../../calls/provider/call_providers.dart';
+import '../../calls/widget/call_history_card.dart';
 
 class OpportunityDetailScreen extends ConsumerStatefulWidget {
   final OpportunityModel opportunity;
@@ -77,6 +80,8 @@ class _OpportunityDetailScreenState
                     _buildQuickActions(),
                     const SizedBox(height: 12),
                     _buildContactDetailsCard(),
+                    const SizedBox(height: 12),
+                    CallHistoryCard(entityId: _opp.id, isLead: false),
                     const SizedBox(height: 16),
                     _buildTabBar(),
                     const SizedBox(height: 12),
@@ -593,6 +598,12 @@ class _OpportunityDetailScreenState
   Future<void> _call() async {
     final phone = _digits(_contactPhone);
     if (phone == null) return _showSnack('No phone number for this contact.');
+    // Tag this call with the opportunity so the captured call-log entry links
+    // back to it (the resume-sync uploads it on return from the dialer).
+    await ref.read(callSyncControllerProvider.notifier).recordDirectCall(
+          number: phone,
+          opportunityId: _opp.id,
+        );
     await _launch(Uri(scheme: 'tel', path: phone), 'phone dialer');
   }
 
@@ -733,6 +744,7 @@ class _OpportunityDetailScreenState
             value: phone,
             isLink: true,
             onTap: _call,
+            copyValue: phone,
           ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
@@ -2249,6 +2261,10 @@ class _ContactRow extends StatelessWidget {
   final bool isLink;
   final VoidCallback? onTap;
 
+  /// When non-null, shows a copy button that copies this text to the clipboard
+  /// (used for the phone row so the number can be copied without dialing).
+  final String? copyValue;
+
   const _ContactRow({
     required this.icon,
     required this.iconBg,
@@ -2258,7 +2274,24 @@ class _ContactRow extends StatelessWidget {
     this.subValue,
     required this.isLink,
     this.onTap,
+    this.copyValue,
   });
+
+  Future<void> _copy(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: copyValue!));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '$label copied',
+          style: GoogleFonts.poppins(fontSize: 13, color: Colors.white),
+        ),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2314,9 +2347,28 @@ class _ContactRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (copyValue != null && copyValue!.isNotEmpty)
+              GestureDetector(
+                onTap: () => _copy(context),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  margin: const EdgeInsets.only(left: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.copy_rounded,
+                      size: 15, color: AppColors.textSecondary),
+                ),
+              ),
             if (isLink)
-              const Icon(Icons.arrow_forward_ios_rounded,
-                  size: 13, color: AppColors.textLight),
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Icon(Icons.arrow_forward_ios_rounded,
+                    size: 13, color: AppColors.textLight),
+              ),
           ],
         ),
       ),

@@ -46,6 +46,10 @@ dependencies:
   url_launcher: ^6.3.1
   open_filex: ^4.5.0
   path_provider: ^2.1.4
+  # Reading the device call history (Android only) to capture call details made
+  # to leads/opportunities — both in-app and via the native dialer.
+  call_log: ^6.0.0
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:

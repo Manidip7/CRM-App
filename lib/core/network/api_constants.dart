@@ -64,4 +64,9 @@ class ApiConstants {
 
   // Dashboard
   static const String dashboard = '/dashboard';
+
+  // Calls — capturing call history made to leads/opportunities.
+  static const String calls = '/calls';
+  static String leadCalls(String id) => '/leads/$id/calls';
+  static String opportunityCalls(String id) => '/opportunities/$id/calls';
 }

@@ -13,6 +13,8 @@ import '../provider/lead_detail_provider.dart';
 import '../provider/leads_provider.dart';
 import '../../Opportunities/model/opportunity_model.dart';
 import '../../Opportunities/provider/opportunities_provider.dart';
+import '../../calls/provider/call_providers.dart';
+import '../../calls/widget/call_history_card.dart';
 
 class LeadDetailScreen extends ConsumerStatefulWidget {
   final LeadModel lead;
@@ -133,6 +135,8 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                     _buildQuickActions(),
                     const SizedBox(height: 12),
                     _buildContactDetailsCard(),
+                    const SizedBox(height: 12),
+                    CallHistoryCard(entityId: widget.lead.id, isLead: true),
                     const SizedBox(height: 16),
                     _buildTabBar(),
                     const SizedBox(height: 12),
@@ -743,6 +747,12 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   Future<void> _callNumber(String? raw) async {
     final phone = _digits(raw);
     if (phone == null) return _showSnack('No phone number for this lead.');
+    // Tag this call with the lead so the captured call-log entry links back to
+    // it (the resume-sync uploads it once the user returns from the dialer).
+    await ref.read(callSyncControllerProvider.notifier).recordDirectCall(
+          number: phone,
+          leadId: widget.lead.id,
+        );
     await _launch(Uri(scheme: 'tel', path: phone), 'phone dialer');
   }
 
@@ -862,6 +872,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             value: lead.phone ?? '—',
             isLink: lead.phone != null,
             onTap: lead.phone != null ? _callLead : null,
+            copyValue: lead.phone,
           ),
           // Alternate Phone (only when present)
           if (lead.alternatePhone != null &&
@@ -878,6 +889,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
               value: lead.alternatePhone!,
               isLink: true,
               onTap: () => _callNumber(lead.alternatePhone),
+              copyValue: lead.alternatePhone,
             ),
           ],
           // Interested In (only when present)
@@ -2270,6 +2282,10 @@ class _ContactRow extends StatelessWidget {
   final bool isLink;
   final VoidCallback? onTap;
 
+  /// When non-null, shows a copy button that copies this text to the clipboard
+  /// (used for the phone rows so the number can be copied without dialing).
+  final String? copyValue;
+
   const _ContactRow({
     required this.icon,
     required this.iconBg,
@@ -2279,7 +2295,24 @@ class _ContactRow extends StatelessWidget {
     this.subValue,
     required this.isLink,
     this.onTap,
+    this.copyValue,
   });
+
+  Future<void> _copy(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: copyValue!));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '$label copied',
+          style: GoogleFonts.poppins(fontSize: 13, color: Colors.white),
+        ),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2336,9 +2369,28 @@ class _ContactRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (copyValue != null && copyValue!.isNotEmpty)
+              GestureDetector(
+                onTap: () => _copy(context),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  margin: const EdgeInsets.only(left: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.copy_rounded,
+                      size: 15, color: AppColors.textSecondary),
+                ),
+              ),
             if (isLink)
-              const Icon(Icons.arrow_forward_ios_rounded,
-                  size: 13, color: AppColors.textLight),
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Icon(Icons.arrow_forward_ios_rounded,
+                    size: 13, color: AppColors.textLight),
+              ),
           ],
         ),
       ),

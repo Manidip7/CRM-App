@@ -17,6 +17,7 @@ import '../features/customers/view/customer_detail_screen.dart';
 import '../features/profile/view/edit_profile_screen.dart';
 import '../features/quotations/model/quotation_model.dart';
 import '../features/quotations/view/edit_quotation_screen.dart';
+import '../features/splash/view/splash_screen.dart';
 import '../features/task/view/task_list_screen.dart';
 
 /// Centralised route paths and names for the app.
@@ -28,7 +29,8 @@ import '../features/task/view/task_list_screen.dart';
 class AppRoutes {
   AppRoutes._();
 
-  static const String login = '/';
+  static const String splash = '/';
+  static const String login = '/login';
   static const String dashboard = '/dashboard';
   static const String opportunities = '/opportunities';
   static const String leadDetail = '/lead-detail';
@@ -57,12 +59,16 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 
   return GoRouter(
-    initialLocation: AppRoutes.login,
+    initialLocation: AppRoutes.splash,
     refreshListenable: refresh,
     redirect: (context, state) {
       final loggedIn = ref.read(authSessionProvider) != null;
       final atLogin = state.matchedLocation == AppRoutes.login;
+      final atSplash = state.matchedLocation == AppRoutes.splash;
 
+      // The splash screen handles its own navigation (after requesting
+      // permissions), so leave it alone.
+      if (atSplash) return null;
       // Already logged in but sitting on the login screen → go to dashboard.
       if (loggedIn && atLogin) return AppRoutes.dashboard;
       // Not logged in and trying to reach a protected screen → back to login.
@@ -70,6 +76,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+    GoRoute(
+      path: AppRoutes.splash,
+      name: 'splash',
+      builder: (context, state) => const SplashScreen(),
+    ),
     GoRoute(
       path: AppRoutes.login,
       name: 'login',

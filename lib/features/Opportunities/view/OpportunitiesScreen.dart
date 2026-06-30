@@ -320,20 +320,23 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   // ─────────────────────────────────────────────
   Widget _buildStatCards() {
     final total = _activeTotal;
+    final showBacklog =
+        ref.watch(opportunitiesProvider.select((s) => s.showBacklog));
+    // In the backlog every stat reads red; in the pipeline each keeps its own.
     final stats = [
       _StatCard(value: '$total', label: 'Total', color: _accent),
       _StatCard(
           value: '${_countByStage(OpportunityStage.proposal)}',
           label: 'Proposal',
-          color: AppColors.greenLight),
+          color: showBacklog ? AppColors.red : AppColors.greenLight),
       _StatCard(
           value: '${_countByStage(OpportunityStage.negotiation)}',
           label: 'Negotiation',
-          color: const Color(0xFF4CAF9A)),
+          color: showBacklog ? AppColors.red : const Color(0xFF4CAF9A)),
       _StatCard(
           value: '${_countByStage(OpportunityStage.won)}',
           label: 'Won',
-          color: AppColors.leadFunnelWon),
+          color: showBacklog ? AppColors.red : AppColors.leadFunnelWon),
     ];
 
     return Padding(
@@ -429,6 +432,8 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   Widget _buildFilterTabs() {
     final selectedStage =
         ref.watch(opportunitiesProvider.select((s) => s.selectedStage));
+    final showBacklog =
+        ref.watch(opportunitiesProvider.select((s) => s.showBacklog));
     final stages = [null, ...OpportunityStage.values];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -451,8 +456,10 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
           ...stages.map((stage) {
             final isSelected = selectedStage == stage;
             final label = stage == null ? 'All' : stage.label;
-            final activeColor =
-                stage == null ? AppColors.green : stage.color;
+            // In the backlog all chips read red, matching the screen accent.
+            final activeColor = showBacklog
+                ? AppColors.red
+                : (stage == null ? AppColors.green : stage.color);
             return GestureDetector(
               onTap: () =>
                   ref.read(opportunitiesProvider.notifier).setStage(stage),
@@ -556,6 +563,12 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   //  OPPORTUNITY CARD
   // ─────────────────────────────────────────────
   Widget _buildCard(OpportunityModel opp) {
+    // In the backlog, paint cards red so the screen reads as "overdue",
+    // not the green pipeline accent.
+    final showBacklog =
+        ref.watch(opportunitiesProvider.select((s) => s.showBacklog));
+    final cardAccent = showBacklog ? AppColors.red : opp.stage.color;
+    final avatarColor = showBacklog ? AppColors.red : opp.avatarColor;
     return GestureDetector(
       onTap: () => _openDetail(opp),
       child: Container(
@@ -564,11 +577,11 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(18),
         border: Border(
-          left: BorderSide(color: opp.stage.color, width: 3.5),
+          left: BorderSide(color: cardAccent, width: 3.5),
         ),
         boxShadow: [
           BoxShadow(
-            color: opp.stage.color.withOpacity(0.06),
+            color: cardAccent.withOpacity(0.06),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -593,7 +606,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: opp.avatarColor.withOpacity(0.18),
+                    color: avatarColor.withOpacity(0.18),
                     borderRadius: BorderRadius.circular(13),
                   ),
                   child: Center(
@@ -602,7 +615,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: opp.avatarColor,
+                        color: avatarColor,
                       ),
                     ),
                   ),

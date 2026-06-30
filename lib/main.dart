@@ -5,6 +5,7 @@ import 'core/network/network_providers.dart';
 import 'core/network/persistent_token_storage.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/auth/data/session_store.dart';
+import 'features/calls/provider/call_providers.dart';
 import 'routes/app_routes.dart';
 
 
@@ -28,12 +29,39 @@ Future<void> main() async {
   );
 }
 
-class MyApp extends ConsumerWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
+
+  @override
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Whenever the app comes back to the foreground (e.g. after the user
+  /// returns from the phone dialer), scan the device call log and upload any
+  /// new calls. No-ops on iOS / when the permission isn't granted.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(callSyncControllerProvider.notifier).syncNow();
+    }
+  }
 
   // This widget is the root of your application.
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return MaterialApp.router(
       title: 'Flutter Demo',
       debugShowCheckedModeBanner: false,

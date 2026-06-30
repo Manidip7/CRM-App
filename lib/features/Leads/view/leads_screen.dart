@@ -1639,9 +1639,9 @@ class _StatusBadge extends StatelessWidget {
       case LeadStatus.newLead:
         return (AppColors.leadFunnelNew, 'NEW');
       case LeadStatus.contacted:
-        return (AppColors.leadFunnelContacted, 'CONTACTED');
+        return (AppColors.leadFunnelContacted, 'IN PROGRESS');
       case LeadStatus.qualified:
-        return (AppColors.green, 'QUALIFIED');
+        return (AppColors.green, 'INTERESTED');
       case LeadStatus.won:
         return (const Color(0xFFFFB547), 'WON');
       case LeadStatus.lost:
