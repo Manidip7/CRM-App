@@ -51,7 +51,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   static const List<Color> _avatarColors = [
     Color(0xFF4B3FC7),
     Color(0xFF2DD4A0),
-    Color(0xFFFF4D6A),
+    Color(0xFF3B82F6), // was red (0xFFFF4D6A) — red removed from avatar palette
     Color(0xFFFFB547),
     Color(0xFF7B72E9),
     Color(0xFF4CAF9A),
@@ -60,7 +60,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _detail = LeadDetailModel.fromLead(widget.lead);
     // Seed the Riverpod-held display lead from the navigation lead (once).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -90,8 +90,19 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     super.dispose();
   }
 
-  Color get _avatarColor =>
-      _avatarColors[widget.lead.avatarColorIndex % _avatarColors.length];
+  Color get _avatarColor => _fromBacklog
+      ? AppColors.red
+      : _avatarColors[widget.lead.avatarColorIndex % _avatarColors.length];
+
+  /// Whether this screen was opened from the Backlog Leads view. The backlog
+  /// state persists on [leadsFilterProvider], so we capture it once at open
+  /// time and tint the screen red (matching the backlog list) instead of the
+  /// normal blue accent.
+  late final bool _fromBacklog =
+      ref.read(leadsFilterProvider).showBacklog;
+
+  /// The screen's brand accent: red from the backlog, blue otherwise.
+  Color get _accent => _fromBacklog ? AppColors.red : AppColors.primary;
 
   @override
   Widget build(BuildContext context) {
@@ -135,8 +146,6 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                     _buildQuickActions(),
                     const SizedBox(height: 12),
                     _buildContactDetailsCard(),
-                    const SizedBox(height: 12),
-                    CallHistoryCard(entityId: widget.lead.id, isLead: true),
                     const SizedBox(height: 16),
                     _buildTabBar(),
                     const SizedBox(height: 12),
@@ -420,8 +429,8 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                       // Source of lead
                       Row(
                         children: [
-                          const Icon(Icons.track_changes_rounded,
-                              size: 13, color: AppColors.primary),
+                          Icon(Icons.track_changes_rounded,
+                              size: 13, color: _accent),
                           const SizedBox(width: 4),
                           Text(
                             'Source: ',
@@ -1142,7 +1151,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
 
   // ── Tab Bar ───────────────────────────────────────────────────────────────────
   Widget _buildTabBar() {
-    final tabs = ['Information', 'Timeline', 'Notes', 'Tasks'];
+    final tabs = ['Information', 'Timeline', 'Notes', 'Tasks', 'Calls'];
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       height: 42,
@@ -1187,11 +1196,17 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             return _buildNotesTab();
           case 3:
             return _buildTasksTab();
+          case 4:
+            return _buildCallHistoryTab();
           default:
             return _buildInformationTab();
         }
       },
     );
+  }
+
+  Widget _buildCallHistoryTab() {
+    return CallHistoryCard(entityId: widget.lead.id, isLead: true);
   }
 
   Widget _buildInformationTab() {

@@ -153,10 +153,11 @@ class OpportunityModel {
     required this.avatarColor,
   });
 
+  // Red (0xFFFF4D6A) is intentionally excluded so it stays reserved for the
+  // backlog ("overdue") accent — pipeline avatars never read as red.
   static const List<Color> _avatarColors = [
     Color(0xFF4B3FC7),
     Color(0xFF2DD4A0),
-    Color(0xFFFF4D6A),
     Color(0xFFFFB547),
     Color(0xFF7B72E9),
     Color(0xFF4CAF9A),

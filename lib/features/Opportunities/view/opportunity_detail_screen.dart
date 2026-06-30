@@ -31,6 +31,17 @@ class _OpportunityDetailScreenState
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
+  /// Whether this screen was opened from the Backlog view. The backlog state
+  /// persists on [opportunitiesProvider] across navigation, so we capture it
+  /// once at open time and use it to tint the screen red (matching the red
+  /// "overdue" treatment the backlog list uses) instead of the green pipeline
+  /// accent.
+  late final bool _fromBacklog =
+      ref.read(opportunitiesProvider).showBacklog;
+
+  /// The screen's brand accent: red in the backlog, green in the pipeline.
+  Color get _accent => _fromBacklog ? AppColors.red : AppColors.green;
+
   OpportunityModel get _opp => widget.opportunity;
 
   // Provider keyed by this opportunity's id, seeded with its own stage /
@@ -216,13 +227,17 @@ class _OpportunityDetailScreenState
   Widget _buildHeroCard() {
     final opp = _opp;
     final stage = ref.watch(_detailProvider.select((s) => s.stage));
+    // Use the screen accent for the card border / avatar: green in the
+    // pipeline, red in the backlog. (Not the per-opportunity avatar color,
+    // which would show mixed red/blue/green.)
+    final avatarColor = _accent;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(18),
         border: Border(
-          left: BorderSide(color: opp.avatarColor, width: 4),
+          left: BorderSide(color: avatarColor, width: 4),
         ),
         boxShadow: [
           BoxShadow(
@@ -245,7 +260,7 @@ class _OpportunityDetailScreenState
                   width: 52,
                   height: 52,
                   decoration: BoxDecoration(
-                    color: opp.avatarColor.withOpacity(0.14),
+                    color: avatarColor.withOpacity(0.14),
                     shape: BoxShape.circle,
                   ),
                   child: Center(
@@ -254,7 +269,7 @@ class _OpportunityDetailScreenState
                       style: GoogleFonts.poppins(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: opp.avatarColor,
+                        color: avatarColor,
                       ),
                     ),
                   ),
@@ -295,8 +310,8 @@ class _OpportunityDetailScreenState
                       // Deal value
                       Row(
                         children: [
-                          const Icon(Icons.payments_rounded,
-                              size: 13, color: AppColors.green),
+                          Icon(Icons.payments_rounded,
+                              size: 13, color: _accent),
                           const SizedBox(width: 4),
                           Text(
                             'Value: ',
@@ -309,7 +324,7 @@ class _OpportunityDetailScreenState
                             _formatValue(opp.value),
                             style: GoogleFonts.poppins(
                               fontSize: 12,
-                              color: AppColors.green,
+                              color: _accent,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -449,8 +464,8 @@ class _OpportunityDetailScreenState
             child: ElevatedButton.icon(
               onPressed: closedWon ? null : _markWon,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.green,
-                disabledBackgroundColor: AppColors.green.withOpacity(0.5),
+                backgroundColor: _accent,
+                disabledBackgroundColor: _accent.withOpacity(0.5),
                 foregroundColor: Colors.white,
                 disabledForegroundColor: Colors.white,
                 elevation: 0,
@@ -499,7 +514,7 @@ class _OpportunityDetailScreenState
       backgroundColor: Colors.transparent,
       builder: (_) => ScheduleFollowUpSheet(
         id: _opp.id,
-        color: AppColors.green,
+        color: _accent,
         initialCurrentUpdateId: data?.currentUpdateId,
         initialNextActionId: data?.nextActionId,
         initialRemark: data?.followupRemarks,
@@ -709,11 +724,12 @@ class _OpportunityDetailScreenState
           // Contact name
           _ContactRow(
             icon: Icons.person_outline_rounded,
-            iconBg: AppColors.green.withOpacity(0.1),
-            iconColor: AppColors.green,
+            iconBg: _accent.withOpacity(0.1),
+            iconColor: _accent,
             label: 'Contact',
             value: contactName,
             isLink: false,
+            accent: _accent,
           ),
           // Email (only when present)
           if (email != null && email.isNotEmpty) ...[
@@ -729,6 +745,7 @@ class _OpportunityDetailScreenState
               value: email,
               isLink: true,
               onTap: _email,
+              accent: _accent,
             ),
           ],
           const Padding(
@@ -745,6 +762,7 @@ class _OpportunityDetailScreenState
             isLink: true,
             onTap: _call,
             copyValue: phone,
+            accent: _accent,
           ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
@@ -780,9 +798,9 @@ class _OpportunityDetailScreenState
       margin: const EdgeInsets.symmetric(horizontal: 14),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        color: AppColors.green.withOpacity(0.05),
+        color: _accent.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.green.withOpacity(0.2), width: 0.8),
+        border: Border.all(color: _accent.withOpacity(0.2), width: 0.8),
       ),
       child: Column(
         children: [
@@ -793,7 +811,7 @@ class _OpportunityDetailScreenState
                 style: GoogleFonts.poppins(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.green,
+                  color: _accent,
                   letterSpacing: 0.5,
                 ),
               ),
@@ -802,7 +820,7 @@ class _OpportunityDetailScreenState
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.green.withOpacity(0.1),
+                  color: _accent.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -810,7 +828,7 @@ class _OpportunityDetailScreenState
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.green,
+                    color: _accent,
                   ),
                 ),
               ),
@@ -821,8 +839,8 @@ class _OpportunityDetailScreenState
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.notes_rounded,
-                    size: 14, color: AppColors.green),
+                Icon(Icons.notes_rounded,
+                    size: 14, color: _accent),
                 const SizedBox(width: 8),
                 Text(
                   'Remarks: ',
@@ -857,7 +875,7 @@ class _OpportunityDetailScreenState
             child: ElevatedButton.icon(
               onPressed: _showScheduleFollowUpSheet,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.green,
+                backgroundColor: _accent,
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -898,13 +916,13 @@ class _OpportunityDetailScreenState
       ),
       child: TabBar(
         controller: _tabController,
-        labelColor: AppColors.green,
+        labelColor: _accent,
         unselectedLabelColor: AppColors.textSecondary,
         indicator: BoxDecoration(
-          color: AppColors.green.withOpacity(0.1),
+          color: _accent.withOpacity(0.1),
           borderRadius: BorderRadius.circular(10),
           border:
-              Border.all(color: AppColors.green.withOpacity(0.3), width: 0.8),
+              Border.all(color: _accent.withOpacity(0.3), width: 0.8),
         ),
         indicatorSize: TabBarIndicatorSize.tab,
         isScrollable: true,
@@ -973,11 +991,11 @@ class _OpportunityDetailScreenState
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: AppColors.green.withOpacity(0.1),
+                      color: _accent.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.description_rounded,
-                        color: AppColors.green, size: 18),
+                    child: Icon(Icons.description_rounded,
+                        color: _accent, size: 18),
                   ),
                   const SizedBox(width: 10),
                   Text(
@@ -1014,7 +1032,7 @@ class _OpportunityDetailScreenState
                 style: GoogleFonts.poppins(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.green,
+                  color: _accent,
                   letterSpacing: 0.8,
                 ),
               ),
@@ -1039,7 +1057,7 @@ class _OpportunityDetailScreenState
                   style: GoogleFonts.poppins(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.green,
+                    color: _accent,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -1064,7 +1082,7 @@ class _OpportunityDetailScreenState
                 style: GoogleFonts.poppins(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.green,
+                  color: _accent,
                   letterSpacing: 0.8,
                 ),
               ),
@@ -1115,8 +1133,8 @@ class _OpportunityDetailScreenState
                     color: Colors.white.withOpacity(0.15),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.location_on_rounded,
-                      color: AppColors.green, size: 28),
+                  child: Icon(Icons.location_on_rounded,
+                      color: _accent, size: 28),
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -1159,8 +1177,8 @@ class _OpportunityDetailScreenState
           children: [
             Row(
               children: [
-                const Icon(Icons.shopping_bag_outlined,
-                    color: AppColors.green, size: 18),
+                Icon(Icons.shopping_bag_outlined,
+                    color: _accent, size: 18),
                 const SizedBox(width: 8),
                 Text(
                   'Products',
@@ -1177,19 +1195,19 @@ class _OpportunityDetailScreenState
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: AppColors.green.withOpacity(0.1),
+                      color: _accent.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.add,
-                            color: AppColors.green, size: 14),
+                        Icon(Icons.add,
+                            color: _accent, size: 14),
                         const SizedBox(width: 4),
                         Text(
                           'Add Product',
                           style: GoogleFonts.poppins(
                             fontSize: 11,
-                            color: AppColors.green,
+                            color: _accent,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -1246,7 +1264,7 @@ class _OpportunityDetailScreenState
                     style: GoogleFonts.poppins(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.green,
+                      color: _accent,
                     ),
                   ),
                 ],
@@ -1272,11 +1290,11 @@ class _OpportunityDetailScreenState
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: AppColors.green.withOpacity(0.1),
+              color: _accent.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.inventory_2_rounded,
-                color: AppColors.green, size: 18),
+            child: Icon(Icons.inventory_2_rounded,
+                color: _accent, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1325,11 +1343,11 @@ class _OpportunityDetailScreenState
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: AppColors.green.withOpacity(0.1),
+              color: _accent.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.inventory_2_rounded,
-                color: AppColors.green, size: 18),
+            child: Icon(Icons.inventory_2_rounded,
+                color: _accent, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1453,7 +1471,7 @@ class _OpportunityDetailScreenState
       {String? addLabel, VoidCallback? onAdd}) {
     return Row(
       children: [
-        Icon(icon, color: AppColors.green, size: 18),
+        Icon(icon, color: _accent, size: 18),
         const SizedBox(width: 8),
         Text(
           count > 0 ? '$title ($count)' : title,
@@ -1470,18 +1488,18 @@ class _OpportunityDetailScreenState
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: AppColors.green.withOpacity(0.1),
+                color: _accent.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.add, color: AppColors.green, size: 14),
+                  Icon(Icons.add, color: _accent, size: 14),
                   const SizedBox(width: 4),
                   Text(
                     addLabel,
                     style: GoogleFonts.poppins(
                       fontSize: 11,
-                      color: AppColors.green,
+                      color: _accent,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1547,7 +1565,7 @@ class _OpportunityDetailScreenState
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: AppColors.green.withOpacity(0.12),
+                    color: _accent.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -1555,7 +1573,7 @@ class _OpportunityDetailScreenState
                     style: GoogleFonts.poppins(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.green,
+                      color: _accent,
                       letterSpacing: 0.5,
                     ),
                   ),
@@ -1621,7 +1639,7 @@ class _OpportunityDetailScreenState
           style: GoogleFonts.poppins(
             fontSize: bold ? 15 : 13,
             fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-            color: bold ? AppColors.green : AppColors.textPrimary,
+            color: bold ? _accent : AppColors.textPrimary,
           ),
         ),
       ],
@@ -1998,7 +2016,7 @@ class _OpportunityDetailScreenState
       children: [
         Row(
           children: [
-            const Icon(Icons.percent_rounded, size: 14, color: AppColors.green),
+            Icon(Icons.percent_rounded, size: 14, color: _accent),
             const SizedBox(width: 8),
             Text(
               'Interest Score: ',
@@ -2113,7 +2131,7 @@ class _OpportunityDetailScreenState
       SnackBar(
         content: Text(msg,
             style: GoogleFonts.poppins(fontSize: 13, color: Colors.white)),
-        backgroundColor: AppColors.green,
+        backgroundColor: _accent,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         duration: const Duration(seconds: 2),
@@ -2127,7 +2145,7 @@ class _OpportunityDetailScreenState
       backgroundColor: Colors.transparent,
       builder: (_) => _MenuSheet(
         items: [
-          _MenuItem(Icons.edit_rounded, 'Edit Opportunity', AppColors.green),
+          _MenuItem(Icons.edit_rounded, 'Edit Opportunity', _accent),
           _MenuItem(Icons.person_add_outlined, 'Reassign', AppColors.primary),
           _MenuItem(
               Icons.archive_outlined, 'Archive', AppColors.textSecondary),
@@ -2261,6 +2279,10 @@ class _ContactRow extends StatelessWidget {
   final bool isLink;
   final VoidCallback? onTap;
 
+  /// Accent used for the link text/underline (red in the backlog, green
+  /// otherwise).
+  final Color accent;
+
   /// When non-null, shows a copy button that copies this text to the clipboard
   /// (used for the phone row so the number can be copied without dialing).
   final String? copyValue;
@@ -2274,6 +2296,7 @@ class _ContactRow extends StatelessWidget {
     this.subValue,
     required this.isLink,
     this.onTap,
+    this.accent = AppColors.green,
     this.copyValue,
   });
 
@@ -2328,12 +2351,12 @@ class _ContactRow extends StatelessWidget {
                     value,
                     style: GoogleFonts.poppins(
                       fontSize: 13,
-                      color: isLink ? AppColors.green : AppColors.textPrimary,
+                      color: isLink ? accent : AppColors.textPrimary,
                       fontWeight: isLink ? FontWeight.w600 : FontWeight.w500,
                       decoration: isLink
                           ? TextDecoration.underline
                           : TextDecoration.none,
-                      decorationColor: AppColors.green,
+                      decorationColor: accent,
                     ),
                   ),
                   if (subValue != null)
@@ -2535,6 +2558,12 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
   final _qtyController = TextEditingController(text: '1');
   final _priceController = TextEditingController();
 
+  /// Match the detail screen's accent: red when launched from the backlog.
+  Color get _accent =>
+      ref.read(opportunitiesProvider).showBacklog
+          ? AppColors.red
+          : AppColors.green;
+
   @override
   void initState() {
     super.initState();
@@ -2682,7 +2711,7 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
               child: ElevatedButton.icon(
                 onPressed: _submit,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.green,
+                  backgroundColor: _accent,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -2743,7 +2772,7 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.green, width: 1.4),
+          borderSide: BorderSide(color: _accent, width: 1.4),
         ),
       ),
     );

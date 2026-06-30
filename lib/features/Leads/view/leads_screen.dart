@@ -34,17 +34,18 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
   final _addEmail = TextEditingController();
   final _addInterestedIn = TextEditingController();
 
+  // Whether the backlog ("overdue") view is active.
+  bool get _showBacklog =>
+      ref.watch(leadsFilterProvider.select((s) => s.showBacklog));
+
   // Accent color — red theme when viewing backlog leads
-  Color get _accent =>
-      ref.watch(leadsFilterProvider.select((s) => s.showBacklog))
-          ? AppColors.red
-          : AppColors.primary;
+  Color get _accent => _showBacklog ? AppColors.red : AppColors.primary;
 
   // Avatar colors matching your brand palette
   static const List<Color> _avatarColors = [
     Color(0xFF4B3FC7),
     Color(0xFF2DD4A0),
-    Color(0xFFFF4D6A),
+    Color(0xFF3B82F6), // was red (0xFFFF4D6A) — red removed from avatar palette
     Color(0xFFFFB547),
     Color(0xFF7B72E9),
     Color(0xFF4CAF9A),
@@ -152,10 +153,12 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
                               return _LeadCard(
                                 key: ValueKey(lead.id),
                                 lead: lead,
-                                avatarColor:
-                                    _avatarColors[lead.avatarColorIndex %
+                                avatarColor: showBacklog
+                                    ? AppColors.red
+                                    : _avatarColors[lead.avatarColorIndex %
                                         _avatarColors.length],
                                 accent: _accent,
+                                isBacklog: showBacklog,
                                 onTap: () => _openDetail(lead),
                                 onMenuAction: (action) =>
                                     _handleAction(action, lead),
@@ -318,11 +321,20 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
         children: [
           _MiniStat(label: 'Total', value: '$total', color: _accent),
           const SizedBox(width: 8),
-          _MiniStat(label: 'New', value: '$newCount', color: AppColors.leadFunnelNew),
+          _MiniStat(
+              label: 'New',
+              value: '$newCount',
+              color: showBacklog ? AppColors.red : AppColors.leadFunnelNew),
           const SizedBox(width: 8),
-          _MiniStat(label: 'Qualified', value: '$qualifiedCount', color: AppColors.green),
+          _MiniStat(
+              label: 'Qualified',
+              value: '$qualifiedCount',
+              color: showBacklog ? AppColors.red : AppColors.green),
           const SizedBox(width: 8),
-          _MiniStat(label: 'Won', value: '$wonCount', color: Color(0xFFFFB547)),
+          _MiniStat(
+              label: 'Won',
+              value: '$wonCount',
+              color: showBacklog ? AppColors.red : const Color(0xFFFFB547)),
         ],
       ),
     );
@@ -646,6 +658,7 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
           _FilterChip(
             label: 'All',
             isSelected: isAll,
+            color: _accent,
             onTap: () => notifier.clearFilters(),
           ),
           for (final chip in [...statusChips, ...quickChips, ...sourceChips])
@@ -661,7 +674,7 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     return _FilterChip(
       label: label,
       isSelected: filter.filterStatus == status,
-      color: color,
+      color: _showBacklog ? AppColors.red : color,
       onTap: () => notifier.toggleStatus(status),
     );
   }
@@ -672,7 +685,7 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     return _FilterChip(
       label: label,
       isSelected: filter.quickFilters.contains(value),
-      color: AppColors.primary,
+      color: _showBacklog ? AppColors.red : AppColors.primary,
       onTap: () => notifier.toggleQuickFilter(value),
     );
   }
@@ -683,7 +696,7 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     return _FilterChip(
       label: label,
       isSelected: filter.filterSource == source,
-      color: color,
+      color: _showBacklog ? AppColors.red : color,
       onTap: () => notifier.toggleSource(source),
     );
   }
@@ -1328,6 +1341,7 @@ class _LeadCard extends StatelessWidget {
   final LeadModel lead;
   final Color avatarColor;
   final Color accent;
+  final bool isBacklog;
   final VoidCallback onTap;
   final ValueChanged<String> onMenuAction;
 
@@ -1336,6 +1350,7 @@ class _LeadCard extends StatelessWidget {
     required this.lead,
     required this.avatarColor,
     required this.accent,
+    this.isBacklog = false,
     required this.onTap,
     required this.onMenuAction,
   });
@@ -1364,8 +1379,10 @@ class _LeadCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Left status accent strip
-                Container(width: 4, color: _statusColor(lead.status)),
+                // Left status accent strip (red in the backlog "overdue" view).
+                Container(
+                    width: 4,
+                    color: isBacklog ? accent : _statusColor(lead.status)),
                 Expanded(
                   child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1435,7 +1452,7 @@ class _LeadCard extends StatelessWidget {
                             const SizedBox(width: 3),
                             Flexible(
                               child: Text(
-                                lead.assigneeName.toString(),
+                                lead.contactName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: GoogleFonts.poppins(
