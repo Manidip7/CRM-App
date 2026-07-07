@@ -1518,6 +1518,8 @@ class _LeadCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   _SourceBadge(source: lead.source),
                   const Spacer(),
+                  // Assignee initials (overlapping circles for multiple).
+                  _assigneeStack(lead.assigneeNames),
                 ],
               ),
             ),
@@ -1581,6 +1583,92 @@ class _LeadCard extends StatelessWidget {
       case LeadStatus.lost:
         return AppColors.red;
     }
+  }
+
+  /// Two-letter initials from an employee name: first letter of the first name
+  /// and first letter of the surname (e.g. "John Doe" → "JD"). Falls back to a
+  /// single letter for one-word names, or "?" when empty.
+  String _assigneeInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+    if (parts.length == 1) return parts.first[0].toUpperCase();
+    return (parts.first[0] + parts.last[0]).toUpperCase();
+  }
+
+  /// A single circular initials avatar for an assignee.
+  Widget _assigneeCircle(String name) {
+    return Tooltip(
+      message: name,
+      child: Container(
+        width: 26,
+        height: 26,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: accent.withOpacity(0.12),
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.cardBackground, width: 1.5),
+        ),
+        child: Text(
+          _assigneeInitials(name),
+          style: GoogleFonts.poppins(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: accent,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// An overlapping stack of assignee initials circles — each circle layered on
+  /// top of the previous (shows up to 3, then a "+N" bubble for the rest).
+  /// Empty when the lead has no assignees.
+  Widget _assigneeStack(List<String> names) {
+    if (names.isEmpty) return const SizedBox.shrink();
+    const maxVisible = 3;
+    final visible = names.take(maxVisible).toList();
+    final extra = names.length - visible.length;
+    const circle = 26.0;
+    // Each circle is shifted left so it overlaps the previous one by this much.
+    const step = 16.0;
+
+    // Build the bubbles back-to-front so earlier circles sit on top.
+    final children = <Widget>[];
+    final count = visible.length + (extra > 0 ? 1 : 0);
+    for (var i = count - 1; i >= 0; i--) {
+      final isExtra = extra > 0 && i == visible.length;
+      children.add(Positioned(
+        left: i * step,
+        child: isExtra
+            ? Container(
+                width: circle,
+                height: circle,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.textSecondary.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                  border:
+                      Border.all(color: AppColors.cardBackground, width: 1.5),
+                ),
+                child: Text(
+                  '+$extra',
+                  style: GoogleFonts.poppins(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              )
+            : _assigneeCircle(visible[i]),
+      ));
+    }
+
+    final width = (count - 1) * step + circle;
+    return SizedBox(
+      width: width,
+      height: circle,
+      child: Stack(clipBehavior: Clip.none, children: children),
+    );
   }
 
   PopupMenuItem<String> _menuItem(

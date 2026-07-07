@@ -921,14 +921,18 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: Divider(height: 0, color: AppColors.divider),
           ),
-          // Assigned To
+          // Assigned To — shows every assignee when the lead has more than one.
           _ContactRow(
             icon: Icons.person_pin_rounded,
             iconBg: AppColors.green.withOpacity(0.1),
             iconColor: AppColors.green,
             label: 'Assigned To',
-            value: lead.assigneeName ?? _detail.assignedToName ?? '—',
-            subValue: lead.assigneeDesignation ?? _detail.assignedToRole,
+            value: lead.assigneeNames.isNotEmpty
+                ? lead.assigneeNames.join(', ')
+                : (lead.assigneeName ?? _detail.assignedToName ?? '—'),
+            subValue: lead.assigneeNames.length > 1
+                ? '${lead.assigneeNames.length} assignees'
+                : (lead.assigneeDesignation ?? _detail.assignedToRole),
             isLink: false,
           ),
           const SizedBox(height: 4),
@@ -1029,8 +1033,8 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             _followUpRow(Icons.notes_rounded, 'Remarks',
                 _lead.followupRemarks!),
           ],
-          // Interest Score (shown when present).
-          if (_lead.interestScore != null) ...[
+          // Interest Score (shown only when a non-zero score is set).
+          if (_lead.interestScore != null && _lead.interestScore! > 0) ...[
             const SizedBox(height: 10),
             _buildInterestScore(_lead.interestScore!),
           ],

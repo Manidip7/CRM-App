@@ -137,6 +137,11 @@ class OpportunityModel {
   final String avatarInitials;
   final Color avatarColor;
 
+  /// Names of every user assigned to this opportunity (an opportunity can have
+  /// several). Used to render the overlapping assignee avatars on the card,
+  /// matching the Leads screen.
+  final List<String> assigneeNames;
+
   const OpportunityModel({
     required this.id,
     this.leadId,
@@ -151,6 +156,7 @@ class OpportunityModel {
     required this.phone,
     required this.avatarInitials,
     required this.avatarColor,
+    this.assigneeNames = const [],
   });
 
   // Red (0xFFFF4D6A) is intentionally excluded so it stays reserved for the
@@ -182,6 +188,17 @@ class OpportunityModel {
         nextRaw is String ? DateTime.tryParse(nextRaw)?.toLocal() : null;
     final idStr = '${json['id']}';
 
+    // Every assignee's name (an opportunity can have multiple assignees).
+    final assignees = json['assignees'];
+    final assigneeNames = (assignees is List)
+        ? assignees
+            .whereType<Map>()
+            .map((a) => a['name'] as String?)
+            .where((n) => n != null && n.trim().isNotEmpty)
+            .cast<String>()
+            .toList()
+        : <String>[];
+
     return OpportunityModel(
       id: idStr,
       leadId: json['lead_id'] != null ? '${json['lead_id']}' : null,
@@ -201,6 +218,7 @@ class OpportunityModel {
       avatarInitials: _initials(contactName),
       avatarColor:
           _avatarColors[(int.tryParse(idStr) ?? 0) % _avatarColors.length],
+      assigneeNames: assigneeNames,
     );
   }
 
@@ -287,6 +305,7 @@ class OpportunityModel {
     String? phone,
     String? avatarInitials,
     Color? avatarColor,
+    List<String>? assigneeNames,
   }) {
     return OpportunityModel(
       id: id ?? this.id,
@@ -302,6 +321,7 @@ class OpportunityModel {
       phone: phone ?? this.phone,
       avatarInitials: avatarInitials ?? this.avatarInitials,
       avatarColor: avatarColor ?? this.avatarColor,
+      assigneeNames: assigneeNames ?? this.assigneeNames,
     );
   }
 }

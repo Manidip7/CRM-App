@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
-import '../data/call_log_service.dart';
 import '../model/call_record.dart';
 import '../provider/call_providers.dart';
 
@@ -14,7 +13,7 @@ import '../provider/call_providers.dart';
 /// ```dart
 /// CallHistoryCard(entityId: lead.id, isLead: true)
 /// ```
-class CallHistoryCard extends ConsumerStatefulWidget {
+class CallHistoryCard extends ConsumerWidget {
   final String entityId;
 
   /// `true` → lead history, `false` → opportunity history.
@@ -26,54 +25,21 @@ class CallHistoryCard extends ConsumerStatefulWidget {
     required this.isLead,
   });
 
-  @override
-  ConsumerState<CallHistoryCard> createState() => _CallHistoryCardState();
-}
+  FutureProvider<List<CallRecord>> get _historyProvider => isLead
+      ? leadCallHistoryProvider(entityId)
+      : opportunityCallHistoryProvider(entityId);
 
-class _CallHistoryCardState extends ConsumerState<CallHistoryCard> {
-  bool _supported = false;
-  bool _granted = false;
-  bool _checking = true;
-
-  FutureProvider<List<CallRecord>> get _historyProvider => widget.isLead
-      ? leadCallHistoryProvider(widget.entityId)
-      : opportunityCallHistoryProvider(widget.entityId);
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshPermission());
-  }
-
-  Future<void> _refreshPermission() async {
-    final service = ref.read(callLogServiceProvider);
-    final supported = service.isSupported;
-    final granted = supported && await service.isGranted;
-    if (!mounted) return;
-    setState(() {
-      _supported = supported;
-      _granted = granted;
-      _checking = false;
-    });
-    // If we already have access, pull the latest calls in case the user dialed
-    // before opening this screen.
-    if (granted) {
-      await ref.read(callSyncControllerProvider.notifier).syncNow();
-    }
-  }
-
-  Future<void> _enable() async {
-    final uploaded = await ref
-        .read(callSyncControllerProvider.notifier)
-        .syncNow(requestPermission: true);
-    await _refreshPermission();
-    if (mounted && uploaded > 0) {
-      ref.invalidate(_historyProvider);
-    }
+  Future<void> _enable(WidgetRef ref) async {
+    // Requests permission, syncs, and refreshes the permission state — all via
+    // Riverpod. syncNow() already invalidates the history list on a successful
+    // upload, so the new calls appear automatically.
+    await ref.read(callPermissionProvider.notifier).enable();
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final permission = ref.watch(callPermissionProvider);
+    final granted = permission.asData?.value.granted ?? false;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -115,13 +81,13 @@ class _CallHistoryCardState extends ConsumerState<CallHistoryCard> {
                   ),
                 ),
                 const Spacer(),
-                if (_supported && _granted)
+                if (granted)
                   GestureDetector(
                     onTap: () async {
                       await ref
                           .read(callSyncControllerProvider.notifier)
                           .syncNow();
-                      if (mounted) ref.invalidate(_historyProvider);
+                      ref.invalidate(_historyProvider);
                     },
                     child: Container(
                       width: 32,
@@ -140,68 +106,78 @@ class _CallHistoryCardState extends ConsumerState<CallHistoryCard> {
           const Divider(height: 0, color: AppColors.divider),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: _buildBody(),
+            child: _buildBody(context, ref, permission),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBody() {
-    if (_checking) {
-      return const Padding(
+  Widget _buildBody(BuildContext context, WidgetRef ref,
+      AsyncValue<CallPermissionState> permission) {
+    return permission.when(
+      loading: () => const Padding(
         padding: EdgeInsets.symmetric(vertical: 20),
         child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (!_supported) {
-      return _note(
+      ),
+      error: (e, _) => _note(
         Icons.info_outline_rounded,
-        'Call logging is available on Android only.',
-      );
-    }
-    if (!_granted) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _note(
-            Icons.lock_outline_rounded,
-            'Allow call-log access to automatically capture calls made to this '
-            'contact — from the app or the phone dialer.',
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: ElevatedButton.icon(
-              onPressed: _enable,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+        'Could not check call-log permission.',
+      ),
+      data: (perm) {
+        if (!perm.supported) {
+          return _note(
+            Icons.info_outline_rounded,
+            'Call logging is available on Android only.',
+          );
+        }
+        if (!perm.granted) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _note(
+                Icons.lock_outline_rounded,
+                'Allow call-log access to automatically capture calls made to '
+                'this contact — from the app or the phone dialer.',
               ),
-              icon: const Icon(Icons.history_rounded, size: 18),
-              label: Text(
-                'Enable call logging',
-                style: GoogleFonts.poppins(
-                    fontSize: 13, fontWeight: FontWeight.w600),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: ElevatedButton.icon(
+                  onPressed: () => _enable(ref),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.history_rounded, size: 18),
+                  label: Text(
+                    'Enable call logging',
+                    style: GoogleFonts.poppins(
+                        fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
-      );
-    }
+            ],
+          );
+        }
+        // Permission granted → show the history from the backend.
+        return _buildHistory(ref);
+      },
+    );
+  }
 
-    // Permission granted → show the history from the backend.
+  Widget _buildHistory(WidgetRef ref) {
     final async = ref.watch(_historyProvider);
     return async.when(
       loading: () => const Padding(
         padding: EdgeInsets.symmetric(vertical: 20),
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (e, _) => _buildError(e),
+      error: (e, _) => _buildError(ref, e),
       data: (calls) {
         if (calls.isEmpty) {
           return _note(
@@ -291,7 +267,7 @@ class _CallHistoryCardState extends ConsumerState<CallHistoryCard> {
     );
   }
 
-  Widget _buildError(Object error) {
+  Widget _buildError(WidgetRef ref, Object error) {
     final message =
         error is ApiException ? error.message : 'Could not load call history.';
     return Column(

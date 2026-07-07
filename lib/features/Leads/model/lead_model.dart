@@ -252,6 +252,10 @@ class LeadModel {
   final String? assigneeEmail;
   final String? assigneeDesignation;
 
+  /// Names of all assignees on this lead (a lead can have several). Used to
+  /// render the stacked initials avatars on the leads list card.
+  final List<String> assigneeNames;
+
   // Extra contact / professional fields.
   final String? alternatePhone;
   final String? designation;
@@ -295,6 +299,7 @@ class LeadModel {
     this.assigneeName,
     this.assigneeEmail,
     this.assigneeDesignation,
+    this.assigneeNames = const [],
     this.alternatePhone,
     this.designation,
     this.website,
@@ -339,6 +344,7 @@ class LeadModel {
         assigneeName: assigneeName,
         assigneeEmail: assigneeEmail,
         assigneeDesignation: assigneeDesignation,
+        assigneeNames: assigneeNames,
         alternatePhone: alternatePhone,
         designation: designation,
         website: website,
@@ -373,6 +379,7 @@ class LeadModel {
         assigneeName: assigneeName,
         assigneeEmail: assigneeEmail,
         assigneeDesignation: assigneeDesignation,
+        assigneeNames: assigneeNames,
         alternatePhone: alternatePhone,
         designation: designation,
         website: website,
@@ -404,6 +411,15 @@ class LeadModel {
     final firstAssignee = (assignees is List && assignees.isNotEmpty)
         ? (assignees.first as Map).cast<String, dynamic>()
         : null;
+    // All assignee names (a lead can have multiple assignees).
+    final assigneeNames = (assignees is List)
+        ? assignees
+            .whereType<Map>()
+            .map((a) => a['name'] as String?)
+            .where((n) => n != null && n.trim().isNotEmpty)
+            .cast<String>()
+            .toList()
+        : <String>[];
 
     return LeadModel(
       id: id,
@@ -427,6 +443,7 @@ class LeadModel {
       assigneeName: firstAssignee?['name'] as String?,
       assigneeEmail: firstAssignee?['email'] as String?,
       assigneeDesignation: firstAssignee?['designation'] as String?,
+      assigneeNames: assigneeNames,
       alternatePhone: json['alternate_phone'] as String?,
       designation: json['designation'] as String?,
       website: json['website'] as String?,

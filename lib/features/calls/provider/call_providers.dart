@@ -149,6 +149,52 @@ class CallSyncController extends Notifier<CallSyncState> {
 final callSyncControllerProvider =
     NotifierProvider<CallSyncController, CallSyncState>(CallSyncController.new);
 
+/// Whether call logging is available on this device and the permission state.
+class CallPermissionState {
+  /// Call logging is only available on Android.
+  final bool supported;
+
+  /// The call-log/phone permission is granted.
+  final bool granted;
+
+  const CallPermissionState({this.supported = false, this.granted = false});
+}
+
+/// Holds the call-log permission state for the [CallHistoryCard], replacing the
+/// old `setState`-driven local flags. Checking the permission on [build] and
+/// after [enable] flows through Riverpod so the card just watches this provider.
+class CallPermissionController extends AsyncNotifier<CallPermissionState> {
+  CallLogService get _service => ref.read(callLogServiceProvider);
+
+  Future<CallPermissionState> _check() async {
+    final supported = _service.isSupported;
+    final granted = supported && await _service.isGranted;
+    // If we already have access, pull the latest calls in case the user dialed
+    // before this card was shown.
+    if (granted) {
+      await ref.read(callSyncControllerProvider.notifier).syncNow();
+    }
+    return CallPermissionState(supported: supported, granted: granted);
+  }
+
+  @override
+  Future<CallPermissionState> build() => _check();
+
+  /// Requests the permission (if needed), syncs, and refreshes the state.
+  /// Returns how many calls were uploaded by the sync.
+  Future<int> enable() async {
+    final uploaded = await ref
+        .read(callSyncControllerProvider.notifier)
+        .syncNow(requestPermission: true);
+    state = await AsyncValue.guard(_check);
+    return uploaded;
+  }
+}
+
+final callPermissionProvider =
+    AsyncNotifierProvider<CallPermissionController, CallPermissionState>(
+        CallPermissionController.new);
+
 /// Call history for a lead (`GET /leads/{id}/calls`), keyed by lead id.
 final leadCallHistoryProvider =
     FutureProvider.family<List<CallRecord>, String>((ref, leadId) async {

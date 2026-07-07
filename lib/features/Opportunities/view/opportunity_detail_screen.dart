@@ -56,7 +56,7 @@ class _OpportunityDetailScreenState
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
   }
 
   /// The full detail bundle from `GET /opportunities/{id}`, watched so the
@@ -91,8 +91,6 @@ class _OpportunityDetailScreenState
                     _buildQuickActions(),
                     const SizedBox(height: 12),
                     _buildContactDetailsCard(),
-                    const SizedBox(height: 12),
-                    CallHistoryCard(entityId: _opp.id, isLead: false),
                     const SizedBox(height: 16),
                     _buildTabBar(),
                     const SizedBox(height: 12),
@@ -296,12 +294,16 @@ class _OpportunityDetailScreenState
                           const Icon(Icons.person_outline_rounded,
                               size: 13, color: AppColors.textSecondary),
                           const SizedBox(width: 4),
-                          Text(
-                            opp.contactName,
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              color: AppColors.textSecondary,
-                              fontWeight: FontWeight.w500,
+                          Expanded(
+                            child: Text(
+                              opp.contactName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ],
@@ -664,9 +666,12 @@ class _OpportunityDetailScreenState
     final data = _bundle.asData?.value;
     final assignees = data?.assignees ?? const <OpportunityAssignee>[];
     final primaryAssignee = assignees.isNotEmpty ? assignees.first : null;
-    final assignedLabel = primaryAssignee?.name ?? 'Admin Owner';
+    // Show every assignee's name when the opportunity has more than one.
+    final assignedLabel = assignees.isNotEmpty
+        ? assignees.map((a) => a.name).join(', ')
+        : 'Admin Owner';
     final assignedSub = assignees.length > 1
-        ? '+${assignees.length - 1} more'
+        ? '${assignees.length} assignees'
         : (primaryAssignee?.designation ?? 'Sales Manager');
     final email = data?.email;
     final phone = (data?.phone?.isNotEmpty ?? false) ? data!.phone! : opp.phone;
@@ -903,6 +908,7 @@ class _OpportunityDetailScreenState
       'Products',
       'Quotes',
       'Timeline',
+      'Call',
       'Notes',
       'Tasks'
     ];
@@ -954,8 +960,10 @@ class _OpportunityDetailScreenState
           case 3:
             return _buildTimelineTab();
           case 4:
-            return _buildNotesTab();
+            return _buildCallTab();
           case 5:
+            return _buildNotesTab();
+          case 6:
             return _buildTasksTab();
           default:
             return _buildInformationTab();
@@ -1644,6 +1652,11 @@ class _OpportunityDetailScreenState
         ),
       ],
     );
+  }
+
+  // ── Call Tab ──────────────────────────────────────────────────────────────────
+  Widget _buildCallTab() {
+    return CallHistoryCard(entityId: _opp.id, isLead: false);
   }
 
   // ── Timeline Tab ──────────────────────────────────────────────────────────────
