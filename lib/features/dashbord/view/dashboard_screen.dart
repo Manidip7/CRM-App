@@ -19,6 +19,7 @@ import '../../task/view/TaskScreen.dart';
 import '../../followups/view/follow_ups_screen.dart';
 import '../../quotations/view/quotations_screen.dart';
 import '../../customers/view/customers_screen.dart';
+import '../../invoices/view/invoices_screen.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../core/constants/bottom_nav_bar.dart';
 
@@ -93,6 +94,9 @@ class DashboardScreen extends ConsumerWidget {
         break;
       case 6:
         body = const CustomersScreen();
+        break;
+      case 7:
+        body = const InvoicesScreen();
         break;
       default:
         body = _buildOverviewBody();
