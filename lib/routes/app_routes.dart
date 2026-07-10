@@ -14,6 +14,7 @@ import '../features/Opportunities/view/opportunity_detail_screen.dart';
 import '../features/customers/model/customer_model.dart';
 import '../features/customers/view/create_customer_screen.dart';
 import '../features/customers/view/customer_detail_screen.dart';
+import '../features/invoices/view/create_invoice_screen.dart';
 import '../features/profile/view/edit_profile_screen.dart';
 import '../features/quotations/model/quotation_model.dart';
 import '../features/quotations/view/edit_quotation_screen.dart';
@@ -37,6 +38,7 @@ class AppRoutes {
   static const String opportunityDetail = '/opportunity-detail';
   static const String customerDetail = '/customer-detail';
   static const String createCustomer = '/create-customer';
+  static const String createInvoice = '/create-invoice';
   static const String taskList = '/task-list';
   static const String editQuotation = '/edit-quotation';
   static const String editProfile = '/edit-profile';
@@ -118,6 +120,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       path: AppRoutes.createCustomer,
       name: 'createCustomer',
       builder: (context, state) => const CreateCustomerScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.createInvoice,
+      name: 'createInvoice',
+      builder: (context, state) => const CreateInvoiceScreen(),
     ),
     GoRoute(
       path: AppRoutes.taskList,

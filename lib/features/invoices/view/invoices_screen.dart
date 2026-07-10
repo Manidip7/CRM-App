@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../../../routes/app_routes.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
 import '../model/invoice_model.dart';
 import '../provider/invoices_provider.dart';
@@ -76,7 +78,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
           ),
         ),
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _toast('Create invoice coming soon'),
+          onPressed: () => context.push(AppRoutes.createInvoice),
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           icon: const Icon(Icons.add_rounded),
