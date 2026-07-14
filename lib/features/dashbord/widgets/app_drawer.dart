@@ -78,6 +78,12 @@ class AppDrawer extends ConsumerWidget {
                     selected: selected == 7,
                     onTap: () => _go(context, ref, 7),
                   ),
+                  _DrawerItem(
+                    icon: Icons.folder_open_rounded,
+                    label: 'Projects',
+                    selected: selected == 8,
+                    onTap: () => _go(context, ref, 8),
+                  ),
                   const SizedBox(height: 8),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
