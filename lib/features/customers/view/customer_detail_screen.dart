@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
 import '../model/customer_model.dart';
+import '../provider/customers_api_provider.dart';
 import '../provider/customers_provider.dart';
 
 /// Full customer profile: contact info, address, and a tabbed section that
@@ -31,15 +32,25 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final c = widget.customer;
     final tab = ref.watch(customerDetailTabProvider);
+    // Load the full profile from GET /customers/{id}. Until it arrives, show the
+    // list row we were handed as a placeholder so the screen isn't blank.
+    final async = ref.watch(customerDetailProvider(widget.customer.id));
+    final c = async.value ?? widget.customer;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildTopBar(context),
+            _buildTopBar(context, c),
+            if (async.isLoading)
+              const LinearProgressIndicator(
+                minHeight: 2,
+                backgroundColor: Colors.transparent,
+                color: AppColors.primary,
+              ),
+            if (async.hasError && !async.isLoading) _buildErrorBanner(),
             Expanded(
               child: ListView(
                 physics: const BouncingScrollPhysics(),
@@ -52,7 +63,7 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                   _buildSectionTabs(tab),
                   const SizedBox(height: 14),
                   if (tab == 0)
-                    _buildContractCard(c)
+                    _buildContactsCard(c)
                   else if (tab == 1)
                     _buildWonProductsCard(c)
                   else
@@ -68,11 +79,45 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
     );
   }
 
+  /// Thin inline banner shown when the detail fetch fails; the placeholder data
+  /// from the list stays visible underneath. Tapping retries the request.
+  Widget _buildErrorBanner() {
+    return GestureDetector(
+      onTap: () =>
+          ref.invalidate(customerDetailProvider(widget.customer.id)),
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.red.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.red.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.error_outline_rounded,
+                size: 16, color: AppColors.red),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Could not load latest details. Tap to retry.',
+                style: GoogleFonts.poppins(
+                    fontSize: 12, color: AppColors.red),
+              ),
+            ),
+            const Icon(Icons.refresh_rounded, size: 16, color: AppColors.red),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Horizontal segmented tabs that pick which related section is shown.
   /// Styled like the Lead Details tab bar (Information / Timeline / Notes):
   /// a rounded pill bar with a tinted indicator behind the selected label.
   Widget _buildSectionTabs(int selected) {
-    const labels = ['Contract', 'Won Products', 'History'];
+    const labels = ['Contacts', 'Won Products', 'History'];
     return Container(
       height: 42,
       decoration: BoxDecoration(
@@ -126,7 +171,7 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
   }
 
   // ── Top bar ──
-  Widget _buildTopBar(BuildContext context) {
+  Widget _buildTopBar(BuildContext context, CustomerModel c) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
       child: Row(
@@ -157,9 +202,52 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
               color: AppColors.textPrimary,
             ),
           ),
+          const Spacer(),
+          // Edit — opens a sheet that PUTs to /customers/{id}.
+          GestureDetector(
+            onTap: () => _openEditSheet(c),
+            child: Container(
+              height: 38,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: AppColors.primary.withOpacity(0.25)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.edit_outlined,
+                      size: 16, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Edit',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  /// Opens the edit sheet pre-filled with [c]. On a successful save it refreshes
+  /// the detail (so the screen updates) and the list already refreshed itself.
+  Future<void> _openEditSheet(CustomerModel c) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditCustomerSheet(customer: c),
+    );
+    if (saved == true && mounted) {
+      ref.invalidate(customerDetailProvider(widget.customer.id));
+    }
   }
 
   // ── Profile ──
@@ -274,7 +362,118 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
     );
   }
 
+  // ── Contacts ──
+  Widget _buildContactsCard(CustomerModel c) {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _sectionTitle(Icons.contacts_outlined, 'Contacts'),
+              const Spacer(),
+              _countBadge(c.contacts.length),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (c.contacts.isEmpty)
+            _emptyHint('No contacts yet')
+          else
+            ...List.generate(c.contacts.length, (i) {
+              final isLast = i == c.contacts.length - 1;
+              return _contactRow(c.contacts[i], isLast);
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _contactRow(CustomerContact contact, bool isLast) {
+    return Padding(
+      padding: EdgeInsets.only(top: 12, bottom: isLast ? 0 : 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Center(
+                  child: Text(
+                    contact.initials,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            contact.name.isEmpty ? '—' : contact.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (contact.isPrimary) ...[
+                          const SizedBox(width: 8),
+                          _tag('Primary', AppColors.green),
+                        ],
+                      ],
+                    ),
+                    if (contact.designation.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        contact.designation,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (contact.email.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _infoRow(Icons.email_outlined, 'Email', contact.email),
+          ],
+          if (contact.phone.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _infoRow(Icons.phone_outlined, 'Phone', contact.phone),
+          ],
+          if (!isLast) ...[
+            const SizedBox(height: 12),
+            const Divider(color: AppColors.divider, height: 1),
+          ],
+        ],
+      ),
+    );
+  }
+
   // ── Contract ──
+  // ignore: unused_element
   Widget _buildContractCard(CustomerModel c) {
     final contract = c.contract;
     return _card(
@@ -704,5 +903,228 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
       'Dec',
     ];
     return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Edit Customer sheet
+// ─────────────────────────────────────────────
+
+/// Bottom sheet to edit a customer's core fields. Pre-fills from [customer] and
+/// submits `{ name, email, phone, address }` to `PUT /customers/{id}` through
+/// [customersApiProvider]. Pops `true` on success so the caller can refresh.
+class _EditCustomerSheet extends ConsumerStatefulWidget {
+  final CustomerModel customer;
+
+  const _EditCustomerSheet({required this.customer});
+
+  @override
+  ConsumerState<_EditCustomerSheet> createState() => _EditCustomerSheetState();
+}
+
+class _EditCustomerSheetState extends ConsumerState<_EditCustomerSheet> {
+  late final TextEditingController _name;
+  late final TextEditingController _email;
+  late final TextEditingController _phone;
+  late final TextEditingController _address;
+
+  /// Detail parsing uses '—' as a placeholder for empty fields; strip it so the
+  /// inputs start blank rather than with a dash.
+  String _clean(String v) => v.trim() == '—' ? '' : v.trim();
+
+  @override
+  void initState() {
+    super.initState();
+    final c = widget.customer;
+    _name = TextEditingController(text: c.name);
+    _email = TextEditingController(text: _clean(c.email));
+    _phone = TextEditingController(text: _clean(c.phone));
+    // The backend `address` maps onto CustomerModel.street.
+    _address = TextEditingController(text: c.street);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(customerEditSubmittingProvider.notifier).set(false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _phone.dispose();
+    _address.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final submitting = ref.watch(customerEditSubmittingProvider);
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(
+              'Edit Customer',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _field('Name', _name, Icons.person_outline_rounded),
+            _field('Email', _email, Icons.email_outlined,
+                keyboardType: TextInputType.emailAddress),
+            _field('Phone', _phone, Icons.phone_outlined,
+                keyboardType: TextInputType.phone),
+            _field('Address', _address, Icons.location_on_outlined,
+                maxLines: 2),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: submitting ? null : _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                child: submitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        'Save Changes',
+                        style: GoogleFonts.poppins(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field(
+    String label,
+    TextEditingController controller,
+    IconData icon, {
+    TextInputType? keyboardType,
+    int maxLines = 1,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          TextField(
+            controller: controller,
+            keyboardType: keyboardType,
+            maxLines: maxLines,
+            style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              prefixIcon: Icon(icon, size: 19, color: AppColors.textSecondary),
+              filled: true,
+              fillColor: AppColors.cardBackground,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              border: _border(AppColors.divider),
+              enabledBorder: _border(AppColors.divider),
+              focusedBorder: _border(AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  OutlineInputBorder _border(Color color) => OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: color),
+      );
+
+  Future<void> _save() async {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      _toast('Name is required', isError: true);
+      return;
+    }
+
+    final submitting = ref.read(customerEditSubmittingProvider.notifier);
+    submitting.set(true);
+
+    final error = await ref.read(customersApiProvider.notifier).updateCustomer(
+          widget.customer.id,
+          name: name,
+          email: _email.text.trim(),
+          phone: _phone.text.trim(),
+          address: _address.text.trim(),
+        );
+
+    if (!mounted) return;
+    submitting.set(false);
+
+    if (error != null) {
+      _toast(error, isError: true);
+      return;
+    }
+
+    Navigator.pop(context, true);
+    _toast('$name updated');
+  }
+
+  void _toast(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message,
+            style: const TextStyle(fontSize: 13, color: Colors.white)),
+        backgroundColor: isError ? AppColors.red : AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 }

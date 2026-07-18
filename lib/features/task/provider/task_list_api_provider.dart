@@ -98,6 +98,32 @@ class TaskListApi extends Notifier<TaskListApiState> {
     await _load(1);
   }
 
+  /// Creates a task via `POST /tasks`, then reloads the list so it appears.
+  /// Returns null on success, or the error message on failure.
+  Future<String?> createTask({
+    required String title,
+    String? description,
+    int? assignedTo,
+    required String status,
+    required String priority,
+    String? startDate,
+    String? dueDate,
+  }) async {
+    final result = await ref.read(taskRepositoryProvider).createTask(
+          title: title,
+          description: description,
+          assignedTo: assignedTo,
+          status: status,
+          priority: priority,
+          startDate: startDate,
+          dueDate: dueDate,
+        );
+    final error = result.errorOrNull;
+    if (error != null) return error.message;
+    await refresh();
+    return null;
+  }
+
   /// Debounced server-side search. Updates `?search=` and reloads from page 1.
   void setSearch(String query) {
     final next = query.trim();

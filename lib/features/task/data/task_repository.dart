@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -28,6 +29,43 @@ class TaskRepository {
         if (q.isNotEmpty) 'search': q,
       },
       decoder: _decodeTasksPage,
+    );
+  }
+
+  /// POST /tasks — creates a task. Sends a raw JSON body; optional fields are
+  /// omitted when empty. Dates must already be formatted `yyyy-MM-dd`.
+  Future<ApiResult<void>> createTask({
+    required String title,
+    String? description,
+    int? assignedTo,
+    required String status,
+    required String priority,
+    String? startDate,
+    String? dueDate,
+  }) {
+    return _api.post<void>(
+      ApiConstants.tasks,
+      options: Options(contentType: Headers.jsonContentType),
+      data: {
+        'title': title,
+        if (description != null && description.isNotEmpty)
+          'description': description,
+        if (assignedTo != null) 'assigned_to': assignedTo,
+        'status': status,
+        'priority': priority,
+        if (startDate != null && startDate.isNotEmpty) 'start_date': startDate,
+        if (dueDate != null && dueDate.isNotEmpty) 'due_at': dueDate,
+      },
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not create task.',
+            raw: json,
+          );
+        }
+        return null;
+      },
     );
   }
 

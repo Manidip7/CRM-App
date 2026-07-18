@@ -98,6 +98,48 @@ class CustomersApi extends Notifier<CustomersApiState> {
     await _load(1);
   }
 
+  /// Creates a customer via `POST /customers`, then reloads the list so the new
+  /// row appears. Returns null on success, or the error message on failure.
+  Future<String?> createCustomer({
+    required String name,
+    String? email,
+    String? phone,
+    String? address,
+  }) async {
+    final result = await ref.read(customersRepositoryProvider).createCustomer(
+          name: name,
+          email: email,
+          phone: phone,
+          address: address,
+        );
+    final error = result.errorOrNull;
+    if (error != null) return error.message;
+    await refresh();
+    return null;
+  }
+
+  /// Updates a customer via `PUT /customers/{id}`, then reloads the list so the
+  /// row reflects the edit. Returns null on success, or the error message.
+  Future<String?> updateCustomer(
+    String id, {
+    required String name,
+    String? email,
+    String? phone,
+    String? address,
+  }) async {
+    final result = await ref.read(customersRepositoryProvider).updateCustomer(
+          id,
+          name: name,
+          email: email,
+          phone: phone,
+          address: address,
+        );
+    final error = result.errorOrNull;
+    if (error != null) return error.message;
+    await refresh();
+    return null;
+  }
+
   /// Debounced server-side search. Updates `?search=` and reloads from page 1.
   void setSearch(String query) {
     final next = query.trim();

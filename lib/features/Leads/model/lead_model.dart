@@ -268,8 +268,14 @@ class LeadModel {
   final LeadSource source;
 
   /// Whether the backend actually sent a recognized source. When false the UI
-  /// hides the source badge rather than showing the `manual` fallback.
+  /// shows the raw [sourceName] as a plain-text badge instead of the mapped
+  /// icon/colour of the `manual` fallback.
   final bool sourceKnown;
+
+  /// The raw source label exactly as the backend sent it. Kept so that an
+  /// unrecognized source (one [sourceKnown] is false for) can still be shown by
+  /// name rather than hidden or shown as `manual`.
+  final String? sourceName;
   final DateTime nextFollowUp;
   final DateTime createdAt;
   final double? dealValue;
@@ -354,6 +360,7 @@ class LeadModel {
     required this.status,
     required this.source,
     this.sourceKnown = true,
+    this.sourceName,
     required this.nextFollowUp,
     required this.createdAt,
     this.dealValue,
@@ -419,6 +426,7 @@ class LeadModel {
         status: status,
         source: source,
         sourceKnown: sourceKnown,
+        sourceName: sourceName,
         nextFollowUp: nextFollowUp ?? this.nextFollowUp,
         createdAt: createdAt,
         dealValue: dealValue,
@@ -474,6 +482,7 @@ class LeadModel {
         status: status,
         source: source,
         sourceKnown: sourceKnown,
+        sourceName: sourceName,
         nextFollowUp: nextFollowUp,
         createdAt: createdAt,
         dealValue: dealValue,
@@ -577,6 +586,7 @@ class LeadModel {
       source: leadSourceName == null ? source : _sourceFromString(leadSourceName),
       sourceKnown:
           leadSourceName == null ? sourceKnown : _isKnownSource(leadSourceName),
+      sourceName: leadSourceName ?? sourceName,
       nextFollowUp: nextFollowUp,
       createdAt: createdAt,
       dealValue: dealValue,
@@ -660,6 +670,7 @@ class LeadModel {
       status: _statusFromString(_nameOf(json['status'])),
       source: _sourceFromString(_nameOf(json['source'])),
       sourceKnown: _isKnownSource(_nameOf(json['source'])),
+      sourceName: _nameOf(json['source']),
       nextFollowUp: _parseDate(json['next_followup_at'] ?? json['next_follow_up']) ??
           DateTime.now(),
       createdAt: _parseDate(json['created_at']) ?? DateTime.now(),

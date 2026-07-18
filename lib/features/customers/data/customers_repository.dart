@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -6,6 +7,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_result.dart';
 import '../../../core/network/network_providers.dart';
 import '../model/customer_list_item.dart';
+import '../model/customer_model.dart';
 
 /// Repository for the Customers feature, decoding through [ApiClient].
 class CustomersRepository {
@@ -27,6 +29,87 @@ class CustomersRepository {
         if (q.isNotEmpty) 'search': q,
       },
       decoder: _decodeCustomersPage,
+    );
+  }
+
+  /// POST /customers — creates a customer. Sends a raw JSON body; only
+  /// non-empty optional fields are included.
+  Future<ApiResult<void>> createCustomer({
+    required String name,
+    String? email,
+    String? phone,
+    String? address,
+  }) {
+    return _api.post<void>(
+      ApiConstants.customers,
+      options: Options(contentType: Headers.jsonContentType),
+      data: {
+        'name': name,
+        if (email != null && email.isNotEmpty) 'email': email,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        if (address != null && address.isNotEmpty) 'address': address,
+      },
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not create customer.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  /// PUT /customers/{id} — updates a customer's core fields. Sends a raw JSON
+  /// body; only non-empty optional fields are included.
+  Future<ApiResult<void>> updateCustomer(
+    String id, {
+    required String name,
+    String? email,
+    String? phone,
+    String? address,
+  }) {
+    return _api.put<void>(
+      ApiConstants.customerDetail(id),
+      options: Options(contentType: Headers.jsonContentType),
+      data: {
+        'name': name,
+        if (email != null && email.isNotEmpty) 'email': email,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        if (address != null && address.isNotEmpty) 'address': address,
+      },
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not update customer.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  /// GET /customers/{id} — the full customer profile for the detail screen.
+  Future<ApiResult<CustomerModel>> getCustomer(String id) {
+    return _api.get<CustomerModel>(
+      ApiConstants.customerDetail(id),
+      decoder: (json) {
+        final map = (json as Map).cast<String, dynamic>();
+        if (map['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: map['message'] as String? ?? 'Could not load customer.',
+            raw: json,
+          );
+        }
+        // The customer object lives under `data`; some endpoints return it flat.
+        final data = (map['data'] as Map?)?.cast<String, dynamic>() ?? map;
+        return CustomerModel.fromDetailJson(data);
+      },
     );
   }
 

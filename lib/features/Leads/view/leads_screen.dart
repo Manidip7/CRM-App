@@ -1547,9 +1547,13 @@ class _LeadCard extends StatelessWidget {
                         if (lead.priority != null &&
                             lead.priority!.trim().isNotEmpty)
                           _PriorityBadge(priority: lead.priority!),
-                        // Hide the source badge when the backend sent no
-                        // recognizable source (no `manual` fallback shown).
-                        if (lead.sourceKnown) _SourceBadge(source: lead.source),
+                        // Show the mapped badge for a recognized source; for an
+                        // unrecognized one, show its raw name only. Hide entirely
+                        // when the backend sent no source at all.
+                        if (lead.sourceKnown)
+                          _SourceBadge(source: lead.source)
+                        else if (lead.sourceName?.trim().isNotEmpty ?? false)
+                          _SourceBadge.name(lead.sourceName!.trim()),
                       ],
                     ),
                   ),
@@ -1848,10 +1852,41 @@ class _PriorityBadge extends StatelessWidget {
 
 class _SourceBadge extends StatelessWidget {
   final LeadSource source;
-  const _SourceBadge({required this.source});
+
+  /// When set, the badge shows this raw label (no icon, neutral colour) instead
+  /// of the mapped config — used for sources the app doesn't recognize.
+  final String? rawName;
+
+  const _SourceBadge({required this.source}) : rawName = null;
+
+  /// Builds a plain badge that shows only [name], for an unrecognized source.
+  const _SourceBadge.name(String name)
+      : source = LeadSource.manual,
+        rawName = name;
 
   @override
   Widget build(BuildContext context) {
+    // Unrecognized source: show only its name with neutral styling.
+    if (rawName != null) {
+      final color = AppColors.textSecondary;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color.withOpacity(0.2), width: 0.8),
+        ),
+        child: Text(
+          rawName!.toUpperCase(),
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      );
+    }
+
     final cfg = _sourceConfig(source);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),

@@ -4,11 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
-import '../model/customer_model.dart';
+import '../provider/customers_api_provider.dart';
 import '../provider/customers_provider.dart';
 
-/// Form to create a new customer. The status dropdown is backed by
-/// [customerDraftStatusProvider] (Riverpod) so the screen needs no [setState].
+/// Form to create a new customer. Submits `{ name, email, phone, address }` to
+/// `POST /customers` via [customersApiProvider], then refreshes the list. The
+/// submitting state is held in Riverpod so the button reacts without [setState].
 class CreateCustomerScreen extends ConsumerStatefulWidget {
   const CreateCustomerScreen({super.key});
 
@@ -19,43 +20,30 @@ class CreateCustomerScreen extends ConsumerStatefulWidget {
 
 class _CreateCustomerScreenState extends ConsumerState<CreateCustomerScreen> {
   final _name = TextEditingController();
-  final _company = TextEditingController();
   final _email = TextEditingController();
   final _phone = TextEditingController();
-  final _street = TextEditingController();
-  final _city = TextEditingController();
-  final _state = TextEditingController();
-  final _postalCode = TextEditingController();
-  final _country = TextEditingController(text: 'India');
-  final _value = TextEditingController();
+  final _address = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    // Reset the dropdown to its default each time the form opens.
+    // Clear any lingering submit state when the form opens.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(customerDraftStatusProvider.notifier).reset();
+      ref.read(customerCreateSubmittingProvider.notifier).set(false);
     });
   }
 
   @override
   void dispose() {
     _name.dispose();
-    _company.dispose();
     _email.dispose();
     _phone.dispose();
-    _street.dispose();
-    _city.dispose();
-    _state.dispose();
-    _postalCode.dispose();
-    _country.dispose();
-    _value.dispose();
+    _address.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final status = ref.watch(customerDraftStatusProvider);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -68,28 +56,24 @@ class _CreateCustomerScreenState extends ConsumerState<CreateCustomerScreen> {
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                 children: [
-                  _sectionLabel('Profile'),
-                  _field('Name', _name, hint: 'Full name'),
-                  _field('Company', _company, hint: 'Company name'),
+                  _buildHeaderCard(),
+                  const SizedBox(height: 18),
+                  _sectionLabel('Customer Details'),
+                  _field('Name', _name,
+                      hint: 'Acme Corp',
+                      icon: Icons.person_outline_rounded),
                   _field('Email', _email,
-                      hint: 'name@company.com',
+                      hint: 'contact@acme.com',
+                      icon: Icons.email_outlined,
                       keyboardType: TextInputType.emailAddress),
                   _field('Phone', _phone,
-                      hint: '+91 90000 00000',
+                      hint: '1234567890',
+                      icon: Icons.phone_outlined,
                       keyboardType: TextInputType.phone),
-                  _statusField(status),
-                  _field('Total Value', _value,
-                      hint: 'e.g. 50000',
-                      keyboardType: TextInputType.number),
-                  const SizedBox(height: 8),
-                  _sectionLabel('Address Details'),
-                  _field('Street', _street, hint: 'Street / building'),
-                  _field('City', _city, hint: 'City'),
-                  _field('State', _state, hint: 'State'),
-                  _field('Postal Code', _postalCode,
-                      hint: 'PIN code',
-                      keyboardType: TextInputType.number),
-                  _field('Country', _country, hint: 'Country'),
+                  _field('Address', _address,
+                      hint: '123 Main St',
+                      icon: Icons.location_on_outlined,
+                      maxLines: 2),
                   const SizedBox(height: 20),
                   _saveButton(),
                 ],
@@ -135,9 +119,67 @@ class _CreateCustomerScreenState extends ConsumerState<CreateCustomerScreen> {
     );
   }
 
+  /// A small hero card at the top so the trimmed form doesn't feel empty.
+  Widget _buildHeaderCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withOpacity(0.12),
+            AppColors.primary.withOpacity(0.04),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: AppColors.primary.withOpacity(0.15)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: const Icon(Icons.group_add_rounded,
+                color: AppColors.primary, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'New Customer',
+                  style: GoogleFonts.poppins(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Add their contact details to get started.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.5,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _sectionLabel(String text) {
     return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 10),
+      padding: const EdgeInsets.only(top: 4, bottom: 12),
       child: Text(
         text.toUpperCase(),
         style: GoogleFonts.poppins(
@@ -154,7 +196,9 @@ class _CreateCustomerScreenState extends ConsumerState<CreateCustomerScreen> {
     String label,
     TextEditingController controller, {
     String? hint,
+    IconData? icon,
     TextInputType? keyboardType,
+    int maxLines = 1,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -175,11 +219,15 @@ class _CreateCustomerScreenState extends ConsumerState<CreateCustomerScreen> {
           TextField(
             controller: controller,
             keyboardType: keyboardType,
+            maxLines: maxLines,
             style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
             decoration: InputDecoration(
               hintText: hint,
               hintStyle:
                   const TextStyle(color: AppColors.textLight, fontSize: 13.5),
+              prefixIcon: icon == null
+                  ? null
+                  : Icon(icon, size: 19, color: AppColors.textSecondary),
               filled: true,
               fillColor: AppColors.cardBackground,
               contentPadding:
@@ -199,130 +247,76 @@ class _CreateCustomerScreenState extends ConsumerState<CreateCustomerScreen> {
         borderSide: BorderSide(color: color),
       );
 
-  Widget _statusField(CustomerStatus status) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
-              'Status',
-              style: GoogleFonts.poppins(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          Container(
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.divider),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<CustomerStatus>(
-                value: status,
-                isExpanded: true,
-                icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                    color: AppColors.textSecondary),
-                style: const TextStyle(
-                    fontSize: 14, color: AppColors.textPrimary),
-                items: CustomerStatus.values
-                    .map((s) => DropdownMenuItem<CustomerStatus>(
-                          value: s,
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 9,
-                                height: 9,
-                                margin: const EdgeInsets.only(right: 10),
-                                decoration: BoxDecoration(
-                                    color: s.color, shape: BoxShape.circle),
-                              ),
-                              Text(s.label),
-                            ],
-                          ),
-                        ))
-                    .toList(),
-                onChanged: (s) {
-                  if (s != null) {
-                    ref.read(customerDraftStatusProvider.notifier).set(s);
-                  }
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _saveButton() {
+    final submitting = ref.watch(customerCreateSubmittingProvider);
     return SizedBox(
       width: double.infinity,
       height: 50,
       child: ElevatedButton(
-        onPressed: _save,
+        onPressed: submitting ? null : _save,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
+          disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
           elevation: 0,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
-        child: Text(
-          'Create Customer',
-          style: GoogleFonts.poppins(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
+        child: submitting
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                'Create Customer',
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
       ),
     );
   }
 
-  void _save() {
+  Future<void> _save() async {
     final name = _name.text.trim();
     if (name.isEmpty) {
-      _toast('Name is required');
+      _toast('Name is required', isError: true);
       return;
     }
 
-    final city = _city.text.trim();
-    final customer = CustomerModel(
-      id: 'CUST-${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      company: _company.text.trim(),
-      email: _email.text.trim(),
-      phone: _phone.text.trim(),
-      location: city.isNotEmpty ? city : _state.text.trim(),
-      status: ref.read(customerDraftStatusProvider),
-      totalValue: double.tryParse(_value.text.trim()) ?? 0,
-      street: _street.text.trim(),
-      city: city,
-      state: _state.text.trim(),
-      postalCode: _postalCode.text.trim(),
-      country: _country.text.trim(),
-      createdAt: DateTime.now(),
-      createdBy: 'Admin Owner',
-    );
+    final submitting = ref.read(customerCreateSubmittingProvider.notifier);
+    submitting.set(true);
 
-    ref.read(customersProvider.notifier).add(customer);
+    final error = await ref.read(customersApiProvider.notifier).createCustomer(
+          name: name,
+          email: _email.text.trim(),
+          phone: _phone.text.trim(),
+          address: _address.text.trim(),
+        );
+
+    if (!mounted) return;
+    submitting.set(false);
+
+    if (error != null) {
+      _toast(error, isError: true);
+      return;
+    }
+
     context.pop();
-    _toast('${customer.name} created');
+    _toast('$name created');
   }
 
-  void _toast(String message) {
+  void _toast(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message,
             style: const TextStyle(fontSize: 13, color: Colors.white)),
-        backgroundColor: AppColors.primary,
+        backgroundColor: isError ? AppColors.red : AppColors.primary,
         behavior: SnackBarBehavior.floating,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

@@ -8,6 +8,7 @@ import '../model/TaskStatus.dart';
 import '../model/task_item_model.dart';
 import '../provider/task_filter_provider.dart';
 import '../provider/task_list_api_provider.dart';
+import 'create_task_screen.dart';
 
 /// Full task list (API-backed, `GET /tasks`) with search, status & assignee
 /// dropdowns and a from/to date range. Filters are applied over the pages
@@ -76,6 +77,19 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
     final tasks = _applyFilters(apiState.items, filter);
     return Scaffold(
       backgroundColor: AppColors.background,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openCreateTask,
+        backgroundColor: AppColors.primary,
+        icon: const Icon(Icons.add_rounded, color: Colors.white),
+        label: Text(
+          'Add Task',
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -721,6 +735,14 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   // ─────────────────────────────────────────────
   //  Actions
   // ─────────────────────────────────────────────
+  /// Opens the Add-Task form. On return, [CreateTaskScreen] has already
+  /// refreshed the list through [taskListApiProvider], so nothing to do here.
+  Future<void> _openCreateTask() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const CreateTaskScreen()),
+    );
+  }
+
   Future<void> _pickDate({required bool isFrom}) async {
     final f = ref.read(taskFilterProvider);
     final initial = (isFrom ? f.fromDate : f.toDate) ?? DateTime.now();

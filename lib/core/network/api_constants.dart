@@ -70,6 +70,7 @@ class ApiConstants {
 
   // Customers
   static const String customers = '/customers';
+  static String customerDetail(String id) => '/customers/$id';
 
   // Quotations
   static const String quotations = '/quotations';

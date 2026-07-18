@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_result.dart';
+import '../data/customers_repository.dart';
 import '../model/customer_model.dart';
 
 /// Master list of customers.
@@ -30,6 +32,31 @@ final customerSearchProvider =
     NotifierProvider<CustomerSearchNotifier, String>(
         CustomerSearchNotifier.new);
 
+/// Whether the "Create Customer" form is currently submitting to the API.
+/// Kept in Riverpod (not [setState]) so the button's loading state is reactive.
+class CustomerCreateSubmittingNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void set(bool value) => state = value;
+}
+
+final customerCreateSubmittingProvider =
+    NotifierProvider<CustomerCreateSubmittingNotifier, bool>(
+        CustomerCreateSubmittingNotifier.new);
+
+/// Whether the "Edit Customer" sheet is currently submitting to the API.
+class CustomerEditSubmittingNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void set(bool value) => state = value;
+}
+
+final customerEditSubmittingProvider =
+    NotifierProvider<CustomerEditSubmittingNotifier, bool>(
+        CustomerEditSubmittingNotifier.new);
+
 /// Status selected in the "Create Customer" form. Kept in Riverpod so the
 /// form's dropdown drives the UI without any local [setState].
 class CustomerDraftStatusNotifier extends Notifier<CustomerStatus> {
@@ -57,6 +84,17 @@ class CustomerDetailTabNotifier extends Notifier<int> {
 final customerDetailTabProvider =
     NotifierProvider<CustomerDetailTabNotifier, int>(
         CustomerDetailTabNotifier.new);
+
+/// Loads the full customer profile from `GET /customers/{id}` for the detail
+/// screen, keyed by customer id. `autoDispose` so it refetches on each visit.
+final customerDetailProvider =
+    FutureProvider.autoDispose.family<CustomerModel, String>((ref, id) async {
+  final result = await ref.read(customersRepositoryProvider).getCustomer(id);
+  return switch (result) {
+    Success(:final data) => data,
+    Failure(:final error) => throw error,
+  };
+});
 
 /// Customers after applying the active search query.
 final filteredCustomersProvider = Provider<List<CustomerModel>>((ref) {

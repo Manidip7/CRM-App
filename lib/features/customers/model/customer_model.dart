@@ -29,6 +29,56 @@ extension CustomerStatusName on CustomerStatus {
   }
 }
 
+/// A contact person under a customer (from the `contacts` array on
+/// `GET /customers/{id}`).
+class CustomerContact {
+  final String name;
+  final String email;
+  final String phone;
+  final String designation;
+  final bool isPrimary;
+
+  const CustomerContact({
+    required this.name,
+    this.email = '',
+    this.phone = '',
+    this.designation = '',
+    this.isPrimary = false,
+  });
+
+  /// First letters of the name, used for the avatar badge.
+  String get initials {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
+    return (parts.first.characters.first + parts.last.characters.first)
+        .toUpperCase();
+  }
+
+  factory CustomerContact.fromJson(Map<String, dynamic> json) {
+    String str(dynamic v) => v == null ? '' : '$v'.trim();
+
+    // Contacts may carry a split name (first/last) or a single `name` field.
+    final composed = [str(json['first_name']), str(json['last_name'])]
+        .where((s) => s.isNotEmpty)
+        .join(' ')
+        .trim();
+
+    final primary = json['is_primary'] ?? json['primary'];
+
+    return CustomerContact(
+      name: composed.isNotEmpty ? composed : str(json['name']),
+      email: str(json['email']),
+      phone: str(json['phone'] ?? json['mobile'] ?? json['contact_number']),
+      designation:
+          str(json['designation'] ?? json['role'] ?? json['position']),
+      isPrimary: primary is bool
+          ? primary
+          : (primary is num ? primary != 0 : str(primary) == '1'),
+    );
+  }
+}
+
 /// Contract attached to a customer.
 class ContractInfo {
   final String number;
@@ -46,6 +96,20 @@ class ContractInfo {
     required this.value,
     this.active = true,
   });
+
+  factory ContractInfo.fromJson(Map<String, dynamic> json) {
+    final now = DateTime.now();
+    final status = '${json['status'] ?? ''}'.toLowerCase();
+    return ContractInfo(
+      number: '${json['number'] ?? json['contract_number'] ?? ''}',
+      title: '${json['title'] ?? json['name'] ?? ''}',
+      startDate: DateTime.tryParse('${json['start_date']}') ?? now,
+      endDate: DateTime.tryParse('${json['end_date']}') ?? now,
+      value: (json['value'] as num?)?.toDouble() ?? 0,
+      active: json['active'] as bool? ??
+          (status.isEmpty ? true : status == 'active'),
+    );
+  }
 }
 
 /// A product the customer has purchased (a "won" deal line).
@@ -59,6 +123,16 @@ class WonProduct {
     required this.quantity,
     required this.amount,
   });
+
+  factory WonProduct.fromJson(Map<String, dynamic> json) {
+    return WonProduct(
+      name: '${json['name'] ?? json['product_name'] ?? ''}',
+      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+      amount: (json['amount'] as num?)?.toDouble() ??
+          (json['value'] as num?)?.toDouble() ??
+          0,
+    );
+  }
 }
 
 /// One entry in the customer activity history.
@@ -74,6 +148,16 @@ class HistoryEntry {
     required this.description,
     required this.by,
   });
+
+  factory HistoryEntry.fromJson(Map<String, dynamic> json) {
+    return HistoryEntry(
+      date: DateTime.tryParse('${json['date'] ?? json['created_at']}') ??
+          DateTime.now(),
+      title: '${json['title'] ?? json['action'] ?? ''}',
+      description: '${json['description'] ?? json['note'] ?? ''}',
+      by: '${json['by'] ?? json['created_by_name'] ?? json['user'] ?? ''}',
+    );
+  }
 }
 
 class CustomerModel {
@@ -95,6 +179,7 @@ class CustomerModel {
 
   // Related records
   final ContractInfo? contract;
+  final List<CustomerContact> contacts;
   final List<WonProduct> wonProducts;
   final List<HistoryEntry> history;
 
@@ -119,9 +204,76 @@ class CustomerModel {
     this.postalCode = '',
     this.country = '',
     this.contract,
+    this.contacts = const [],
     this.wonProducts = const [],
     this.history = const [],
   });
+
+  /// Builds a full [CustomerModel] from the `GET /customers/{id}` detail
+  /// payload (the object under `data`). The core contact/address fields match
+  /// the list row; the nested contract / products / history sections are parsed
+  /// defensively so a shape the backend doesn't send simply comes back empty.
+  factory CustomerModel.fromDetailJson(Map<String, dynamic> json) {
+    String str(dynamic v) => v == null ? '' : '$v'.trim();
+
+    final city = str(json['city']);
+    final state = str(json['state']);
+    final country = str(json['country']);
+    final locationParts = [city, state, country].where((p) => p.isNotEmpty);
+
+    final contractJson = (json['contract'] as Map?)?.cast<String, dynamic>();
+    final contactsJson = json['contacts'] as List? ?? const [];
+    final productsJson =
+        (json['won_products'] ?? json['products']) as List? ?? const [];
+    final historyJson =
+        (json['history'] ?? json['activities']) as List? ?? const [];
+
+    return CustomerModel(
+      id: str(json['id']),
+      name: str(json['name']),
+      company: str(json['company']),
+      email: str(json['email']).isEmpty ? '—' : str(json['email']),
+      phone: str(json['phone']).isEmpty ? '—' : str(json['phone']),
+      location:
+          locationParts.isEmpty ? 'No location' : locationParts.join(', '),
+      status: _statusFromString(str(json['status'])),
+      totalValue: (json['total_value'] as num?)?.toDouble() ?? 0,
+      street: str(json['address']),
+      city: city,
+      state: state,
+      postalCode: str(json['pincode']),
+      country: country,
+      createdAt: DateTime.tryParse('${json['created_at']}') ?? DateTime.now(),
+      createdBy: str(json['created_by_name'] ?? json['created_by']),
+      contract:
+          contractJson == null ? null : ContractInfo.fromJson(contractJson),
+      contacts: contactsJson
+          .whereType<Map>()
+          .map((e) => CustomerContact.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+      wonProducts: productsJson
+          .whereType<Map>()
+          .map((e) => WonProduct.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+      history: historyJson
+          .whereType<Map>()
+          .map((e) => HistoryEntry.fromJson(e.cast<String, dynamic>()))
+          .toList(),
+    );
+  }
+
+  static CustomerStatus _statusFromString(String value) {
+    switch (value.toLowerCase().trim()) {
+      case 'active':
+        return CustomerStatus.active;
+      case 'inactive':
+        return CustomerStatus.inactive;
+      case 'lead':
+        return CustomerStatus.lead;
+      default:
+        return CustomerStatus.active;
+    }
+  }
 
   /// First letters of the name, used for the avatar badge.
   String get initials {
