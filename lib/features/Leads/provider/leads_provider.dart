@@ -215,6 +215,16 @@ class LeadsList extends _$LeadsList {
     ]);
   }
 
+  /// Replaces a single loaded lead in place (no refetch), so an edit made on the
+  /// detail screen shows on the list when navigating back.
+  void replaceLead(LeadModel updated) {
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncData([
+      for (final lead in current) lead.id == updated.id ? updated : lead,
+    ]);
+  }
+
   /// Patches a single loaded lead's follow-up fields in place (no refetch), so a
   /// newly scheduled follow-up shows on the list (and re-seeds the detail
   /// screen) immediately, without waiting for a reload.
@@ -257,15 +267,94 @@ class LeadsList extends _$LeadsList {
   }
 }
 
-/// Base data set — swaps between normal (API) leads and backlog (sample) leads.
+/// Pagination metadata for the backlog list — a separate instance from the live
+/// list's [LeadsPaginationState] so the two views keep independent page cursors.
+@Riverpod(keepAlive: true)
+class LeadsBacklogPagination extends _$LeadsBacklogPagination {
+  @override
+  LeadsPagination build() => const LeadsPagination();
+
+  void setFromPage(LeadsPage page) => state = state.copyWith(
+        currentPage: page.currentPage,
+        lastPage: page.lastPage,
+        total: page.total,
+      );
+
+  void setLoadingMore(bool value) =>
+      state = state.copyWith(isLoadingMore: value);
+}
+
+/// The backlog leads — overdue leads needing follow-up (GET
+/// /leads?quick_filter=backlog), paginated by scroll exactly like the live list.
+/// Cached for the session; pull-to-refresh (or a Retry) reloads from page 1.
+@Riverpod(keepAlive: true)
+class LeadsBacklog extends _$LeadsBacklog {
+  LeadsBacklogPagination get _pagination =>
+      ref.read(leadsBacklogPaginationProvider.notifier);
+
+  @override
+  Future<List<LeadModel>> build() async {
+    final page = await _fetch(1);
+    _pagination.setFromPage(page);
+    return page.leads;
+  }
+
+  Future<LeadsPage> _fetch(int page) async {
+    final result = await ref.read(leadsRepositoryProvider).getLeads(
+          page: page,
+          quickFilters: const ['backlog'],
+        );
+    return switch (result) {
+      Success(:final data) => data,
+      Failure(:final error) => throw error,
+    };
+  }
+
+  /// Fetches the next page and appends it. No-op while a load is running or the
+  /// last page has been reached.
+  Future<void> loadMore() async {
+    final meta = ref.read(leadsBacklogPaginationProvider);
+    if (meta.isLoadingMore || !meta.hasMore) return;
+
+    final current = state.value ?? const <LeadModel>[];
+    _pagination.setLoadingMore(true);
+    try {
+      final next = await _fetch(meta.currentPage + 1);
+      _pagination.setFromPage(next);
+      state = AsyncData([...current, ...next.leads]);
+    } catch (_) {
+      // Keep the already-loaded leads; the next scroll will retry.
+    } finally {
+      _pagination.setLoadingMore(false);
+    }
+  }
+
+  /// Reloads from page 1.
+  Future<void> refresh() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final page = await _fetch(1);
+      _pagination.setFromPage(page);
+      return page.leads;
+    });
+  }
+}
+
+/// Base data set — swaps between the live (API) leads and the backlog leads.
+/// Both are API-backed; the backlog is its own cached list so switching views
+/// never disturbs the live pipeline (mirrors the Opportunities screen).
 @riverpod
 List<LeadModel> leadsSource(Ref ref) {
   final showBacklog = ref.watch(leadsFilterProvider).showBacklog;
-  if (showBacklog) return LeadModel.backlogLeads();
+  if (showBacklog) {
+    return ref.watch(leadsBacklogProvider).value ?? const [];
+  }
   return ref.watch(leadsListProvider).value ?? const [];
 }
 
-/// The source list with the active search query + status/source filters applied.
+/// The source list with the active search + status/source filters applied.
+/// For the live list, search runs server-side; the backlog list is searched
+/// client-side here (mirrors the Opportunities screen).
 @riverpod
 List<LeadModel> filteredLeads(Ref ref) {
   final all = ref.watch(leadsSourceProvider);

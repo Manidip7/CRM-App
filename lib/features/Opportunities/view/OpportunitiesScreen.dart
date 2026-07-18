@@ -76,10 +76,33 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
       .select((s) => s.showBacklog ? s.backlogItems.length : s.total));
 
   // ── Formatting ──
+  /// The full deal amount with Indian digit grouping, e.g. 54545 → "₹54,545"
+  /// and 1234567.5 → "₹12,34,567.50". Paise are shown only when non-zero.
   String _formatValue(double v) {
-    if (v >= 100000) return '₹${(v / 100000).toStringAsFixed(1)}L';
-    if (v >= 1000) return '₹${(v / 1000).toStringAsFixed(0)}k';
-    return '₹${v.toStringAsFixed(2)}';
+    final isWhole = v == v.roundToDouble();
+    final str = isWhole ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+    final dot = str.indexOf('.');
+    var intPart = dot == -1 ? str : str.substring(0, dot);
+    final fraction = dot == -1 ? '' : str.substring(dot); // includes the '.'
+
+    final neg = intPart.startsWith('-');
+    if (neg) intPart = intPart.substring(1);
+
+    String grouped;
+    if (intPart.length <= 3) {
+      grouped = intPart;
+    } else {
+      final last3 = intPart.substring(intPart.length - 3);
+      final rest = intPart.substring(0, intPart.length - 3);
+      final buf = StringBuffer();
+      for (var i = 0; i < rest.length; i++) {
+        buf.write(rest[i]);
+        final fromRight = rest.length - i;
+        if (fromRight > 1 && (fromRight - 1) % 2 == 0) buf.write(',');
+      }
+      grouped = '$buf,$last3';
+    }
+    return '${neg ? '-' : ''}₹$grouped$fraction';
   }
 
   @override
@@ -640,11 +663,15 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
                           const Icon(Icons.person_outline_rounded,
                               size: 13, color: AppColors.textSecondary),
                           const SizedBox(width: 4),
-                          Text(
-                            opp.contactName,
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              color: AppColors.textSecondary,
+                          Flexible(
+                            child: Text(
+                              opp.contactName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                color: AppColors.textSecondary,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 6),

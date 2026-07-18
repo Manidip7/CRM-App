@@ -196,6 +196,31 @@ class NamedLookup {
   }
 }
 
+/// A user that a lead can be assigned to (`GET /users`), used by the
+/// Assign-Lead popup's multi-select. [designation] backs the sub-label.
+class AssignableUser {
+  final int id;
+  final String name;
+  final String? email;
+  final String? designation;
+
+  const AssignableUser({
+    required this.id,
+    required this.name,
+    this.email,
+    this.designation,
+  });
+
+  factory AssignableUser.fromJson(Map<String, dynamic> json) {
+    return AssignableUser(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: json['name'] as String? ?? '',
+      email: json['email'] as String?,
+      designation: json['designation'] as String?,
+    );
+  }
+}
+
 /// A lead status option from `GET /statuses` (`type == "lead"`), used for the
 /// status chip/menu on the lead detail header. [colorHex] is the raw
 /// `#rrggbb` string; the UI converts it to a Color.
@@ -241,6 +266,10 @@ class LeadModel {
   final String? email;
   final LeadStatus status;
   final LeadSource source;
+
+  /// Whether the backend actually sent a recognized source. When false the UI
+  /// hides the source badge rather than showing the `manual` fallback.
+  final bool sourceKnown;
   final DateTime nextFollowUp;
   final DateTime createdAt;
   final double? dealValue;
@@ -256,12 +285,45 @@ class LeadModel {
   /// render the stacked initials avatars on the leads list card.
   final List<String> assigneeNames;
 
+  /// The raw name parts, kept alongside the composed [contactName] so the
+  /// Edit-Lead form can round-trip `first_name` / `last_name` separately.
+  final String? firstName;
+  final String? lastName;
+
   // Extra contact / professional fields.
   final String? alternatePhone;
   final String? designation;
   final String? website;
   final String? interestedIn;
   final String? priority;
+  final String? description;
+
+  // Location details.
+  final String? address;
+  final String? city;
+
+  /// The lead's state/region (`state` on the API). Named `stateName` to avoid
+  /// reading as a sibling of [status].
+  final String? stateName;
+  final String? pincode;
+  final String? country;
+
+  // Marketing & tracking.
+  final String? utmSource;
+  final String? utmMedium;
+  final String? utmCampaign;
+  final String? integrationRef;
+
+  /// Classification ids (and their resolved labels, when the API sends them).
+  /// The Edit-Lead form binds its dropdowns to the ids; the labels let the UI
+  /// render a value before the option lists have loaded.
+  final int? leadSourceId;
+  final int? leadTypeId;
+  final String? leadTypeName;
+  final int? territoryId;
+  final String? territoryName;
+  final int? branchId;
+  final String? branchName;
 
   /// Backend status id (from `GET /statuses`), used to show/select the status
   /// chip on the detail header.
@@ -291,6 +353,7 @@ class LeadModel {
     this.email,
     required this.status,
     required this.source,
+    this.sourceKnown = true,
     required this.nextFollowUp,
     required this.createdAt,
     this.dealValue,
@@ -300,11 +363,30 @@ class LeadModel {
     this.assigneeEmail,
     this.assigneeDesignation,
     this.assigneeNames = const [],
+    this.firstName,
+    this.lastName,
     this.alternatePhone,
     this.designation,
     this.website,
     this.interestedIn,
     this.priority,
+    this.description,
+    this.address,
+    this.city,
+    this.stateName,
+    this.pincode,
+    this.country,
+    this.utmSource,
+    this.utmMedium,
+    this.utmCampaign,
+    this.integrationRef,
+    this.leadSourceId,
+    this.leadTypeId,
+    this.leadTypeName,
+    this.territoryId,
+    this.territoryName,
+    this.branchId,
+    this.branchName,
     this.statusId,
     this.currentUpdate,
     this.nextAction,
@@ -336,6 +418,7 @@ class LeadModel {
         email: email,
         status: status,
         source: source,
+        sourceKnown: sourceKnown,
         nextFollowUp: nextFollowUp ?? this.nextFollowUp,
         createdAt: createdAt,
         dealValue: dealValue,
@@ -345,11 +428,30 @@ class LeadModel {
         assigneeEmail: assigneeEmail,
         assigneeDesignation: assigneeDesignation,
         assigneeNames: assigneeNames,
+        firstName: firstName,
+        lastName: lastName,
         alternatePhone: alternatePhone,
         designation: designation,
         website: website,
         interestedIn: interestedIn,
         priority: priority,
+        description: description,
+        address: address,
+        city: city,
+        stateName: stateName,
+        pincode: pincode,
+        country: country,
+        utmSource: utmSource,
+        utmMedium: utmMedium,
+        utmCampaign: utmCampaign,
+        integrationRef: integrationRef,
+        leadSourceId: leadSourceId,
+        leadTypeId: leadTypeId,
+        leadTypeName: leadTypeName,
+        territoryId: territoryId,
+        territoryName: territoryName,
+        branchId: branchId,
+        branchName: branchName,
         statusId: statusId,
         currentUpdate: currentUpdate ?? this.currentUpdate,
         nextAction: nextAction ?? this.nextAction,
@@ -371,6 +473,7 @@ class LeadModel {
         email: email,
         status: status,
         source: source,
+        sourceKnown: sourceKnown,
         nextFollowUp: nextFollowUp,
         createdAt: createdAt,
         dealValue: dealValue,
@@ -380,11 +483,30 @@ class LeadModel {
         assigneeEmail: assigneeEmail,
         assigneeDesignation: assigneeDesignation,
         assigneeNames: assigneeNames,
+        firstName: firstName,
+        lastName: lastName,
         alternatePhone: alternatePhone,
         designation: designation,
         website: website,
         interestedIn: interestedIn,
         priority: priority,
+        description: description,
+        address: address,
+        city: city,
+        stateName: stateName,
+        pincode: pincode,
+        country: country,
+        utmSource: utmSource,
+        utmMedium: utmMedium,
+        utmCampaign: utmCampaign,
+        integrationRef: integrationRef,
+        leadSourceId: leadSourceId,
+        leadTypeId: leadTypeId,
+        leadTypeName: leadTypeName,
+        territoryId: territoryId,
+        territoryName: territoryName,
+        branchId: branchId,
+        branchName: branchName,
         statusId: statusId,
         currentUpdate: currentUpdate,
         nextAction: nextAction,
@@ -393,6 +515,110 @@ class LeadModel {
         nextActionId: nextActionId,
         interestScore: interestScore,
       );
+
+  /// Returns a copy with the fields edited on the Edit-Lead form applied.
+  ///
+  /// Unlike [copyWithFollowUp], every argument is applied exactly as given —
+  /// passing `null` *clears* the field, which is what an emptied form input
+  /// means. [contactName] is recomposed from [firstName] / [lastName] so the
+  /// header reflects a renamed contact, falling back to the current name when
+  /// both parts are blank. Fields the form does not expose (assignees,
+  /// follow-up, timestamps) are carried over untouched.
+  ///
+  /// [statusName] and [leadSourceName] are the *labels* of the picked options;
+  /// they are mapped back onto the [status] / [source] enums here so the badge
+  /// mapping stays in one place. Pass null to leave the enum as it is.
+  LeadModel copyWithEdit({
+    required String title,
+    required String? firstName,
+    required String? lastName,
+    required String? interestedIn,
+    required String? description,
+    required String? phone,
+    required String? alternatePhone,
+    required String? email,
+    required String? companyName,
+    required String? designation,
+    required String? website,
+    required String? address,
+    required String? city,
+    required String? stateName,
+    required String? pincode,
+    required String? country,
+    required String? priority,
+    required String? statusName,
+    required int? statusId,
+    required String? leadSourceName,
+    required int? leadSourceId,
+    required int? leadTypeId,
+    required String? leadTypeName,
+    required int? territoryId,
+    required String? territoryName,
+    required int? branchId,
+    required String? branchName,
+    required String? utmSource,
+    required String? utmMedium,
+    required String? utmCampaign,
+    required String? integrationRef,
+  }) {
+    final contact = [firstName ?? '', lastName ?? '']
+        .where((s) => s.trim().isNotEmpty)
+        .join(' ')
+        .trim();
+    return LeadModel(
+      id: id,
+      leadNo: leadNo,
+      title: title,
+      contactName: contact.isNotEmpty ? contact : contactName,
+      companyName: companyName,
+      phone: phone,
+      email: email,
+      status: statusName == null ? status : _statusFromString(statusName),
+      source: leadSourceName == null ? source : _sourceFromString(leadSourceName),
+      sourceKnown:
+          leadSourceName == null ? sourceKnown : _isKnownSource(leadSourceName),
+      nextFollowUp: nextFollowUp,
+      createdAt: createdAt,
+      dealValue: dealValue,
+      avatarInitials: avatarInitials,
+      avatarColorIndex: avatarColorIndex,
+      assigneeName: assigneeName,
+      assigneeEmail: assigneeEmail,
+      assigneeDesignation: assigneeDesignation,
+      assigneeNames: assigneeNames,
+      firstName: firstName,
+      lastName: lastName,
+      alternatePhone: alternatePhone,
+      designation: designation,
+      website: website,
+      interestedIn: interestedIn,
+      priority: priority,
+      description: description,
+      address: address,
+      city: city,
+      stateName: stateName,
+      pincode: pincode,
+      country: country,
+      utmSource: utmSource,
+      utmMedium: utmMedium,
+      utmCampaign: utmCampaign,
+      integrationRef: integrationRef,
+      leadSourceId: leadSourceId,
+      leadTypeId: leadTypeId,
+      leadTypeName: leadTypeName,
+      territoryId: territoryId,
+      territoryName: territoryName,
+      branchId: branchId,
+      branchName: branchName,
+      statusId: statusId,
+      currentUpdate: currentUpdate,
+      nextAction: nextAction,
+      followupRemarks: followupRemarks,
+      currentUpdateId: currentUpdateId,
+      nextActionId: nextActionId,
+      interestScore: interestScore,
+    );
+  }
 
   /// Builds a [LeadModel] from the backend JSON shape (the `/leads` list item).
   /// `status` and `source` arrive as nested objects (`{ "name": ... }`); the
@@ -433,6 +659,7 @@ class LeadModel {
       email: json['email'] as String?,
       status: _statusFromString(_nameOf(json['status'])),
       source: _sourceFromString(_nameOf(json['source'])),
+      sourceKnown: _isKnownSource(_nameOf(json['source'])),
       nextFollowUp: _parseDate(json['next_followup_at'] ?? json['next_follow_up']) ??
           DateTime.now(),
       createdAt: _parseDate(json['created_at']) ?? DateTime.now(),
@@ -444,11 +671,33 @@ class LeadModel {
       assigneeEmail: firstAssignee?['email'] as String?,
       assigneeDesignation: firstAssignee?['designation'] as String?,
       assigneeNames: assigneeNames,
+      firstName: json['first_name'] as String?,
+      lastName: json['last_name'] as String?,
       alternatePhone: json['alternate_phone'] as String?,
       designation: json['designation'] as String?,
       website: json['website'] as String?,
       interestedIn: json['interested_in'] as String?,
       priority: json['priority'] as String?,
+      description: json['description'] as String?,
+      address: json['address'] as String?,
+      city: json['city'] as String?,
+      stateName: json['state'] as String?,
+      // Sent as a number by some backends, so normalise to a string.
+      pincode: (json['pincode'] ?? json['pin_code'])?.toString(),
+      country: json['country'] as String?,
+      utmSource: json['utm_source'] as String?,
+      utmMedium: json['utm_medium'] as String?,
+      utmCampaign: json['utm_campaign'] as String?,
+      integrationRef:
+          json['integration_ref'] as String? ?? json['integration_reference'] as String?,
+      leadSourceId: _lookupId(json, const ['lead_source_id', 'source']),
+      leadTypeId: _lookupId(json, const ['lead_type_id', 'lead_type', 'leadType']),
+      leadTypeName:
+          _lookupName(json, const ['lead_type', 'leadType', 'lead_type_name']),
+      territoryId: _lookupId(json, const ['territory_id', 'territory']),
+      territoryName: _lookupName(json, const ['territory', 'territory_name']),
+      branchId: _lookupId(json, const ['branch_id', 'branch']),
+      branchName: _lookupName(json, const ['branch', 'branch_name']),
       statusId: _lookupId(json, const ['status_id', 'status']),
       currentUpdate: _lookupName(
           json, const ['current_update', 'currentUpdate', 'current_update_name']),
@@ -538,6 +787,24 @@ class LeadModel {
         return LeadStatus.lost;
       default:
         return LeadStatus.newLead;
+    }
+  }
+
+  /// Whether [value] names a source the app recognizes. Used to decide if the
+  /// source badge should be shown at all — an unknown/missing source is hidden
+  /// rather than displayed as the `manual` fallback.
+  static bool _isKnownSource(String? value) {
+    switch (value?.toLowerCase().trim()) {
+      case 'facebook':
+      case 'manual':
+      case 'referral':
+      case 'email':
+      case 'website':
+      case 'cold':
+      case 'cold call':
+        return true;
+      default:
+        return false;
     }
   }
 

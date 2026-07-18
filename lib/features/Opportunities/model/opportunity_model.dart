@@ -55,6 +55,48 @@ extension OpportunityStageName on OpportunityStage {
   }
 }
 
+/// Maps a raw stage id (as returned by `GET /opportunity-stages`, e.g.
+/// `"Prospecting"`) to the app's [OpportunityStage] enum. Case-insensitive.
+/// Prospecting / Qualification / Qualified all collapse to [OpportunityStage.qualified].
+OpportunityStage opportunityStageFromId(String id) {
+  switch (id.toLowerCase().trim()) {
+    case 'won':
+      return OpportunityStage.won;
+    case 'lost':
+      return OpportunityStage.lost;
+    case 'negotiation':
+      return OpportunityStage.negotiation;
+    case 'proposal':
+      return OpportunityStage.proposal;
+    case 'prospecting':
+    case 'qualification':
+    case 'qualified':
+    default:
+      return OpportunityStage.qualified;
+  }
+}
+
+/// The accent color for a raw stage id. Derived from the [OpportunityStage]
+/// palette so the dropdown matches the rest of the screen.
+Color opportunityStageColor(String id) => opportunityStageFromId(id).color;
+
+/// A selectable pipeline stage from `GET /opportunity-stages`
+/// (`{ id, name }`, e.g. `{ "id": "Prospecting", "name": "Prospecting" }`).
+/// Drives the stage dropdown on the opportunity detail header.
+class StageOption {
+  final String id;
+  final String name;
+
+  const StageOption({required this.id, required this.name});
+
+  factory StageOption.fromJson(Map<String, dynamic> json) => StageOption(
+        id: json['id']?.toString() ?? '',
+        name: json['name'] as String? ?? json['id']?.toString() ?? '',
+      );
+
+  Color get color => opportunityStageColor(id);
+}
+
 enum SourceType { manual, facebook, website, referral, email }
 
 extension SourceTypeName on SourceType {
@@ -119,6 +161,48 @@ class OpportunityProduct {
   double get total => quantity * price;
 }
 
+/// A catalog product from `GET /products`, shown in the Add Product picker on
+/// the opportunity detail screen. Prices arrive from the API as strings.
+class ProductModel {
+  final int id;
+  final String name;
+  final String? sku;
+
+  /// HSN / SAC code (`hsn_no`), often null in the catalog.
+  final String? hsnNo;
+
+  final String? unit;
+  final double sellingPrice;
+  final double taxPercent;
+  final double priceAfterTax;
+
+  const ProductModel({
+    required this.id,
+    required this.name,
+    this.sku,
+    this.hsnNo,
+    this.unit,
+    required this.sellingPrice,
+    this.taxPercent = 0,
+    required this.priceAfterTax,
+  });
+
+  factory ProductModel.fromJson(Map<String, dynamic> json) {
+    final selling = double.tryParse('${json['selling_price']}') ?? 0;
+    return ProductModel(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: json['name'] as String? ?? '',
+      sku: json['sku'] as String?,
+      hsnNo: json['hsn_no'] == null ? null : '${json['hsn_no']}',
+      unit: json['unit'] as String?,
+      sellingPrice: selling,
+      taxPercent: double.tryParse('${json['tax_percent']}') ?? 0,
+      priceAfterTax:
+          double.tryParse('${json['price_after_tax']}') ?? selling,
+    );
+  }
+}
+
 class OpportunityModel {
   final String id;
 
@@ -130,6 +214,13 @@ class OpportunityModel {
   final double value;
   final int probability;
   final OpportunityStage stage;
+
+  /// The raw stage id as sent by the backend (e.g. `"Prospecting"`,
+  /// `"Qualification"`). Preserved unmodified so the header dropdown can
+  /// highlight the exact stage, which the lossy [stage] enum cannot always
+  /// distinguish (prospecting vs qualification both map to `qualified`).
+  final String? stageRaw;
+
   final SourceType source;
   final String timeAgo;
   final String nextFollowUp;
@@ -150,6 +241,7 @@ class OpportunityModel {
     required this.value,
     required this.probability,
     required this.stage,
+    this.stageRaw,
     required this.source,
     required this.timeAgo,
     required this.nextFollowUp,
@@ -211,6 +303,11 @@ class OpportunityModel {
         json['is_won'] == true,
         json['is_lost'] == true,
       ),
+      stageRaw: json['is_won'] == true
+          ? 'Won'
+          : json['is_lost'] == true
+              ? 'Lost'
+              : json['stage'] as String?,
       source: _sourceFrom(sourceName),
       timeAgo: createdAt != null ? _timeAgo(createdAt) : '',
       nextFollowUp: nextDate != null ? _fmtDate(nextDate) : '—',
@@ -299,6 +396,7 @@ class OpportunityModel {
     double? value,
     int? probability,
     OpportunityStage? stage,
+    String? stageRaw,
     SourceType? source,
     String? timeAgo,
     String? nextFollowUp,
@@ -315,6 +413,7 @@ class OpportunityModel {
       value: value ?? this.value,
       probability: probability ?? this.probability,
       stage: stage ?? this.stage,
+      stageRaw: stageRaw ?? this.stageRaw,
       source: source ?? this.source,
       timeAgo: timeAgo ?? this.timeAgo,
       nextFollowUp: nextFollowUp ?? this.nextFollowUp,

@@ -289,18 +289,145 @@ abstract class _$LeadsList extends $AsyncNotifier<List<LeadModel>> {
   }
 }
 
-/// Base data set — swaps between normal (API) leads and backlog (sample) leads.
+/// Pagination metadata for the backlog list — a separate instance from the live
+/// list's [LeadsPaginationState] so the two views keep independent page cursors.
+
+@ProviderFor(LeadsBacklogPagination)
+final leadsBacklogPaginationProvider = LeadsBacklogPaginationProvider._();
+
+/// Pagination metadata for the backlog list — a separate instance from the live
+/// list's [LeadsPaginationState] so the two views keep independent page cursors.
+final class LeadsBacklogPaginationProvider
+    extends $NotifierProvider<LeadsBacklogPagination, LeadsPagination> {
+  /// Pagination metadata for the backlog list — a separate instance from the live
+  /// list's [LeadsPaginationState] so the two views keep independent page cursors.
+  LeadsBacklogPaginationProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'leadsBacklogPaginationProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$leadsBacklogPaginationHash();
+
+  @$internal
+  @override
+  LeadsBacklogPagination create() => LeadsBacklogPagination();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(LeadsPagination value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<LeadsPagination>(value),
+    );
+  }
+}
+
+String _$leadsBacklogPaginationHash() =>
+    r'2edd9ca5ab2f04707987360395122c75bcd5cc0b';
+
+/// Pagination metadata for the backlog list — a separate instance from the live
+/// list's [LeadsPaginationState] so the two views keep independent page cursors.
+
+abstract class _$LeadsBacklogPagination extends $Notifier<LeadsPagination> {
+  LeadsPagination build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final ref = this.ref as $Ref<LeadsPagination, LeadsPagination>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<LeadsPagination, LeadsPagination>,
+              LeadsPagination,
+              Object?,
+              Object?
+            >;
+    element.handleCreate(ref, build);
+  }
+}
+
+/// The backlog leads — overdue leads needing follow-up (GET
+/// /leads?quick_filter=backlog), paginated by scroll exactly like the live list.
+/// Cached for the session; pull-to-refresh (or a Retry) reloads from page 1.
+
+@ProviderFor(LeadsBacklog)
+final leadsBacklogProvider = LeadsBacklogProvider._();
+
+/// The backlog leads — overdue leads needing follow-up (GET
+/// /leads?quick_filter=backlog), paginated by scroll exactly like the live list.
+/// Cached for the session; pull-to-refresh (or a Retry) reloads from page 1.
+final class LeadsBacklogProvider
+    extends $AsyncNotifierProvider<LeadsBacklog, List<LeadModel>> {
+  /// The backlog leads — overdue leads needing follow-up (GET
+  /// /leads?quick_filter=backlog), paginated by scroll exactly like the live list.
+  /// Cached for the session; pull-to-refresh (or a Retry) reloads from page 1.
+  LeadsBacklogProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'leadsBacklogProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$leadsBacklogHash();
+
+  @$internal
+  @override
+  LeadsBacklog create() => LeadsBacklog();
+}
+
+String _$leadsBacklogHash() => r'74774b67419863eecd0c54b10cca897cb078cbd8';
+
+/// The backlog leads — overdue leads needing follow-up (GET
+/// /leads?quick_filter=backlog), paginated by scroll exactly like the live list.
+/// Cached for the session; pull-to-refresh (or a Retry) reloads from page 1.
+
+abstract class _$LeadsBacklog extends $AsyncNotifier<List<LeadModel>> {
+  FutureOr<List<LeadModel>> build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final ref = this.ref as $Ref<AsyncValue<List<LeadModel>>, List<LeadModel>>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<AsyncValue<List<LeadModel>>, List<LeadModel>>,
+              AsyncValue<List<LeadModel>>,
+              Object?,
+              Object?
+            >;
+    element.handleCreate(ref, build);
+  }
+}
+
+/// Base data set — swaps between the live (API) leads and the backlog leads.
+/// Both are API-backed; the backlog is its own cached list so switching views
+/// never disturbs the live pipeline (mirrors the Opportunities screen).
 
 @ProviderFor(leadsSource)
 final leadsSourceProvider = LeadsSourceProvider._();
 
-/// Base data set — swaps between normal (API) leads and backlog (sample) leads.
+/// Base data set — swaps between the live (API) leads and the backlog leads.
+/// Both are API-backed; the backlog is its own cached list so switching views
+/// never disturbs the live pipeline (mirrors the Opportunities screen).
 
 final class LeadsSourceProvider
     extends
         $FunctionalProvider<List<LeadModel>, List<LeadModel>, List<LeadModel>>
     with $Provider<List<LeadModel>> {
-  /// Base data set — swaps between normal (API) leads and backlog (sample) leads.
+  /// Base data set — swaps between the live (API) leads and the backlog leads.
+  /// Both are API-backed; the backlog is its own cached list so switching views
+  /// never disturbs the live pipeline (mirrors the Opportunities screen).
   LeadsSourceProvider._()
     : super(
         from: null,
@@ -334,20 +461,26 @@ final class LeadsSourceProvider
   }
 }
 
-String _$leadsSourceHash() => r'701d8a37267a6ddc934b0f78d87bcd6cc2a7d697';
+String _$leadsSourceHash() => r'a308ca4a19c1cf39af4583d3141e0b4d6f68ae74';
 
-/// The source list with the active search query + status/source filters applied.
+/// The source list with the active search + status/source filters applied.
+/// For the live list, search runs server-side; the backlog list is searched
+/// client-side here (mirrors the Opportunities screen).
 
 @ProviderFor(filteredLeads)
 final filteredLeadsProvider = FilteredLeadsProvider._();
 
-/// The source list with the active search query + status/source filters applied.
+/// The source list with the active search + status/source filters applied.
+/// For the live list, search runs server-side; the backlog list is searched
+/// client-side here (mirrors the Opportunities screen).
 
 final class FilteredLeadsProvider
     extends
         $FunctionalProvider<List<LeadModel>, List<LeadModel>, List<LeadModel>>
     with $Provider<List<LeadModel>> {
-  /// The source list with the active search query + status/source filters applied.
+  /// The source list with the active search + status/source filters applied.
+  /// For the live list, search runs server-side; the backlog list is searched
+  /// client-side here (mirrors the Opportunities screen).
   FilteredLeadsProvider._()
     : super(
         from: null,

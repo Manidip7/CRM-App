@@ -68,6 +68,9 @@ class LeadView extends _$LeadView {
     );
   }
 
+  /// Replaces the held lead wholesale after the Edit-Lead form saves.
+  void applyEdit(LeadModel lead) => state = lead;
+
   /// Merges the server-authoritative follow-up fields from the full lead.
   void applyServerFollowUp(LeadModel full) {
     final lead = state ?? full;

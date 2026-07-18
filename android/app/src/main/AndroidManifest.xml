@@ -1,16 +1,31 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Required for all network access (API calls, login, downloads). Must be
+         declared here in the main manifest so release builds get it — the debug
+         manifest's INTERNET permission is not merged into release APKs. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Saving downloaded PDFs to the public Downloads folder on Android 9 and
          below (Android 10+ uses MediaStore and needs no permission). -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-    <!-- Reading the device call log so the CRM can capture call details
-         (number, type, duration, time) for calls made to leads/opportunities,
-         whether dialed from inside the app or via the native dialer.
-         This is a Play Store "restricted" permission — its use is the CRM's
-         call-logging core feature and must be declared in the Play Console. -->
-    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove"/>
+
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VIDEO"
+        tools:node="remove"/>
+
+    <uses-permission
+        android:name="android.permission.READ_CALL_LOG"
+        tools:node="remove"/>
+
+    <uses-permission
+        android:name="android.permission.WRITE_CALL_LOG"
+        tools:node="remove"/>
     <application
-        android:label="crm_app"
+        android:label="Peplo CRM"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

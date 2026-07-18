@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
@@ -21,16 +24,42 @@ class ProjectsScreen extends ConsumerStatefulWidget {
 
 class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
+  Timer? _searchDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    // Search runs server-side, so wait for a pause in typing before refetching.
+    _searchController.addListener(() {
+      _searchDebounce?.cancel();
+      _searchDebounce = Timer(const Duration(milliseconds: 450), () {
+        ref.read(projectFilterProvider.notifier).setSearch(_searchController.text);
+      });
+    });
+    // Infinite scroll: load the next page as we approach the bottom.
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    if (pos.pixels >= pos.maxScrollExtent - 300) {
+      ref.read(projectsProvider.notifier).loadMore();
+    }
+  }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final list = ref.watch(filteredProjectsProvider);
+    final projects = ref.watch(projectsProvider);
     final summary = ref.watch(projectSummaryProvider);
 
     // Back button returns to the Dashboard overview tab.
@@ -49,28 +78,17 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
               _buildHeader(summary.totalProjects),
               _buildSummaryRow(summary),
               _buildSearchRow(),
+              _buildStatusFilterRow(),
               Expanded(
                 child: RefreshIndicator(
                   color: AppColors.primary,
-                  onRefresh: () async {},
+                  onRefresh: () =>
+                      ref.read(projectsProvider.notifier).refresh(),
                   child: CustomScrollView(
+                    controller: _scrollController,
                     physics: const AlwaysScrollableScrollPhysics(
                         parent: BouncingScrollPhysics()),
-                    slivers: [
-                      if (list.isEmpty)
-                        SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: _buildEmptyState(),
-                        )
-                      else
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                          sliver: SliverList.builder(
-                            itemCount: list.length,
-                            itemBuilder: (ctx, i) => _buildCard(list[i]),
-                          ),
-                        ),
-                    ],
+                    slivers: _buildSlivers(projects),
                   ),
                 ),
               ),
@@ -85,6 +103,148 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
           label: Text(
             'New Project',
             style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The scrolling body: a spinner on first load, an error state with Retry if
+  /// the fetch failed, otherwise the cards plus a trailing "loading more"
+  /// spinner while the next page is in flight.
+  List<Widget> _buildSlivers(AsyncValue<List<ProjectModel>> projects) {
+    return switch (projects) {
+      AsyncError(:final error) => [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _buildErrorState(error),
+          ),
+        ],
+      // A refetch (filter change) keeps the old list on screen; only show the
+      // full-screen spinner when there is nothing to show yet.
+      AsyncLoading() when !projects.hasValue => const [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
+          ),
+        ],
+      _ => _buildListSlivers(projects.value ?? const []),
+    };
+  }
+
+  List<Widget> _buildListSlivers(List<ProjectModel> list) {
+    if (list.isEmpty) {
+      return [
+        SliverFillRemaining(hasScrollBody: false, child: _buildEmptyState()),
+      ];
+    }
+    final loadingMore =
+        ref.watch(projectsPaginationProvider.select((p) => p.isLoadingMore));
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        sliver: SliverList.builder(
+          itemCount: list.length,
+          itemBuilder: (ctx, i) => _buildCard(list[i]),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+          child: loadingMore
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.primary),
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildErrorState(Object error) {
+    final message = error is ApiException
+        ? error.message
+        : 'Could not load projects.';
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.cloud_off_rounded, size: 44, color: AppColors.red),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 13.5,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextButton.icon(
+              onPressed: () => ref.read(projectsProvider.notifier).refresh(),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: Text('Retry', style: GoogleFonts.poppins(fontSize: 13.5)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Status filter ──
+  /// Chips driving the `status` query param. Tapping the active chip clears it.
+  Widget _buildStatusFilterRow() {
+    final selected = ref.watch(projectFilterProvider.select((f) => f.status));
+    return SizedBox(
+      height: 36,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        physics: const BouncingScrollPhysics(),
+        children: [
+          for (final s in ProjectStatus.values) ...[
+            _statusChip(s, selected == s),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _statusChip(ProjectStatus status, bool active) {
+    return GestureDetector(
+      onTap: () => ref.read(projectFilterProvider.notifier).toggleStatus(status),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active
+              ? status.color.withOpacity(0.14)
+              : AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: active ? status.color : AppColors.divider,
+            width: active ? 1.4 : 0.8,
+          ),
+        ),
+        child: Text(
+          status.label,
+          style: GoogleFonts.poppins(
+            fontSize: 12.5,
+            fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+            color: active ? status.color : AppColors.textSecondary,
           ),
         ),
       ),
@@ -261,7 +421,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   // ── Search bar ──
   Widget _buildSearchRow() {
     final hasQuery =
-        ref.watch(projectFilterProvider.select((s) => s.isNotEmpty));
+        ref.watch(projectFilterProvider.select((f) => f.search.isNotEmpty));
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: Container(
@@ -272,9 +432,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
           border: Border.all(color: AppColors.divider),
         ),
         child: TextField(
+          // No onChanged — the controller listener debounces before refetching.
           controller: _searchController,
-          onChanged: (v) =>
-              ref.read(projectFilterProvider.notifier).setSearch(v),
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
           decoration: InputDecoration(
             hintText: 'Search project, customer, member...',
@@ -289,7 +448,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                         size: 18, color: AppColors.textLight),
                     onPressed: () {
                       _searchController.clear();
-                      ref.read(projectFilterProvider.notifier).clear();
+                      ref.read(projectFilterProvider.notifier).clearSearch();
                     },
                   ),
             border: InputBorder.none,
@@ -305,7 +464,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   Widget _buildCard(ProjectModel p) {
     final accent = p.status.color;
     return GestureDetector(
-      onTap: () => _showDetailSheet(p),
+      onTap: () => _openDetail(p),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
@@ -425,7 +584,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                     icon: Icons.visibility_outlined,
                     color: AppColors.primary,
                     tooltip: 'View',
-                    onTap: () => _showDetailSheet(p),
+                    onTap: () => _openDetail(p),
                   ),
                   const SizedBox(width: 6),
                   _actionIcon(
@@ -588,92 +747,14 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     );
   }
 
-  // ── Detail sheet ──
-  void _showDetailSheet(ProjectModel p) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.cardBackground,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.divider,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    p.name,
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                _buildTag(p.status.label, p.status.color),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _detailRow('Customer', p.customer),
-            _detailRow('Status', p.status.label),
-            _detailRow('Members', p.members.join(', ')),
-            _detailRow('Pending Tasks', '${p.pendingTasks}'),
-            _detailRow('Deadline', _shortDate(p.deadline)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: 12.5,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: GoogleFonts.poppins(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ─────────────────────────────────────────────
   //  Actions
   // ─────────────────────────────────────────────
+
+  /// Opens the full project detail screen (Overview / Tasks / Files / Notes /
+  /// Activity), replacing the old summary bottom sheet.
+  void _openDetail(ProjectModel p) =>
+      context.push(AppRoutes.projectDetail, extra: p);
   void _onEdit(ProjectModel p) => context.push(AppRoutes.createProject);
 
   Future<void> _onDelete(ProjectModel p) async {
@@ -708,16 +789,18 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
       ),
     );
     if (confirmed != true) return;
-    ref.read(projectsProvider.notifier).delete(p.id);
-    _toast('${p.name} deleted');
+
+    final error = await ref.read(projectsProvider.notifier).deleteProject(p.id);
+    if (!mounted) return;
+    _toast(error ?? '${p.name} deleted', isError: error != null);
   }
 
-  void _toast(String message) {
+  void _toast(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message,
             style: const TextStyle(fontSize: 13, color: Colors.white)),
-        backgroundColor: AppColors.primary,
+        backgroundColor: isError ? AppColors.red : AppColors.primary,
         behavior: SnackBarBehavior.floating,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -726,7 +809,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     );
   }
 
-  String _shortDate(DateTime d) {
+  String _shortDate(DateTime? d) {
+    if (d == null) return 'No deadline';
     const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',

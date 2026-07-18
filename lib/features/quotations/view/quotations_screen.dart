@@ -767,8 +767,9 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
       createdDate: now,
       validUntil: now.add(const Duration(days: 30)),
       currency: '₹',
+      taxPercent: QuotationModel.defaultGstPercent,
     );
-    context.push(AppRoutes.editQuotation, extra: blank);
+    context.push('${AppRoutes.editQuotation}?create=1', extra: blank);
   }
 
   Future<void> _pickDate({required bool isFrom}) async {

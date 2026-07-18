@@ -1,62 +1,232 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_result.dart';
+import '../data/projects_repository.dart';
 import '../model/project_model.dart';
 
-/// Search text applied to the project list.
-class ProjectFilterNotifier extends Notifier<String> {
-  @override
-  String build() => '';
+/// The filters applied to the project list. Both are sent to the server
+/// (`GET /projects?search=&status=`) rather than applied on the loaded page,
+/// so they search across every project and not just the ones fetched so far.
+class ProjectFilter {
+  final String search;
 
-  void setSearch(String q) => state = q;
-  void clear() => state = '';
+  /// Null means "any status".
+  final ProjectStatus? status;
+
+  const ProjectFilter({this.search = '', this.status});
+
+  ProjectFilter copyWith({
+    String? search,
+    ProjectStatus? status,
+    bool clearStatus = false,
+  }) {
+    return ProjectFilter(
+      search: search ?? this.search,
+      status: clearStatus ? null : (status ?? this.status),
+    );
+  }
+}
+
+class ProjectFilterNotifier extends Notifier<ProjectFilter> {
+  @override
+  ProjectFilter build() => const ProjectFilter();
+
+  void setSearch(String q) => state = state.copyWith(search: q);
+
+  void clearSearch() => state = state.copyWith(search: '');
+
+  /// Selecting the active status again clears it (chips toggle).
+  void toggleStatus(ProjectStatus s) => state = state.status == s
+      ? state.copyWith(clearStatus: true)
+      : state.copyWith(status: s);
+
+  void clear() => state = const ProjectFilter();
 }
 
 final projectFilterProvider =
-    NotifierProvider<ProjectFilterNotifier, String>(ProjectFilterNotifier.new);
+    NotifierProvider<ProjectFilterNotifier, ProjectFilter>(
+        ProjectFilterNotifier.new);
 
-/// Holds the project list. Seeded with sample data so the screen renders
-/// immediately; swap [_seed] for a repository call (`GET /projects`) once the
-/// endpoint is available. Delete/upsert mutate the list locally.
-class ProjectsNotifier extends Notifier<List<ProjectModel>> {
+/// The server-side query bits as a record. Record equality means [ProjectsNotifier]
+/// only refetches when the search text or status actually changes, not on every
+/// rebuild of the filter object.
+final projectsQueryProvider = Provider<({String search, String? status})>((ref) {
+  final f = ref.watch(projectFilterProvider);
+  return (search: f.search.trim(), status: f.status?.label);
+});
+
+/// Paginator metadata for the project list.
+class ProjectsPagination {
+  final int currentPage;
+  final int lastPage;
+  final int total;
+  final bool isLoadingMore;
+
+  const ProjectsPagination({
+    this.currentPage = 1,
+    this.lastPage = 1,
+    this.total = 0,
+    this.isLoadingMore = false,
+  });
+
+  bool get hasMore => currentPage < lastPage;
+
+  ProjectsPagination copyWith({
+    int? currentPage,
+    int? lastPage,
+    int? total,
+    bool? isLoadingMore,
+  }) {
+    return ProjectsPagination(
+      currentPage: currentPage ?? this.currentPage,
+      lastPage: lastPage ?? this.lastPage,
+      total: total ?? this.total,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+    );
+  }
+}
+
+class ProjectsPaginationNotifier extends Notifier<ProjectsPagination> {
   @override
-  List<ProjectModel> build() => _seed();
+  ProjectsPagination build() => const ProjectsPagination();
 
-  void delete(String id) =>
-      state = state.where((p) => p.id != id).toList();
+  void setFromPage(ProjectsPage page) => state = state.copyWith(
+        currentPage: page.currentPage,
+        lastPage: page.lastPage,
+        total: page.total,
+      );
+
+  void setLoadingMore(bool value) =>
+      state = state.copyWith(isLoadingMore: value);
+}
+
+final projectsPaginationProvider =
+    NotifierProvider<ProjectsPaginationNotifier, ProjectsPagination>(
+        ProjectsPaginationNotifier.new);
+
+/// Totals for the summary row, taken from the response's `meta` block. They
+/// cover every project, so they are set by the fetch rather than derived from
+/// the loaded page.
+class ProjectSummaryNotifier extends Notifier<ProjectSummary> {
+  @override
+  ProjectSummary build() => ProjectSummary.empty;
+
+  void set(ProjectSummary summary) => state = summary;
+}
+
+final projectSummaryProvider =
+    NotifierProvider<ProjectSummaryNotifier, ProjectSummary>(
+        ProjectSummaryNotifier.new);
+
+/// The project list from `GET /projects`, refetched from page 1 whenever a
+/// filter changes and extended by [loadMore] as the user scrolls.
+///
+/// [delete] and [upsert] only mutate the loaded list — there is no projects
+/// write endpoint wired up yet.
+class ProjectsNotifier extends AsyncNotifier<List<ProjectModel>> {
+  // Active query, captured on each build so loadMore reuses it.
+  String? _search;
+  String? _status;
+
+  @override
+  Future<List<ProjectModel>> build() async {
+    final query = ref.watch(projectsQueryProvider);
+    _search = query.search.isEmpty ? null : query.search;
+    _status = query.status;
+
+    final page = await _fetch(1);
+    _applyMeta(page);
+    return page.projects;
+  }
+
+  Future<ProjectsPage> _fetch(int page) async {
+    final result = await ref.read(projectsRepositoryProvider).getProjects(
+          page: page,
+          search: _search,
+          status: _status,
+        );
+    return switch (result) {
+      Success(:final data) => data,
+      Failure(:final error) => throw error,
+    };
+  }
+
+  void _applyMeta(ProjectsPage page) {
+    ref.read(projectsPaginationProvider.notifier).setFromPage(page);
+    ref.read(projectSummaryProvider.notifier).set(page.summary);
+  }
+
+  /// Fetches the next page and appends it. No-op while a load is already
+  /// running or when the last page has been reached.
+  Future<void> loadMore() async {
+    final meta = ref.read(projectsPaginationProvider);
+    if (meta.isLoadingMore || !meta.hasMore) return;
+
+    final current = state.value ?? const <ProjectModel>[];
+    final pagination = ref.read(projectsPaginationProvider.notifier);
+    pagination.setLoadingMore(true);
+    try {
+      final next = await _fetch(meta.currentPage + 1);
+      _applyMeta(next);
+      state = AsyncData([...current, ...next.projects]);
+    } catch (_) {
+      // Keep the already-loaded projects; the next scroll will retry.
+    } finally {
+      pagination.setLoadingMore(false);
+    }
+  }
+
+  /// Reloads from page 1.
+  Future<void> refresh() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final page = await _fetch(1);
+      _applyMeta(page);
+      return page.projects;
+    });
+  }
+
+  /// Deletes via `DELETE /projects/{id}`. Returns null on success, or the
+  /// message to show on failure.
+  ///
+  /// On success the row is dropped immediately so the list reacts at once, then
+  /// the page is refetched quietly to resync the `meta` totals behind the
+  /// summary row — [refresh] would blank the screen to a spinner instead.
+  Future<String?> deleteProject(String id) async {
+    final result =
+        await ref.read(projectsRepositoryProvider).deleteProject(id);
+
+    switch (result) {
+      case Failure(:final error):
+        return error.message;
+      case Success():
+        final current = state.value;
+        if (current != null) {
+          state = AsyncData(current.where((p) => p.id != id).toList());
+        }
+        try {
+          final page = await _fetch(1);
+          _applyMeta(page);
+          state = AsyncData(page.projects);
+        } catch (_) {
+          // Keep the removal; pull-to-refresh will resync the totals.
+        }
+        return null;
+    }
+  }
 
   void upsert(ProjectModel updated) {
-    final exists = state.any((p) => p.id == updated.id);
-    state = exists
-        ? [for (final p in state) if (p.id == updated.id) updated else p]
-        : [updated, ...state];
+    final current = state.value ?? const <ProjectModel>[];
+    final exists = current.any((p) => p.id == updated.id);
+    state = AsyncData(exists
+        ? [for (final p in current) if (p.id == updated.id) updated else p]
+        : [updated, ...current]);
   }
 }
 
 final projectsProvider =
-    NotifierProvider<ProjectsNotifier, List<ProjectModel>>(
+    AsyncNotifierProvider<ProjectsNotifier, List<ProjectModel>>(
         ProjectsNotifier.new);
-
-/// Projects after applying the search text, soonest deadline first.
-final filteredProjectsProvider = Provider<List<ProjectModel>>((ref) {
-  final all = ref.watch(projectsProvider);
-  final q = ref.watch(projectFilterProvider).trim().toLowerCase();
-
-  final result = all.where((p) {
-    if (q.isEmpty) return true;
-    return p.name.toLowerCase().contains(q) ||
-        p.customer.toLowerCase().contains(q) ||
-        p.status.label.toLowerCase().contains(q) ||
-        p.members.any((m) => m.toLowerCase().contains(q));
-  }).toList();
-
-  result.sort((a, b) => a.deadline.compareTo(b.deadline));
-  return result;
-});
-
-/// Aggregate totals (over the full, unfiltered list) for the summary row.
-final projectSummaryProvider = Provider<ProjectSummary>((ref) {
-  return ProjectSummary.from(ref.watch(projectsProvider));
-});
 
 // ─────────────────────────────────────────────
 //  Create-project draft
@@ -181,66 +351,4 @@ String suggestProjectId(List<ProjectModel> existing) {
     if (n != null && n > max) max = n;
   }
   return '$prefix${(max + 1).toString().padLeft(4, '0')}';
-}
-
-/// Sample data. Remove when wiring a real API.
-List<ProjectModel> _seed() {
-  final now = DateTime.now();
-  DateTime d(int days) => now.add(Duration(days: days));
-  return [
-    ProjectModel(
-      id: 'PRJ-2026-0007',
-      name: 'CRM Platform Revamp',
-      customer: 'Acme Industries',
-      status: ProjectStatus.inProgress,
-      members: ['Priya Sharma', 'Rahul Verma', 'Ankit Gupta'],
-      deadline: d(18),
-      pendingTasks: 6,
-    ),
-    ProjectModel(
-      id: 'PRJ-2026-0006',
-      name: 'Retail Analytics Dashboard',
-      customer: 'Nova Retail Pvt Ltd',
-      status: ProjectStatus.planning,
-      members: ['Rahul Verma', 'Sneha Iyer'],
-      deadline: d(32),
-      pendingTasks: 4,
-    ),
-    ProjectModel(
-      id: 'PRJ-2026-0005',
-      name: 'Cloud Migration',
-      customer: 'BlueSky Solutions',
-      status: ProjectStatus.onHold,
-      members: ['Ankit Gupta'],
-      deadline: d(-3),
-      pendingTasks: 9,
-    ),
-    ProjectModel(
-      id: 'PRJ-2026-0004',
-      name: 'Mobile App Launch',
-      customer: 'Greenfield Traders',
-      status: ProjectStatus.inProgress,
-      members: ['Priya Sharma', 'Sneha Iyer', 'Rahul Verma', 'Ankit Gupta'],
-      deadline: d(9),
-      pendingTasks: 3,
-    ),
-    ProjectModel(
-      id: 'PRJ-2026-0003',
-      name: 'ERP Integration',
-      customer: 'Sterling Corp',
-      status: ProjectStatus.completed,
-      members: ['Rahul Verma', 'Ankit Gupta'],
-      deadline: d(-12),
-      pendingTasks: 0,
-    ),
-    ProjectModel(
-      id: 'PRJ-2026-0002',
-      name: 'Brand Website Redesign',
-      customer: 'Horizon Media',
-      status: ProjectStatus.planning,
-      members: ['Sneha Iyer'],
-      deadline: d(24),
-      pendingTasks: 5,
-    ),
-  ];
 }

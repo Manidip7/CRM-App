@@ -25,8 +25,13 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    if (err.response?.statusCode == 401) {
-      // Token is no longer valid — wipe it and notify the app.
+    final status = err.response?.statusCode;
+    // A 401, or a 3xx redirect to the web login page, both mean the session is
+    // no longer valid — wipe the token and notify the app so it can route back
+    // to login instead of leaving the request hanging.
+    final isAuthFailure =
+        status == 401 || (status != null && status >= 300 && status < 400);
+    if (isAuthFailure) {
       tokenStorage.clear();
       onUnauthorized?.call();
     }

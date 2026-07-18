@@ -66,6 +66,10 @@ extension QuotationStatusName on QuotationStatus {
 /// A single line item attached to a quotation.
 class QuotationItem {
   final String name;
+
+  /// HSN / SAC code for the item, blank when not supplied.
+  final String hsn;
+
   final int quantity;
   final double price;
 
@@ -73,6 +77,7 @@ class QuotationItem {
     required this.name,
     required this.quantity,
     required this.price,
+    this.hsn = '',
   });
 
   double get total => quantity * price;
@@ -80,6 +85,9 @@ class QuotationItem {
 
 /// A single quotation row shown in the Quotations list.
 class QuotationModel {
+  /// GST a new quotation starts at; the user can still change it on the form.
+  static const double defaultGstPercent = 18;
+
   final String id;
 
   /// Human-readable reference, e.g. "QT-2026-014".
@@ -90,6 +98,9 @@ class QuotationModel {
 
   final String clientName;
   final String? companyName;
+
+  /// Postal address of the company the quotation is raised for.
+  final String? companyAddress;
 
   /// Total quoted amount (in [currency]).
   final double amount;
@@ -119,6 +130,9 @@ class QuotationModel {
   /// Opportunity this quotation was generated from, if any.
   final String? opportunityId;
 
+  /// Customer (`GET /customers`) this quotation is raised for, if any.
+  final String? customerId;
+
   const QuotationModel({
     required this.id,
     required this.number,
@@ -130,11 +144,13 @@ class QuotationModel {
     required this.createdDate,
     required this.validUntil,
     this.companyName,
+    this.companyAddress,
     this.currency = '\$',
     this.taxPercent = 0,
     this.notes = '',
     this.items = const [],
     this.opportunityId,
+    this.customerId,
   });
 
   /// Item count to show in summaries — prefers the explicit [items] list.
@@ -168,6 +184,10 @@ class QuotationModel {
           : (json['customer_name'] as String? ?? 'Quotation'),
       clientName: json['customer_name'] as String? ?? '—',
       companyName: (customerCompany?.isEmpty ?? true) ? null : customerCompany,
+      companyAddress: (json['customer_address'] as String?)?.trim().isEmpty ??
+              true
+          ? null
+          : (json['customer_address'] as String).trim(),
       amount: _parseAmount(json['grand_total']),
       currency: '₹',
       itemCount: 0,
@@ -178,6 +198,8 @@ class QuotationModel {
       notes: json['notes'] as String? ?? '',
       opportunityId:
           json['opportunity_id'] == null ? null : '${json['opportunity_id']}',
+      customerId:
+          json['customer_id'] == null ? null : '${json['customer_id']}',
     );
   }
 
@@ -196,6 +218,7 @@ class QuotationModel {
     String? title,
     String? clientName,
     String? companyName,
+    String? companyAddress,
     double? amount,
     String? currency,
     int? itemCount,
@@ -206,6 +229,7 @@ class QuotationModel {
     String? notes,
     List<QuotationItem>? items,
     String? opportunityId,
+    String? customerId,
   }) {
     return QuotationModel(
       id: id ?? this.id,
@@ -213,6 +237,7 @@ class QuotationModel {
       title: title ?? this.title,
       clientName: clientName ?? this.clientName,
       companyName: companyName ?? this.companyName,
+      companyAddress: companyAddress ?? this.companyAddress,
       amount: amount ?? this.amount,
       currency: currency ?? this.currency,
       itemCount: itemCount ?? this.itemCount,
@@ -223,6 +248,7 @@ class QuotationModel {
       notes: notes ?? this.notes,
       items: items ?? this.items,
       opportunityId: opportunityId ?? this.opportunityId,
+      customerId: customerId ?? this.customerId,
     );
   }
 

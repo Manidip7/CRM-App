@@ -56,10 +56,14 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     required T Function(dynamic json) decoder,
     CancelToken? cancelToken,
+    Options? options,
   }) {
     return _request(
       () => _dio.put(path,
-          data: data, queryParameters: queryParameters, cancelToken: cancelToken),
+          data: data,
+          queryParameters: queryParameters,
+          cancelToken: cancelToken,
+          options: options),
       decoder,
     );
   }

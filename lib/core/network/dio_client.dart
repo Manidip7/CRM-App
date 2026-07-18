@@ -27,8 +27,16 @@ class DioClient {
         // Encode list query params as repeated keys without `[]` brackets,
         // e.g. `quick_filter=today&quick_filter=upcoming`.
         listFormat: ListFormat.multi,
+        // The backend answers an expired/missing session with a 302 redirect to
+        // its web login page. Do NOT follow it — otherwise Dio chases the
+        // redirect into an HTML page (or a cross-origin chain) and the request
+        // never resolves into JSON, leaving the UI spinning forever. Keeping the
+        // 302 lets [validateStatus] reject it so it surfaces as a clean auth
+        // failure (see AuthInterceptor).
+        followRedirects: false,
+        maxRedirects: 0,
         // Let our own error mapper decide what counts as a failure; Dio only
-        // treats 2xx as success by default, which is what we want.
+        // treats 2xx as success, so any 3xx redirect is treated as an error.
         validateStatus: (status) => status != null && status >= 200 && status < 300,
       ),
     );

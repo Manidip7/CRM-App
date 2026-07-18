@@ -5,22 +5,34 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/utils/AppColors.dart';
 import '../../Opportunities/model/opportunity_model.dart';
-import '../../Opportunities/provider/opportunities_provider.dart';
+import '../../Opportunities/provider/opportunity_detail_provider.dart';
+import '../../customers/model/customer_list_item.dart';
+import '../../customers/provider/customers_api_provider.dart';
+import '../data/quotations_repository.dart';
 import '../model/quotation_model.dart';
 import '../provider/edit_quotation_provider.dart';
 import '../provider/quotations_provider.dart';
 
 /// Full-screen form to edit an existing [QuotationModel]. Lets the user pick a
-/// linked opportunity, edit quotation details (dates, tax, customer), manage
-/// line items and add notes, then save the changes back into state.
+/// customer (from `GET /customers`), edit quotation details (dates, tax,
+/// customer), manage line items and add notes, then save the changes back into
+/// state.
 ///
-/// All reactive state (opportunity, dates, tax, items, totals) lives in
+/// All reactive state (customer, dates, tax, items, totals) lives in
 /// [editQuotationFormProvider]; only the plain text fields that drive nothing
 /// else keep their own controllers.
 class EditQuotationScreen extends ConsumerStatefulWidget {
   final QuotationModel quotation;
 
-  const EditQuotationScreen({super.key, required this.quotation});
+  /// `true` when opened from "New Quote" with a blank [quotation], which only
+  /// changes the wording of the header.
+  final bool isCreate;
+
+  const EditQuotationScreen({
+    super.key,
+    required this.quotation,
+    this.isCreate = false,
+  });
 
   @override
   ConsumerState<EditQuotationScreen> createState() =>
@@ -28,19 +40,17 @@ class EditQuotationScreen extends ConsumerStatefulWidget {
 }
 
 class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
-  late final TextEditingController _titleController;
-  late final TextEditingController _customerNameController;
-  late final TextEditingController _customerCompanyController;
+  late final TextEditingController _companyNameController;
+  late final TextEditingController _companyAddressController;
   late final TextEditingController _notesController;
 
   @override
   void initState() {
     super.initState();
     final q = widget.quotation;
-    _titleController = TextEditingController(text: q.title);
-    _customerNameController = TextEditingController(text: q.clientName);
-    _customerCompanyController =
-        TextEditingController(text: q.companyName ?? '');
+    _companyNameController = TextEditingController(text: q.clientName);
+    _companyAddressController =
+        TextEditingController(text: q.companyAddress ?? '');
     _notesController = TextEditingController(text: q.notes);
     // Seed the reactive form state after the first frame — modifying a provider
     // during initState/build throws in Riverpod.
@@ -51,9 +61,8 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
 
   @override
   void dispose() {
-    _titleController.dispose();
-    _customerNameController.dispose();
-    _customerCompanyController.dispose();
+    _companyNameController.dispose();
+    _companyAddressController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -63,7 +72,7 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final opportunities = ref.watch(opportunitiesProvider).items;
+    final customers = ref.watch(customersApiProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -76,7 +85,7 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
                 children: [
-                  _buildSelectOpportunity(opportunities),
+                  _buildSelectCustomer(customers),
                   const SizedBox(height: 16),
                   _buildQuotationDetails(),
                   const SizedBox(height: 16),
@@ -120,23 +129,25 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Edit Quotation',
-                  style: TextStyle(
+                Text(
+                  widget.isCreate ? 'Create Quotation' : 'Edit Quotation',
+                  style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
                     letterSpacing: 0.1,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  widget.quotation.number,
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    color: AppColors.textSecondary,
+                if (widget.quotation.number.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    widget.quotation.number,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -145,13 +156,35 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
     );
   }
 
-  // ── Select Opportunity ──
-  Widget _buildSelectOpportunity(List<OpportunityModel> opportunities) {
-    final selectedId = ref.watch(
-        editQuotationFormProvider.select((s) => s.opportunityId));
+  // ── Select Customer ──
+  Widget _buildSelectCustomer(CustomersApiState customers) {
+    final selectedId =
+        ref.watch(editQuotationFormProvider.select((s) => s.customerId));
+
+    // `GET /customers` is paginated and can repeat a row across pages, so
+    // de-dupe it and keep a placeholder for a linked customer that has not been
+    // loaded — DropdownButton asserts on a value with anything other than
+    // exactly one matching item.
+    final ids = <String>{};
+    final items = <DropdownMenuItem<String?>>[
+      for (final c in customers.items)
+        if (ids.add('${c.id}'))
+          DropdownMenuItem<String?>(
+            value: '${c.id}',
+            child: Text(c.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+    ];
+    if (selectedId != null && !ids.contains(selectedId)) {
+      items.add(DropdownMenuItem<String?>(
+        value: selectedId,
+        child: Text('Customer #$selectedId',
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+      ));
+    }
+
     return _card(
-      title: 'Select Opportunity',
-      icon: Icons.trending_up_rounded,
+      title: 'Select Customer *',
+      icon: Icons.people_outline_rounded,
       child: Container(
         height: 48,
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -162,59 +195,67 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
         ),
         child: Row(
           children: [
-            const Icon(Icons.work_outline_rounded,
+            const Icon(Icons.person_outline_rounded,
                 size: 18, color: AppColors.textSecondary),
             const SizedBox(width: 10),
-            Expanded(
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String?>(
-                  value: selectedId,
-                  isExpanded: true,
-                  isDense: true,
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                      color: AppColors.textSecondary),
-                  style: const TextStyle(
-                      fontSize: 14, color: AppColors.textPrimary),
-                  hint: const Text('Select an opportunity',
-                      style: TextStyle(
-                          fontSize: 14, color: AppColors.textLight)),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('No opportunity'),
-                    ),
-                    ...opportunities.map(
-                      (o) => DropdownMenuItem<String?>(
-                        value: o.id,
-                        child: Text(
-                          o.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ],
-                  onChanged: (id) => _onOpportunitySelected(id, opportunities),
-                ),
-              ),
-            ),
+            Expanded(child: _customerDropdown(customers, selectedId, items)),
           ],
         ),
       ),
     );
   }
 
-  void _onOpportunitySelected(
-      String? id, List<OpportunityModel> opportunities) {
-    _form.setOpportunity(id);
-    if (id == null) return;
-    final opp = opportunities.firstWhere((o) => o.id == id);
-    // Pre-fill the customer name / title from the opportunity if still blank.
-    if (_customerNameController.text.trim().isEmpty) {
-      _customerNameController.text = opp.contactName;
+  /// The dropdown itself, or a status line while the customers request is in
+  /// flight / has failed.
+  Widget _customerDropdown(
+    CustomersApiState customers,
+    String? selectedId,
+    List<DropdownMenuItem<String?>> items,
+  ) {
+    if (customers.isLoading) {
+      return const Align(
+        alignment: Alignment.centerLeft,
+        child: Text('Loading customers…',
+            style: TextStyle(fontSize: 14, color: AppColors.textLight)),
+      );
     }
-    if (_titleController.text.trim().isEmpty) {
-      _titleController.text = opp.title;
+    if (customers.error != null && customers.items.isEmpty) {
+      return GestureDetector(
+        onTap: () => ref.read(customersApiProvider.notifier).refresh(),
+        child: const Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Could not load customers — tap to retry',
+              style: TextStyle(fontSize: 14, color: AppColors.red)),
+        ),
+      );
+    }
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String?>(
+        value: selectedId,
+        isExpanded: true,
+        isDense: true,
+        icon: const Icon(Icons.keyboard_arrow_down_rounded,
+            color: AppColors.textSecondary),
+        style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+        hint: const Text('Select a customer',
+            style: TextStyle(fontSize: 14, color: AppColors.textLight)),
+        items: items,
+        onChanged: (id) => _onCustomerSelected(id, customers.items),
+      ),
+    );
+  }
+
+  void _onCustomerSelected(String? id, List<CustomerListItem> customers) {
+    _form.setCustomer(id);
+    if (id == null) return;
+    final customer = customers.cast<CustomerListItem?>().firstWhere(
+          (c) => '${c!.id}' == id,
+          orElse: () => null,
+        );
+    if (customer == null) return;
+    // Pre-fill the company name if the user has not typed one yet.
+    if (_companyNameController.text.trim().isEmpty) {
+      _companyNameController.text = customer.name;
     }
   }
 
@@ -228,16 +269,11 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
       icon: Icons.description_outlined,
       child: Column(
         children: [
-          _field(
-            label: 'Title',
-            child: _controllerField(_titleController, hint: 'Quotation title'),
-          ),
-          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
                 child: _field(
-                  label: 'Date',
+                  label: 'Date *',
                   child: _dateButton(
                     value: date,
                     onTap: () => _pickDate(isValidUntil: false),
@@ -273,20 +309,20 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
           ),
           const SizedBox(height: 14),
           _field(
-            label: 'Customer Name',
+            label: 'Company Name',
             child: _controllerField(
-              _customerNameController,
-              hint: 'Customer name',
-              prefixIcon: Icons.person_outline_rounded,
+              _companyNameController,
+              hint: 'Company name',
+              prefixIcon: Icons.business_outlined,
             ),
           ),
           const SizedBox(height: 14),
           _field(
-            label: 'Customer Company',
+            label: 'Company Address',
             child: _controllerField(
-              _customerCompanyController,
-              hint: 'Company name',
-              prefixIcon: Icons.business_outlined,
+              _companyAddressController,
+              hint: 'Company address',
+              prefixIcon: Icons.location_on_outlined,
             ),
           ),
         ],
@@ -349,14 +385,7 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
         children: [
           Row(
             children: [
-              Expanded(
-                child: _formField(
-                  fieldKey: ValueKey('name-${item.key}'),
-                  initialValue: item.name,
-                  hint: 'Item / service name',
-                  onChanged: (v) => _form.setItemName(item.key, v),
-                ),
-              ),
+              Expanded(child: _productDropdown(item)),
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: () => _form.removeItem(item.key),
@@ -372,6 +401,19 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          // The key carries the product id: _formField seeds itself from
+          // initialValue once per key, so it only picks up the values a newly
+          // selected product wrote into the form when the key changes.
+          _formField(
+            fieldKey: ValueKey('hsn-${item.key}-${item.productId}'),
+            initialValue: item.hsn,
+            hint: 'HSN / SAC code',
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            prefixLabel: 'HSN',
+            onChanged: (v) => _form.setItemHsn(item.key, v),
           ),
           const SizedBox(height: 10),
           Row(
@@ -392,7 +434,7 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
               Expanded(
                 flex: 2,
                 child: _formField(
-                  fieldKey: ValueKey('price-${item.key}'),
+                  fieldKey: ValueKey('price-${item.key}-${item.productId}'),
                   initialValue: item.price == 0 ? '' : _trimZeros(item.price),
                   hint: 'Price',
                   keyboardType:
@@ -421,6 +463,99 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Product picker for a line item, backed by the shared `GET /products`
+  /// catalog. Picking one fills the row's name, HSN and price.
+  Widget _productDropdown(EditItem item) {
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: ref.watch(productsProvider).when(
+            loading: () => const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Loading products…',
+                  style: TextStyle(fontSize: 14, color: AppColors.textLight)),
+            ),
+            error: (_, _) => GestureDetector(
+              onTap: () => ref.invalidate(productsProvider),
+              child: const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Could not load products — tap to retry',
+                    style: TextStyle(fontSize: 13, color: AppColors.red)),
+              ),
+            ),
+            data: (products) => _productDropdownButton(item, products),
+          ),
+    );
+  }
+
+  Widget _productDropdownButton(EditItem item, List<ProductModel> products) {
+    // Rows seeded from a saved quotation carry a name but no product id, and the
+    // catalog can repeat an id — either would trip DropdownButton's
+    // exactly-one-match assertion, so de-dupe and keep an entry for the row's
+    // own product.
+    final ids = <int>{};
+    final items = <DropdownMenuItem<int?>>[
+      for (final p in products)
+        if (ids.add(p.id))
+          DropdownMenuItem<int?>(
+            value: p.id,
+            child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+    ];
+    if (item.productId != null && !ids.contains(item.productId)) {
+      items.add(DropdownMenuItem<int?>(
+        value: item.productId,
+        child: Text(item.name.isEmpty ? 'Product #${item.productId}' : item.name,
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+      ));
+    }
+
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<int?>(
+        value: item.productId,
+        isExpanded: true,
+        isDense: true,
+        icon: const Icon(Icons.keyboard_arrow_down_rounded,
+            color: AppColors.textSecondary),
+        style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+        hint: Text(
+          item.name.isEmpty ? 'Select a product' : item.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 14,
+            color:
+                item.name.isEmpty ? AppColors.textLight : AppColors.textPrimary,
+          ),
+        ),
+        items: items,
+        onChanged: (id) => _onProductSelected(item, id, products),
+      ),
+    );
+  }
+
+  void _onProductSelected(
+      EditItem item, int? id, List<ProductModel> products) {
+    if (id == null) return;
+    final product = products.cast<ProductModel?>().firstWhere(
+          (p) => p!.id == id,
+          orElse: () => null,
+        );
+    if (product == null) return;
+    _form.setItemProduct(
+      item.key,
+      productId: product.id,
+      name: product.name,
+      hsn: product.hsnNo ?? '',
+      price: product.sellingPrice,
     );
   }
 
@@ -510,6 +645,8 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
 
   // ── Save bar ──
   Widget _buildSaveBar() {
+    final isSaving =
+        ref.watch(editQuotationFormProvider.select((s) => s.isSaving));
     final bottomInset = MediaQuery.of(context).padding.bottom;
     return Container(
       padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottomInset),
@@ -551,23 +688,36 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
           Expanded(
             flex: 2,
             child: GestureDetector(
-              onTap: _save,
-              child: Container(
-                height: 50,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.primary, AppColors.accent],
+              onTap: isSaving ? null : _save,
+              child: Opacity(
+                opacity: isSaving ? 0.7 : 1,
+                child: Container(
+                  height: 50,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primary, AppColors.accent],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Text(
-                  'Save Changes',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Text(
+                          widget.isCreate ? 'Create Quotation' : 'Save Changes',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -755,6 +905,9 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
   // ─────────────────────────────────────────────
   //  Actions
   // ─────────────────────────────────────────────
+  /// Drops the time part so two dates can be compared by calendar day.
+  DateTime _dayOf(DateTime d) => DateTime(d.year, d.month, d.day);
+
   Future<void> _pickDate({required bool isValidUntil}) async {
     final form = ref.read(editQuotationFormProvider);
     final picked = await showDatePicker(
@@ -771,44 +924,84 @@ class _EditQuotationScreenState extends ConsumerState<EditQuotationScreen> {
     }
   }
 
-  void _save() {
-    final name = _customerNameController.text.trim();
-    if (name.isEmpty) {
-      _toast('Customer name is required');
+  Future<void> _save() async {
+    final form = ref.read(editQuotationFormProvider);
+    if (form.isSaving) return;
+    if (form.customerId == null) {
+      _toast('Please select a customer');
       return;
     }
 
-    final form = ref.read(editQuotationFormProvider);
+    final companyName = _companyNameController.text.trim();
+    if (companyName.isEmpty) {
+      _toast('Company name is required');
+      return;
+    }
+
+    // Compare by day: the picker returns midnight, so an equal date is valid.
+    if (_dayOf(form.validUntil).isBefore(_dayOf(form.date))) {
+      _toast('Valid Until must be on or after Date');
+      return;
+    }
+
     final items = form.items
         .where((r) => r.name.trim().isNotEmpty)
         .map((r) => QuotationItem(
               name: r.name.trim(),
+              hsn: r.hsn.trim(),
               quantity: r.quantity,
               price: r.price,
             ))
         .toList();
 
-    final company = _customerCompanyController.text.trim();
-    final updated = widget.quotation.copyWith(
-      title: _titleController.text.trim().isEmpty
-          ? widget.quotation.title
-          : _titleController.text.trim(),
-      clientName: name,
-      companyName: company.isEmpty ? null : company,
-      amount: form.grandTotal,
-      itemCount: items.length,
-      taxPercent: form.taxPercent,
-      notes: _notesController.text.trim(),
-      items: items,
-      createdDate: form.date,
+    final customerId = int.tryParse(form.customerId ?? '');
+    if (customerId == null) {
+      _toast('Please select a customer');
+      return;
+    }
+    if (items.isEmpty) {
+      _toast('Add at least one item');
+      return;
+    }
+
+    final address = _companyAddressController.text.trim();
+    final request = QuotationRequest(
+      customerId: customerId,
+      date: form.date,
       validUntil: form.validUntil,
-      opportunityId: form.opportunityId,
-      status: form.status,
+      companyName: companyName,
+      companyAddress: address.isEmpty ? null : address,
+      notes: _notesController.text.trim(),
+      taxRate: form.taxPercent,
+      items: [
+        for (final i in items)
+          QuotationRequestItem(
+            name: i.name,
+            hsn: i.hsn,
+            quantity: i.quantity,
+            unitPrice: i.price,
+          ),
+      ],
     );
 
-    ref.read(quotationsProvider.notifier).update(updated);
-    _toast('${updated.number} updated');
-    context.pop();
+    final repository = ref.read(quotationsRepositoryProvider);
+    _form.setSaving(true);
+    final result = widget.isCreate
+        ? await repository.createQuotation(request)
+        : await repository.updateQuotation(widget.quotation.id, request);
+    _form.setSaving(false);
+    if (!mounted) return;
+
+    result.when(
+      // Reload rather than patch locally: the server owns the quotation number,
+      // grand total and status.
+      success: (_) {
+        ref.read(quotationsProvider.notifier).refresh();
+        _toast(widget.isCreate ? 'Quotation created' : 'Quotation updated');
+        context.pop();
+      },
+      failure: (e) => _toast(e.message),
+    );
   }
 
   void _toast(String message) {

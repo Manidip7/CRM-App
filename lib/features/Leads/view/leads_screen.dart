@@ -73,7 +73,11 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
     if (pos.pixels >= pos.maxScrollExtent - 300) {
-      ref.read(leadsListProvider.notifier).loadMore();
+      if (ref.read(leadsFilterProvider).showBacklog) {
+        ref.read(leadsBacklogProvider.notifier).loadMore();
+      } else {
+        ref.read(leadsListProvider.notifier).loadMore();
+      }
     }
   }
 
@@ -96,18 +100,23 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     final leads = ref.watch(filteredLeadsProvider);
     final showBacklog =
         ref.watch(leadsFilterProvider.select((s) => s.showBacklog));
-    // Async state of the API-backed leads (ignored in backlog/sample mode).
+    // Keep the live list alive across toggles; in backlog mode the loading/error
+    // UI is driven by the separate, lazily-loaded backlog list instead — so
+    // tapping Backlog shows a spinner and then the backlog data, exactly like
+    // the Opportunities screen.
     final leadsAsync = ref.watch(leadsListProvider);
-    final loadingMore = ref.watch(leadsPaginationStateProvider
-        .select((p) => p.isLoadingMore));
+    final AsyncValue<Object?> activeAsync =
+        showBacklog ? ref.watch(leadsBacklogProvider) : leadsAsync;
+    final loadingMore = showBacklog
+        ? ref.watch(
+            leadsBacklogPaginationProvider.select((p) => p.isLoadingMore))
+        : ref.watch(
+            leadsPaginationStateProvider.select((p) => p.isLoadingMore));
 
-    // Initial load / error states only apply to the live (non-backlog) list.
-    final isInitialLoading =
-        !showBacklog && leadsAsync.isLoading && leads.isEmpty;
-    final loadError =
-        !showBacklog && leadsAsync.hasError && leads.isEmpty
-            ? leadsAsync.error
-            : null;
+    final isInitialLoading = activeAsync.isLoading && leads.isEmpty;
+    final loadError = activeAsync.hasError && leads.isEmpty
+        ? activeAsync.error
+        : null;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -118,8 +127,13 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
             Expanded(
               child: RefreshIndicator(
                 color: _accent,
-                onRefresh: () =>
-                    ref.read(leadsListProvider.notifier).refresh(),
+                onRefresh: () async {
+                  if (showBacklog) {
+                    await ref.read(leadsBacklogProvider.notifier).refresh();
+                  } else {
+                    await ref.read(leadsListProvider.notifier).refresh();
+                  }
+                },
                 child: CustomScrollView(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(
@@ -206,9 +220,9 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
   Widget _buildHeader() {
     final showBacklog =
         ref.watch(leadsFilterProvider.select((s) => s.showBacklog));
-    // Show the API's grand total for live leads; the loaded count for backlog.
+    // The API's grand total from each list's paginator.
     final totalLeads = showBacklog
-        ? ref.watch(leadsSourceProvider).length
+        ? ref.watch(leadsBacklogPaginationProvider.select((p) => p.total))
         : ref.watch(leadsPaginationStateProvider.select((p) => p.total));
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -308,7 +322,7 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     final showBacklog =
         ref.watch(leadsFilterProvider.select((s) => s.showBacklog));
     final total = showBacklog
-        ? source.length
+        ? ref.watch(leadsBacklogPaginationProvider.select((p) => p.total))
         : ref.watch(leadsPaginationStateProvider.select((p) => p.total));
     final newCount =
         source.where((l) => l.status == LeadStatus.newLead).length;
@@ -801,8 +815,13 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: () =>
-                  ref.read(leadsListProvider.notifier).refresh(),
+              onPressed: () {
+                if (ref.read(leadsFilterProvider).showBacklog) {
+                  ref.read(leadsBacklogProvider.notifier).refresh();
+                } else {
+                  ref.read(leadsListProvider.notifier).refresh();
+                }
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: _accent,
                 shape: RoundedRectangleBorder(
@@ -1489,23 +1508,23 @@ class _LeadCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert,
-                        color: AppColors.textSecondary, size: 18),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    padding: EdgeInsets.zero,
-                    itemBuilder: (_) => [
-                      _menuItem(Icons.phone_outlined, 'Call', AppColors.green),
-                      _menuItem(Icons.mail_outline_rounded, 'Email',
-                          AppColors.primary),
-                      _menuItem(Icons.task_alt_rounded, 'Add Task',
-                          AppColors.leadFunnelContacted),
-                      _menuItem(Icons.delete_outline_rounded, 'Delete',
-                          AppColors.red),
-                    ],
-                    onSelected: onMenuAction,
-                  ),
+                  // PopupMenuButton<String>(
+                  //   icon: const Icon(Icons.more_vert,
+                  //       color: AppColors.textSecondary, size: 18),
+                  //   shape: RoundedRectangleBorder(
+                  //       borderRadius: BorderRadius.circular(12)),
+                  //   padding: EdgeInsets.zero,
+                  //   itemBuilder: (_) => [
+                  //     _menuItem(Icons.phone_outlined, 'Call', AppColors.green),
+                  //     _menuItem(Icons.mail_outline_rounded, 'Email',
+                  //         AppColors.primary),
+                  //     _menuItem(Icons.task_alt_rounded, 'Add Task',
+                  //         AppColors.leadFunnelContacted),
+                  //     _menuItem(Icons.delete_outline_rounded, 'Delete',
+                  //         AppColors.red),
+                  //   ],
+                  //   onSelected: onMenuAction,
+                  // ),
                 ],
               ),
             ),
@@ -1513,11 +1532,28 @@ class _LeadCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _StatusBadge(status: lead.status),
-                  const SizedBox(width: 6),
-                  _SourceBadge(source: lead.source),
-                  const Spacer(),
+                  // Badges wrap to a second line if they don't fit, so the
+                  // extra priority chip can't overflow the row.
+                  Expanded(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        // In the backlog view show the real "Backlog" status
+                        // instead of the (wrong) "NEW" fallback.
+                        _StatusBadge(status: lead.status, isBacklog: isBacklog),
+                        if (lead.priority != null &&
+                            lead.priority!.trim().isNotEmpty)
+                          _PriorityBadge(priority: lead.priority!),
+                        // Hide the source badge when the backend sent no
+                        // recognizable source (no `manual` fallback shown).
+                        if (lead.sourceKnown) _SourceBadge(source: lead.source),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   // Assignee initials (overlapping circles for multiple).
                   _assigneeStack(lead.assigneeNames),
                 ],
@@ -1716,11 +1752,16 @@ class _LeadCard extends StatelessWidget {
 
 class _StatusBadge extends StatelessWidget {
   final LeadStatus status;
-  const _StatusBadge({required this.status});
+  final bool isBacklog;
+  const _StatusBadge({required this.status, this.isBacklog = false});
 
   @override
   Widget build(BuildContext context) {
-    final cfg = _statusConfig(status);
+    // Backlog leads carry the "Backlog" status (color #6b7280) which has no
+    // dedicated enum value — show it explicitly rather than the "NEW" fallback.
+    final cfg = isBacklog
+        ? (const Color(0xFF6B7280), 'BACKLOG')
+        : _statusConfig(status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
@@ -1751,6 +1792,54 @@ class _StatusBadge extends StatelessWidget {
         return (const Color(0xFFFFB547), 'WON');
       case LeadStatus.lost:
         return (AppColors.red, 'LOST');
+    }
+  }
+}
+
+// ─── Priority Badge ───────────────────────────────────────────────────────────
+
+class _PriorityBadge extends StatelessWidget {
+  final String priority;
+  const _PriorityBadge({required this.priority});
+
+  @override
+  Widget build(BuildContext context) {
+    final cfg = _priorityConfig(priority);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: cfg.$1.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: cfg.$1.withOpacity(0.25), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(cfg.$3, size: 11, color: cfg.$1),
+          const SizedBox(width: 4),
+          Text(
+            cfg.$2,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: cfg.$1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  (Color, String, IconData) _priorityConfig(String p) {
+    switch (p.toLowerCase().trim()) {
+      case 'hot':
+        return (AppColors.red, 'HOT', Icons.local_fire_department_rounded);
+      case 'warm':
+        return (const Color(0xFFFFB547), 'WARM', Icons.wb_sunny_rounded);
+      case 'cold':
+        return (AppColors.primary, 'COLD', Icons.ac_unit_rounded);
+      default:
+        return (AppColors.textSecondary, p.toUpperCase(), Icons.flag_outlined);
     }
   }
 }

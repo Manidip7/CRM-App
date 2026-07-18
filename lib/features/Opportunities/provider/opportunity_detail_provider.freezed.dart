@@ -14,7 +14,9 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$OpportunityDetailState {
 
- OpportunityStage get stage; int get probability; bool get closedWon; List<OpportunityProduct> get products;
+ OpportunityStage get stage;/// The raw stage id currently selected in the header dropdown (e.g.
+/// `"Prospecting"`). Null until seeded from the opportunity's `stageRaw`.
+ String? get stageId; int get probability; bool get closedWon; List<OpportunityProduct> get products;
 /// Create a copy of OpportunityDetailState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -25,16 +27,16 @@ $OpportunityDetailStateCopyWith<OpportunityDetailState> get copyWith => _$Opport
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is OpportunityDetailState&&(identical(other.stage, stage) || other.stage == stage)&&(identical(other.probability, probability) || other.probability == probability)&&(identical(other.closedWon, closedWon) || other.closedWon == closedWon)&&const DeepCollectionEquality().equals(other.products, products));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is OpportunityDetailState&&(identical(other.stage, stage) || other.stage == stage)&&(identical(other.stageId, stageId) || other.stageId == stageId)&&(identical(other.probability, probability) || other.probability == probability)&&(identical(other.closedWon, closedWon) || other.closedWon == closedWon)&&const DeepCollectionEquality().equals(other.products, products));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,stage,probability,closedWon,const DeepCollectionEquality().hash(products));
+int get hashCode => Object.hash(runtimeType,stage,stageId,probability,closedWon,const DeepCollectionEquality().hash(products));
 
 @override
 String toString() {
-  return 'OpportunityDetailState(stage: $stage, probability: $probability, closedWon: $closedWon, products: $products)';
+  return 'OpportunityDetailState(stage: $stage, stageId: $stageId, probability: $probability, closedWon: $closedWon, products: $products)';
 }
 
 
@@ -45,7 +47,7 @@ abstract mixin class $OpportunityDetailStateCopyWith<$Res>  {
   factory $OpportunityDetailStateCopyWith(OpportunityDetailState value, $Res Function(OpportunityDetailState) _then) = _$OpportunityDetailStateCopyWithImpl;
 @useResult
 $Res call({
- OpportunityStage stage, int probability, bool closedWon, List<OpportunityProduct> products
+ OpportunityStage stage, String? stageId, int probability, bool closedWon, List<OpportunityProduct> products
 });
 
 
@@ -62,10 +64,11 @@ class _$OpportunityDetailStateCopyWithImpl<$Res>
 
 /// Create a copy of OpportunityDetailState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? stage = null,Object? probability = null,Object? closedWon = null,Object? products = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? stage = null,Object? stageId = freezed,Object? probability = null,Object? closedWon = null,Object? products = null,}) {
   return _then(_self.copyWith(
 stage: null == stage ? _self.stage : stage // ignore: cast_nullable_to_non_nullable
-as OpportunityStage,probability: null == probability ? _self.probability : probability // ignore: cast_nullable_to_non_nullable
+as OpportunityStage,stageId: freezed == stageId ? _self.stageId : stageId // ignore: cast_nullable_to_non_nullable
+as String?,probability: null == probability ? _self.probability : probability // ignore: cast_nullable_to_non_nullable
 as int,closedWon: null == closedWon ? _self.closedWon : closedWon // ignore: cast_nullable_to_non_nullable
 as bool,products: null == products ? _self.products : products // ignore: cast_nullable_to_non_nullable
 as List<OpportunityProduct>,
@@ -153,10 +156,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( OpportunityStage stage,  int probability,  bool closedWon,  List<OpportunityProduct> products)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( OpportunityStage stage,  String? stageId,  int probability,  bool closedWon,  List<OpportunityProduct> products)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _OpportunityDetailState() when $default != null:
-return $default(_that.stage,_that.probability,_that.closedWon,_that.products);case _:
+return $default(_that.stage,_that.stageId,_that.probability,_that.closedWon,_that.products);case _:
   return orElse();
 
 }
@@ -174,10 +177,10 @@ return $default(_that.stage,_that.probability,_that.closedWon,_that.products);ca
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( OpportunityStage stage,  int probability,  bool closedWon,  List<OpportunityProduct> products)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( OpportunityStage stage,  String? stageId,  int probability,  bool closedWon,  List<OpportunityProduct> products)  $default,) {final _that = this;
 switch (_that) {
 case _OpportunityDetailState():
-return $default(_that.stage,_that.probability,_that.closedWon,_that.products);case _:
+return $default(_that.stage,_that.stageId,_that.probability,_that.closedWon,_that.products);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -194,10 +197,10 @@ return $default(_that.stage,_that.probability,_that.closedWon,_that.products);ca
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( OpportunityStage stage,  int probability,  bool closedWon,  List<OpportunityProduct> products)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( OpportunityStage stage,  String? stageId,  int probability,  bool closedWon,  List<OpportunityProduct> products)?  $default,) {final _that = this;
 switch (_that) {
 case _OpportunityDetailState() when $default != null:
-return $default(_that.stage,_that.probability,_that.closedWon,_that.products);case _:
+return $default(_that.stage,_that.stageId,_that.probability,_that.closedWon,_that.products);case _:
   return null;
 
 }
@@ -209,10 +212,13 @@ return $default(_that.stage,_that.probability,_that.closedWon,_that.products);ca
 
 
 class _OpportunityDetailState implements OpportunityDetailState {
-  const _OpportunityDetailState({this.stage = OpportunityStage.proposal, this.probability = 50, this.closedWon = false, final  List<OpportunityProduct> products = const <OpportunityProduct>[]}): _products = products;
+  const _OpportunityDetailState({this.stage = OpportunityStage.proposal, this.stageId, this.probability = 50, this.closedWon = false, final  List<OpportunityProduct> products = const <OpportunityProduct>[]}): _products = products;
   
 
 @override@JsonKey() final  OpportunityStage stage;
+/// The raw stage id currently selected in the header dropdown (e.g.
+/// `"Prospecting"`). Null until seeded from the opportunity's `stageRaw`.
+@override final  String? stageId;
 @override@JsonKey() final  int probability;
 @override@JsonKey() final  bool closedWon;
  final  List<OpportunityProduct> _products;
@@ -233,16 +239,16 @@ _$OpportunityDetailStateCopyWith<_OpportunityDetailState> get copyWith => __$Opp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _OpportunityDetailState&&(identical(other.stage, stage) || other.stage == stage)&&(identical(other.probability, probability) || other.probability == probability)&&(identical(other.closedWon, closedWon) || other.closedWon == closedWon)&&const DeepCollectionEquality().equals(other._products, _products));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _OpportunityDetailState&&(identical(other.stage, stage) || other.stage == stage)&&(identical(other.stageId, stageId) || other.stageId == stageId)&&(identical(other.probability, probability) || other.probability == probability)&&(identical(other.closedWon, closedWon) || other.closedWon == closedWon)&&const DeepCollectionEquality().equals(other._products, _products));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,stage,probability,closedWon,const DeepCollectionEquality().hash(_products));
+int get hashCode => Object.hash(runtimeType,stage,stageId,probability,closedWon,const DeepCollectionEquality().hash(_products));
 
 @override
 String toString() {
-  return 'OpportunityDetailState(stage: $stage, probability: $probability, closedWon: $closedWon, products: $products)';
+  return 'OpportunityDetailState(stage: $stage, stageId: $stageId, probability: $probability, closedWon: $closedWon, products: $products)';
 }
 
 
@@ -253,7 +259,7 @@ abstract mixin class _$OpportunityDetailStateCopyWith<$Res> implements $Opportun
   factory _$OpportunityDetailStateCopyWith(_OpportunityDetailState value, $Res Function(_OpportunityDetailState) _then) = __$OpportunityDetailStateCopyWithImpl;
 @override @useResult
 $Res call({
- OpportunityStage stage, int probability, bool closedWon, List<OpportunityProduct> products
+ OpportunityStage stage, String? stageId, int probability, bool closedWon, List<OpportunityProduct> products
 });
 
 
@@ -270,10 +276,11 @@ class __$OpportunityDetailStateCopyWithImpl<$Res>
 
 /// Create a copy of OpportunityDetailState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? stage = null,Object? probability = null,Object? closedWon = null,Object? products = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? stage = null,Object? stageId = freezed,Object? probability = null,Object? closedWon = null,Object? products = null,}) {
   return _then(_OpportunityDetailState(
 stage: null == stage ? _self.stage : stage // ignore: cast_nullable_to_non_nullable
-as OpportunityStage,probability: null == probability ? _self.probability : probability // ignore: cast_nullable_to_non_nullable
+as OpportunityStage,stageId: freezed == stageId ? _self.stageId : stageId // ignore: cast_nullable_to_non_nullable
+as String?,probability: null == probability ? _self.probability : probability // ignore: cast_nullable_to_non_nullable
 as int,closedWon: null == closedWon ? _self.closedWon : closedWon // ignore: cast_nullable_to_non_nullable
 as bool,products: null == products ? _self._products : products // ignore: cast_nullable_to_non_nullable
 as List<OpportunityProduct>,

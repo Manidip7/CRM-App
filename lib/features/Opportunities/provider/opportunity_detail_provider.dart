@@ -23,10 +23,36 @@ final opportunityDetailBundleProvider = FutureProvider.autoDispose
   };
 });
 
+/// GET /opportunity-stages — the selectable stages for the header dropdown.
+/// Session-cached (not autoDispose) so it is fetched once and shared.
+final opportunityStagesProvider =
+    FutureProvider<List<StageOption>>((ref) async {
+  final result = await ref.watch(opportunitiesRepositoryProvider).getStages();
+  return switch (result) {
+    Success(:final data) => data,
+    Failure(:final error) => throw error,
+  };
+});
+
+/// GET /products — the product catalog for the Add Product picker.
+/// Session-cached (not autoDispose) so it is fetched once and shared.
+final productsProvider = FutureProvider<List<ProductModel>>((ref) async {
+  final result =
+      await ref.watch(opportunitiesRepositoryProvider).getProducts();
+  return switch (result) {
+    Success(:final data) => data,
+    Failure(:final error) => throw error,
+  };
+});
+
 @freezed
 abstract class OpportunityDetailState with _$OpportunityDetailState {
   const factory OpportunityDetailState({
     @Default(OpportunityStage.proposal) OpportunityStage stage,
+
+    /// The raw stage id currently selected in the header dropdown (e.g.
+    /// `"Prospecting"`). Null until seeded from the opportunity's `stageRaw`.
+    String? stageId,
     @Default(50) int probability,
     @Default(false) bool closedWon,
     @Default(<OpportunityProduct>[]) List<OpportunityProduct> products,
@@ -41,10 +67,12 @@ class OpportunityDetailController extends _$OpportunityDetailController {
   OpportunityDetailState build(
     String opportunityId, {
     OpportunityStage initialStage = OpportunityStage.proposal,
+    String? initialStageId,
     int initialProbability = 50,
   }) =>
       OpportunityDetailState(
         stage: initialStage,
+        stageId: initialStageId,
         probability: initialProbability,
         closedWon: initialStage == OpportunityStage.won,
       );
@@ -54,10 +82,22 @@ class OpportunityDetailController extends _$OpportunityDetailController {
         closedWon: s == OpportunityStage.won,
       );
 
+  /// Selects a stage by its raw id from `GET /opportunity-stages`. Keeps the
+  /// [OpportunityStage] enum (used for colors / badges elsewhere) in sync.
+  void setStageId(String id) {
+    final mapped = opportunityStageFromId(id);
+    state = state.copyWith(
+      stageId: id,
+      stage: mapped,
+      closedWon: mapped == OpportunityStage.won,
+    );
+  }
+
   void setProbability(int p) => state = state.copyWith(probability: p);
 
   void markWon() => state = state.copyWith(
         stage: OpportunityStage.won,
+        stageId: 'Won',
         probability: 100,
         closedWon: true,
       );

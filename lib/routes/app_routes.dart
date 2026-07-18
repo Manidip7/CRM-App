@@ -7,6 +7,7 @@ import '../features/auth/model/auth_session.dart';
 import '../features/auth/view/LoginScreen.dart';
 import '../features/dashbord/view/dashboard_screen.dart';
 import '../features/Leads/model/lead_model.dart';
+import '../features/Leads/view/edit_lead_screen.dart';
 import '../features/Leads/view/lead_detail_screen.dart';
 import '../features/Opportunities/model/opportunity_model.dart';
 import '../features/Opportunities/view/OpportunitiesScreen.dart';
@@ -15,7 +16,9 @@ import '../features/customers/model/customer_model.dart';
 import '../features/customers/view/create_customer_screen.dart';
 import '../features/customers/view/customer_detail_screen.dart';
 import '../features/invoices/view/create_invoice_screen.dart';
+import '../features/projects/model/project_model.dart';
 import '../features/projects/view/create_project_screen.dart';
+import '../features/projects/view/project_detail_screen.dart';
 import '../features/profile/view/edit_profile_screen.dart';
 import '../features/quotations/model/quotation_model.dart';
 import '../features/quotations/view/edit_quotation_screen.dart';
@@ -36,11 +39,13 @@ class AppRoutes {
   static const String dashboard = '/dashboard';
   static const String opportunities = '/opportunities';
   static const String leadDetail = '/lead-detail';
+  static const String editLead = '/edit-lead';
   static const String opportunityDetail = '/opportunity-detail';
   static const String customerDetail = '/customer-detail';
   static const String createCustomer = '/create-customer';
   static const String createInvoice = '/create-invoice';
   static const String createProject = '/create-project';
+  static const String projectDetail = '/project-detail';
   static const String taskList = '/task-list';
   static const String editQuotation = '/edit-quotation';
   static const String editProfile = '/edit-profile';
@@ -107,6 +112,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           LeadDetailScreen(lead: state.extra as LeadModel),
     ),
     GoRoute(
+      path: AppRoutes.editLead,
+      name: 'editLead',
+      builder: (context, state) =>
+          EditLeadScreen(lead: state.extra as LeadModel),
+    ),
+    GoRoute(
       path: AppRoutes.opportunityDetail,
       name: 'opportunityDetail',
       builder: (context, state) =>
@@ -134,6 +145,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       builder: (context, state) => const CreateProjectScreen(),
     ),
     GoRoute(
+      path: AppRoutes.projectDetail,
+      name: 'projectDetail',
+      builder: (context, state) =>
+          ProjectDetailScreen(project: state.extra as ProjectModel),
+    ),
+    GoRoute(
       path: AppRoutes.taskList,
       name: 'taskList',
       builder: (context, state) => const TaskListScreen(),
@@ -141,8 +158,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     GoRoute(
       path: AppRoutes.editQuotation,
       name: 'editQuotation',
-      builder: (context, state) =>
-          EditQuotationScreen(quotation: state.extra as QuotationModel),
+      builder: (context, state) => EditQuotationScreen(
+        quotation: state.extra as QuotationModel,
+        isCreate: state.uri.queryParameters['create'] == '1',
+      ),
     ),
     GoRoute(
       path: AppRoutes.editProfile,

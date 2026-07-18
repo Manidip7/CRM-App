@@ -136,6 +136,15 @@ class LeadsRepository {
     );
   }
 
+  /// GET /lead-types — the options for the Edit-Lead "Lead Type" dropdown.
+  /// Returns only active types, ordered by `sort_order`.
+  Future<ApiResult<List<NamedLookup>>> getLeadTypes() {
+    return _api.get<List<NamedLookup>>(
+      ApiConstants.leadTypes,
+      decoder: (json) => _decodeLookups(json),
+    );
+  }
+
   /// GET /current-updates — the options for the "Current Update" dropdown in
   /// the Schedule Follow-up popup. Returns only active options, ordered by
   /// `sort_order`.
@@ -189,6 +198,98 @@ class LeadsRepository {
     );
   }
 
+  /// GET /territories — options for the Assign-Lead territory dropdown.
+  /// Returns only active territories, ordered by `sort_order`.
+  Future<ApiResult<List<NamedLookup>>> getTerritories() {
+    return _api.get<List<NamedLookup>>(
+      ApiConstants.territories,
+      decoder: (json) => _decodeLookups(json),
+    );
+  }
+
+  /// GET /branches — options for the Assign-Lead branch dropdown. When
+  /// [territoryId] is given, scopes the list to that territory
+  /// (`/branches?territory_id=1`). Returns only active branches, ordered by
+  /// `sort_order`.
+  Future<ApiResult<List<NamedLookup>>> getBranches({int? territoryId}) {
+    return _api.get<List<NamedLookup>>(
+      ApiConstants.branches,
+      queryParameters: {
+        if (territoryId != null) 'territory_id': territoryId,
+      },
+      decoder: (json) => _decodeLookups(json),
+    );
+  }
+
+  /// Shared decoder for the `{ id, name, is_active, sort_order }` lookup lists
+  /// (territories / branches). Handles both a plain list and a `{ data: [...] }`
+  /// or paginated `{ data: { data: [...] } }` wrapper.
+  static List<NamedLookup> _decodeLookups(dynamic json) {
+    return _extractList(json)
+        .map((e) => NamedLookup.fromJson((e as Map).cast<String, dynamic>()))
+        .where((o) => o.isActive)
+        .toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+  }
+
+  /// GET /users — the users a lead can be assigned to (Assign-Lead multi-select).
+  Future<ApiResult<List<AssignableUser>>> getAssignableUsers() {
+    return _api.get<List<AssignableUser>>(
+      ApiConstants.users,
+      decoder: (json) => _extractList(json)
+          .map((e) => AssignableUser.fromJson((e as Map).cast<String, dynamic>()))
+          .where((u) => u.name.trim().isNotEmpty)
+          .toList(),
+    );
+  }
+
+  /// Pulls the array out of a response that may be a plain list, a
+  /// `{ data: [...] }` wrapper, or a paginated `{ data: { data: [...] } }`.
+  static List<dynamic> _extractList(dynamic json) {
+    if (json is List) return json;
+    if (json is Map) {
+      final data = json['data'];
+      if (data is List) return data;
+      if (data is Map && data['data'] is List) return data['data'] as List;
+    }
+    return const [];
+  }
+
+  /// POST /leads/{id}/assign — assigns a lead to one or more users, optionally
+  /// scoped to a territory/branch, with a remark and privacy flag. Sent as a raw
+  /// JSON body: `{ territory_id, branch_id, assignee_ids: [...],
+  /// assign_remarks, is_private }`.
+  Future<ApiResult<void>> assignLead(
+    String id, {
+    int? territoryId,
+    int? branchId,
+    required List<int> assigneeIds,
+    String? remarks,
+    required bool isPrivate,
+  }) {
+    return _api.post<void>(
+      ApiConstants.leadAssign(id),
+      options: Options(contentType: Headers.jsonContentType),
+      data: {
+        if (territoryId != null) 'territory_id': territoryId,
+        if (branchId != null) 'branch_id': branchId,
+        'assignee_ids': assigneeIds,
+        if (remarks != null && remarks.isNotEmpty) 'assign_remarks': remarks,
+        'is_private': isPrivate,
+      },
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not assign lead.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
   /// POST /leads — creates a lead from the Add-Lead form fields. Only [email]
   /// is optional; everything else is required by the backend.
   Future<ApiResult<LeadModel>> createLead({
@@ -216,6 +317,89 @@ class LeadsRepository {
       decoder: (json) {
         final map = json is Map && json['data'] is Map ? json['data'] : json;
         return LeadModel.fromJson(map as Map<String, dynamic>);
+      },
+    );
+  }
+
+  /// PUT /leads/{id} — saves the Edit-Lead form. Sent as a raw JSON body (this
+  /// endpoint takes JSON, unlike the form-encoded `/status` and `/priority`
+  /// sub-routes).
+  ///
+  /// Text fields are always sent, as `''` when empty, so clearing an input
+  /// clears it server-side. Dropdown ids are omitted when nothing is selected
+  /// rather than sent null, since the backend validates them as integers.
+  /// Returns the updated lead when the reply carries one.
+  Future<ApiResult<LeadModel?>> updateLead(
+    String id, {
+    required String title,
+    required String firstName,
+    required String lastName,
+    required String interestedIn,
+    required String description,
+    required String phone,
+    required String alternatePhone,
+    required String email,
+    required String company,
+    required String designation,
+    required String website,
+    required String address,
+    required String city,
+    required String state,
+    required String pincode,
+    required String country,
+    required String priority,
+    int? statusId,
+    int? leadSourceId,
+    int? leadTypeId,
+    int? territoryId,
+    int? branchId,
+    required String utmSource,
+    required String utmMedium,
+    required String utmCampaign,
+    required String integrationRef,
+  }) {
+    return _api.put<LeadModel?>(
+      ApiConstants.leadDetail(id),
+      options: Options(contentType: Headers.jsonContentType),
+      data: {
+        'title': title,
+        'first_name': firstName,
+        'last_name': lastName,
+        'interested_in': interestedIn,
+        'description': description,
+        'phone': phone,
+        'alternate_phone': alternatePhone,
+        'email': email,
+        'company': company,
+        'designation': designation,
+        'website': website,
+        'address': address,
+        'city': city,
+        'state': state,
+        'pincode': pincode,
+        'country': country,
+        'priority': priority,
+        if (statusId != null) 'status_id': statusId,
+        if (leadSourceId != null) 'lead_source_id': leadSourceId,
+        if (leadTypeId != null) 'lead_type_id': leadTypeId,
+        if (territoryId != null) 'territory_id': territoryId,
+        if (branchId != null) 'branch_id': branchId,
+        'utm_source': utmSource,
+        'utm_medium': utmMedium,
+        'utm_campaign': utmCampaign,
+        'integration_ref': integrationRef,
+      },
+      decoder: (json) {
+        final map = json is Map ? json.cast<String, dynamic>() : null;
+        if (map != null && map['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: map['message'] as String? ?? 'Could not update lead.',
+            raw: json,
+          );
+        }
+        final data = (map?['data'] as Map?)?.cast<String, dynamic>();
+        return data == null ? null : LeadModel.fromJson(data);
       },
     );
   }

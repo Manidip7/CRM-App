@@ -1,12 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/platform/downloads_saver.dart';
 import '../../../core/utils/AppColors.dart';
+import '../../quotations/data/quotations_repository.dart';
+import '../../quotations/model/quotation_model.dart';
+import 'create_quotation_screen.dart';
 import '../../Leads/view/schedule_follow_up_sheet.dart';
 import '../data/opportunities_repository.dart';
 import '../model/opportunity_detail_model.dart';
@@ -50,6 +58,7 @@ class _OpportunityDetailScreenState
       opportunityDetailControllerProvider(
         _opp.id,
         initialStage: _opp.stage,
+        initialStageId: _opp.stageRaw,
         initialProbability: _opp.probability,
       );
 
@@ -86,8 +95,8 @@ class _OpportunityDetailScreenState
                     const SizedBox(height: 12),
                     _buildHeroCard(),
                     const SizedBox(height: 12),
-                    _buildDealCard(),
-                    const SizedBox(height: 12),
+                    // _buildDealCard(),
+                    // const SizedBox(height: 12),
                     _buildQuickActions(),
                     const SizedBox(height: 12),
                     _buildContactDetailsCard(),
@@ -143,25 +152,49 @@ class _OpportunityDetailScreenState
     );
   }
 
-  // Stage dropdown shown on the top bar (header) right side
+  // Stage dropdown shown on the top bar (header) right side. Options come from
+  // `GET /opportunity-stages`; the current selection is matched by raw stage id,
+  // falling back to the (lossy) enum when no id has been seeded.
   Widget _buildStageDropdown() {
-    final stage = ref.watch(_detailProvider.select((s) => s.stage));
-    final color = stage.color;
-    return PopupMenuButton<OpportunityStage>(
+    final stagesAsync = ref.watch(opportunityStagesProvider);
+    final stageId = ref.watch(_detailProvider.select((s) => s.stageId));
+    final enumStage = ref.watch(_detailProvider.select((s) => s.stage));
+
+    final options = stagesAsync.asData?.value ?? const <StageOption>[];
+
+    // Resolve the currently-selected option: prefer an exact id match, else
+    // the first option whose enum mapping matches the current enum stage.
+    StageOption? current;
+    final wantId = stageId?.toLowerCase().trim();
+    if (wantId != null && wantId.isNotEmpty) {
+      for (final o in options) {
+        if (o.id.toLowerCase().trim() == wantId) {
+          current = o;
+          break;
+        }
+      }
+    }
+    current ??= () {
+      for (final o in options) {
+        if (opportunityStageFromId(o.id) == enumStage) return o;
+      }
+      return null;
+    }();
+
+    final color = current?.color ?? enumStage.color;
+    final label = current?.name ?? _stageLabel(enumStage);
+
+    return PopupMenuButton<StageOption>(
       tooltip: 'Change stage',
+      enabled: options.isNotEmpty,
       offset: const Offset(0, 46),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: AppColors.cardBackground,
-      onSelected: (s) {
-        ref.read(_detailProvider.notifier).setStage(s);
-        ref
-            .read(opportunitiesProvider.notifier)
-            .updateOpportunity(_opp.id, stage: s);
-      },
-      itemBuilder: (_) => OpportunityStage.values.map((s) {
-        final selected = s == stage;
-        return PopupMenuItem<OpportunityStage>(
-          value: s,
+      onSelected: (o) => _onStageSelected(o, current),
+      itemBuilder: (_) => options.map((o) {
+        final selected = current?.id == o.id;
+        return PopupMenuItem<StageOption>(
+          value: o,
           height: 42,
           child: Row(
             children: [
@@ -169,13 +202,13 @@ class _OpportunityDetailScreenState
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: s.color,
+                  color: o.color,
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 10),
               Text(
-                _stageLabel(s),
+                o.name,
                 style: GoogleFonts.poppins(
                   fontSize: 13,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
@@ -183,7 +216,8 @@ class _OpportunityDetailScreenState
                 ),
               ),
               const Spacer(),
-              if (selected) Icon(Icons.check_rounded, size: 16, color: s.color),
+              if (selected)
+                Icon(Icons.check_rounded, size: 16, color: o.color),
             ],
           ),
         );
@@ -206,7 +240,7 @@ class _OpportunityDetailScreenState
             ),
             const SizedBox(width: 7),
             Text(
-              _stageLabel(stage),
+              label,
               style: GoogleFonts.poppins(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -218,6 +252,34 @@ class _OpportunityDetailScreenState
           ],
         ),
       ),
+    );
+  }
+
+  /// Persists a stage change via `POST /opportunities/{id}/stage`. Updates local
+  /// state optimistically (header, badges, pipeline list), reverting with a
+  /// message if the request fails. [previous] is the stage before the change.
+  Future<void> _onStageSelected(StageOption o, StageOption? previous) async {
+    if (o.id == previous?.id) return;
+
+    void apply(String id) {
+      ref.read(_detailProvider.notifier).setStageId(id);
+      ref
+          .read(opportunitiesProvider.notifier)
+          .updateOpportunity(_opp.id, stage: opportunityStageFromId(id));
+    }
+
+    apply(o.id); // optimistic
+
+    final result = await ref
+        .read(opportunitiesRepositoryProvider)
+        .updateStage(_opp.id, o.id);
+    if (!mounted) return;
+    result.when(
+      success: (_) => _showSnack('Stage updated to ${o.name}'),
+      failure: (e) {
+        if (previous != null) apply(previous.id); // revert
+        _showSnack(e.message);
+      },
     );
   }
 
@@ -902,6 +964,11 @@ class _OpportunityDetailScreenState
   }
 
   // ── Tab Bar ───────────────────────────────────────────────────────────────────
+  /// Quotes are only available once the opportunity reaches the Proposal stage.
+  bool get _quotesUnlocked =>
+      ref.watch(_detailProvider.select((s) => s.stage)) ==
+      OpportunityStage.proposal;
+
   Widget _buildTabBar() {
     final tabs = [
       'Information',
@@ -912,6 +979,7 @@ class _OpportunityDetailScreenState
       'Notes',
       'Tasks'
     ];
+    final quotesLocked = !_quotesUnlocked;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       height: 42,
@@ -940,7 +1008,22 @@ class _OpportunityDetailScreenState
             GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w400),
         labelPadding: const EdgeInsets.symmetric(horizontal: 14),
         padding: const EdgeInsets.all(3),
-        tabs: tabs.map((t) => Tab(text: t, height: 34)).toList(),
+        tabs: tabs.map((t) {
+          if (t == 'Quotes' && quotesLocked) {
+            return const Tab(
+              height: 34,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.lock_outline_rounded, size: 13),
+                  SizedBox(width: 4),
+                  Text('Quotes'),
+                ],
+              ),
+            );
+          }
+          return Tab(text: t, height: 34);
+        }).toList(),
       ),
     );
   }
@@ -1521,22 +1604,113 @@ class _OpportunityDetailScreenState
 
   // ── Quotes Tab ────────────────────────────────────────────────────────────────
   Widget _buildQuotesTab() {
+    // Quotes stay locked until the opportunity reaches the Proposal stage.
+    if (!_quotesUnlocked) return _buildQuotesLocked();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: _bundle.when(
-        loading: _tabLoading,
-        error: (e, _) => _tabError(e),
-        data: (data) {
-          final quotes = data.quotations;
-          if (quotes.isEmpty) {
-            return _emptyTabState(Icons.request_quote_outlined,
-                'No quotations for this opportunity.');
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: quotes.map(_buildQuotationCard).toList(),
-          );
-        },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildCreateQuoteButton(),
+          const SizedBox(height: 12),
+          _bundle.when(
+            loading: _tabLoading,
+            error: (e, _) => _tabError(e),
+            data: (data) {
+              final quotes = data.quotations;
+              if (quotes.isEmpty) {
+                return _emptyTabState(Icons.request_quote_outlined,
+                    'No quotations yet. Tap “Create Quotation” to add one.');
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: quotes.map(_buildQuotationCard).toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreateQuoteButton() {
+    return SizedBox(
+      height: 46,
+      child: ElevatedButton.icon(
+        onPressed: _openCreateQuotation,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _accent,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        icon: const Icon(Icons.add_rounded, size: 19),
+        label: Text(
+          'Create Quotation',
+          style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openCreateQuotation() async {
+    final data = _bundle.asData?.value;
+    final result = await Navigator.of(context).push<QuotationModel>(
+      MaterialPageRoute(
+        builder: (_) => CreateQuotationScreen(
+          opportunityId: _opp.id,
+          accent: _accent,
+          customerName: (data?.contactName?.isNotEmpty ?? false)
+              ? data!.contactName
+              : _opp.contactName,
+          initialItems: ref.read(_detailProvider).products,
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      _showSnack('Quotation ${result.number} created');
+    }
+  }
+
+  /// Shown in place of the quotations list until the stage is Proposal.
+  Widget _buildQuotesLocked() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+      child: Center(
+        child: Column(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.textLight.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.lock_outline_rounded,
+                  size: 30, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Quotes are locked',
+              style: GoogleFonts.poppins(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Move this opportunity to the Proposal stage to view and download quotations.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1625,10 +1799,99 @@ class _OpportunityDetailScreenState
               ],
             ),
           ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 42,
+            child: OutlinedButton.icon(
+              onPressed: () => _downloadQuotation(q),
+              icon: const Icon(Icons.download_rounded, size: 18),
+              label: Text(
+                'Download PDF',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _accent,
+                side: BorderSide(color: _accent.withOpacity(0.4)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
+
+  /// Downloads this quotation's PDF, opens it in the system viewer, and saves a
+  /// copy to the public Downloads folder. Mirrors the Quotations screen flow.
+  Future<void> _downloadQuotation(OpportunityQuotation q) async {
+    _showSnack('Downloading ${q.quotationNumber}...');
+    final result = await ref
+        .read(quotationsRepositoryProvider)
+        .downloadQuotation(q.id.toString());
+    if (!mounted) return;
+    await result.when(
+      success: (file) async {
+        if (file.bytes.isEmpty) {
+          _showSnack('Downloaded file was empty');
+          return;
+        }
+        final bytes = Uint8List.fromList(file.bytes);
+        final filename = _ensurePdf(file.filename);
+
+        // 1) Write a private copy and open it in the system PDF viewer.
+        String? viewPath;
+        try {
+          viewPath = await _saveForViewing(bytes, filename);
+          await OpenFilex.open(viewPath, type: 'application/pdf');
+        } catch (_) {
+          // Ignore — we still try to save a public copy and report below.
+        }
+
+        // 2) Save a copy to the public Downloads folder.
+        String? publicPath;
+        try {
+          publicPath = await DownloadsSaver.saveToDownloads(
+            bytes: bytes,
+            filename: filename,
+          );
+        } on PlatformException catch (e) {
+          publicPath = null;
+          if (mounted) _showSnack('Could not save to Downloads: ${e.message}');
+        }
+
+        if (!mounted) return;
+        if (publicPath != null) {
+          _showSnack('Saved to $publicPath');
+        } else if (viewPath != null) {
+          _showSnack('Saved to $viewPath');
+        } else {
+          _showSnack('Could not save the file');
+        }
+      },
+      failure: (e) async => _showSnack(e.message),
+    );
+  }
+
+  /// Writes [bytes] to a private app directory so the file can be opened by the
+  /// system PDF viewer, and returns the saved path.
+  Future<String> _saveForViewing(Uint8List bytes, String filename) async {
+    final dir = Platform.isAndroid
+        ? (await getExternalStorageDirectory() ??
+            await getApplicationDocumentsDirectory())
+        : await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  /// Ensures the file name ends with `.pdf` so the viewer picks the right app.
+  String _ensurePdf(String name) =>
+      name.toLowerCase().endsWith('.pdf') ? name : '$name.pdf';
 
   Widget _quoteRow(String label, String value, {bool bold = false}) {
     return Row(
@@ -2077,10 +2340,33 @@ class _OpportunityDetailScreenState
     return raw[0] + raw.substring(1).toLowerCase();
   }
 
+  /// The full deal amount with Indian digit grouping, e.g. 54545 → "₹54,545"
+  /// and 1234567.5 → "₹12,34,567.50". Paise are shown only when non-zero.
   String _formatValue(double v) {
-    if (v >= 100000) return '₹${(v / 100000).toStringAsFixed(1)}L';
-    if (v >= 1000) return '₹${(v / 1000).toStringAsFixed(0)}k';
-    return '₹${v.toStringAsFixed(2)}';
+    final isWhole = v == v.roundToDouble();
+    final str = isWhole ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+    final dot = str.indexOf('.');
+    var intPart = dot == -1 ? str : str.substring(0, dot);
+    final fraction = dot == -1 ? '' : str.substring(dot); // includes the '.'
+
+    final neg = intPart.startsWith('-');
+    if (neg) intPart = intPart.substring(1);
+
+    String grouped;
+    if (intPart.length <= 3) {
+      grouped = intPart;
+    } else {
+      final last3 = intPart.substring(intPart.length - 3);
+      final rest = intPart.substring(0, intPart.length - 3);
+      final buf = StringBuffer();
+      for (var i = 0; i < rest.length; i++) {
+        buf.write(rest[i]);
+        final fromRight = rest.length - i;
+        if (fromRight > 1 && (fromRight - 1) % 2 == 0) buf.write(',');
+      }
+      grouped = '$buf,$last3';
+    }
+    return '${neg ? '-' : ''}₹$grouped$fraction';
   }
 
   static const _months = [
@@ -2567,9 +2853,10 @@ class _AddProductSheet extends ConsumerStatefulWidget {
 }
 
 class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
-  final _nameController = TextEditingController();
   final _qtyController = TextEditingController(text: '1');
-  final _priceController = TextEditingController();
+
+  /// The product chosen from the `GET /products` catalog dropdown.
+  ProductModel? _selected;
 
   /// Match the detail screen's accent: red when launched from the backlog.
   Color get _accent =>
@@ -2581,39 +2868,47 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
   void initState() {
     super.initState();
     // Clear any error left over from a previous time the sheet was opened.
-    ref.read(_addProductErrorProvider.notifier).set(null);
+    // Deferred to after the first frame — modifying a provider synchronously
+    // during initState/build is disallowed by Riverpod.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(_addProductErrorProvider.notifier).set(null);
+    });
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
     _qtyController.dispose();
-    _priceController.dispose();
     super.dispose();
   }
 
+  /// Selects a catalog product; its selling price is used as the unit price.
+  void _onProductSelected(ProductModel? product) {
+    if (product == null) return;
+    setState(() => _selected = product);
+    ref.read(_addProductErrorProvider.notifier).set(null);
+  }
+
   void _submit() {
-    final name = _nameController.text.trim();
+    final product = _selected;
     final qty = int.tryParse(_qtyController.text.trim());
-    final price = double.tryParse(_priceController.text.trim());
 
     final errorNotifier = ref.read(_addProductErrorProvider.notifier);
-    if (name.isEmpty) {
-      errorNotifier.set('Please enter a product name');
+    if (product == null) {
+      errorNotifier.set('Please select a product');
       return;
     }
     if (qty == null || qty <= 0) {
       errorNotifier.set('Please enter a valid quantity');
       return;
     }
-    if (price == null || price < 0) {
-      errorNotifier.set('Please enter a valid price');
-      return;
-    }
 
     Navigator.pop(
       context,
-      OpportunityProduct(name: name, quantity: qty, price: price),
+      OpportunityProduct(
+        name: product.name,
+        quantity: qty,
+        price: product.sellingPrice,
+      ),
     );
   }
 
@@ -2654,50 +2949,17 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            _label('PRODUCT NAME'),
+            _label('PRODUCT'),
+            const SizedBox(height: 6),
+            _buildProductDropdown(),
+            const SizedBox(height: 14),
+            _label('QUANTITY'),
             const SizedBox(height: 6),
             _field(
-              controller: _nameController,
-              hint: 'e.g. Annual License',
-              icon: Icons.inventory_2_outlined,
-            ),
-            const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _label('QUANTITY'),
-                      const SizedBox(height: 6),
-                      _field(
-                        controller: _qtyController,
-                        hint: '1',
-                        icon: Icons.tag_rounded,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _label('UNIT PRICE (₹)'),
-                      const SizedBox(height: 6),
-                      _field(
-                        controller: _priceController,
-                        hint: '0.00',
-                        icon: Icons.payments_outlined,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              controller: _qtyController,
+              hint: '1',
+              icon: Icons.tag_rounded,
+              keyboardType: TextInputType.number,
             ),
             if (error != null) ...[
               const SizedBox(height: 12),
@@ -2756,6 +3018,31 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
         ),
       );
 
+  InputDecoration _decoration({required IconData icon, String? hint}) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle:
+          GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textLight),
+      prefixIcon: Icon(icon, size: 18, color: AppColors.textSecondary),
+      filled: true,
+      fillColor: AppColors.background,
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppColors.divider),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppColors.divider),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: _accent, width: 1.4),
+      ),
+    );
+  }
+
   Widget _field({
     required TextEditingController controller,
     required String hint,
@@ -2766,28 +3053,96 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
       controller: controller,
       keyboardType: keyboardType,
       style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textPrimary),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: GoogleFonts.poppins(
-            fontSize: 13.5, color: AppColors.textLight),
-        prefixIcon: Icon(icon, size: 18, color: AppColors.textSecondary),
-        filled: true,
-        fillColor: AppColors.background,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.divider),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.divider),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: _accent, width: 1.4),
+      decoration: _decoration(icon: icon, hint: hint),
+    );
+  }
+
+  /// The product picker fed by `GET /products`, with loading / retry / empty
+  /// states. Selecting an item pre-fills the unit price.
+  Widget _buildProductDropdown() {
+    final productsAsync = ref.watch(productsProvider);
+    return productsAsync.when(
+      loading: () => _dropdownShell(
+        Row(
+          children: [
+            const SizedBox(
+              height: 16,
+              width: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 10),
+            Text('Loading products...',
+                style: GoogleFonts.poppins(
+                    fontSize: 13, color: AppColors.textLight)),
+          ],
         ),
       ),
+      error: (e, _) => GestureDetector(
+        onTap: () => ref.invalidate(productsProvider),
+        child: _dropdownShell(
+          Row(
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  size: 16, color: AppColors.red),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Could not load products. Tap to retry.',
+                    style: GoogleFonts.poppins(
+                        fontSize: 13, color: AppColors.red)),
+              ),
+            ],
+          ),
+        ),
+      ),
+      data: (products) {
+        if (products.isEmpty) {
+          return _dropdownShell(
+            Text('No products available',
+                style: GoogleFonts.poppins(
+                    fontSize: 13, color: AppColors.textLight)),
+          );
+        }
+        return DropdownButtonFormField<ProductModel>(
+          initialValue: _selected,
+          isExpanded: true,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded,
+              color: AppColors.textSecondary),
+          style:
+              GoogleFonts.poppins(fontSize: 14, color: AppColors.textPrimary),
+          decoration: _decoration(icon: Icons.inventory_2_outlined),
+          hint: Text('Select a product',
+              style: GoogleFonts.poppins(
+                  fontSize: 13.5, color: AppColors.textLight)),
+          items: products.map((p) {
+            final sp = p.sellingPrice;
+            final price = sp == sp.roundToDouble()
+                ? sp.toStringAsFixed(0)
+                : sp.toStringAsFixed(2);
+            return DropdownMenuItem<ProductModel>(
+              value: p,
+              child: Text('${p.name} · ₹$price',
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+            );
+          }).toList(),
+          onChanged: _onProductSelected,
+        );
+      },
+    );
+  }
+
+  /// A bordered container matching the text fields, used for the dropdown's
+  /// loading / error / empty states.
+  Widget _dropdownShell(Widget child) {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: child,
     );
   }
 }

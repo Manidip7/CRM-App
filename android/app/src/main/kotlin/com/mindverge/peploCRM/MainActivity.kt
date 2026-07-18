@@ -1,4 +1,4 @@
-package com.example.crm_app
+package com.mindverge.peploCRM
 
 import android.content.ContentValues
 import android.os.Build

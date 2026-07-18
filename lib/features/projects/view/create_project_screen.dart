@@ -582,14 +582,15 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
       return;
     }
 
-    final now = DateTime.now();
     final project = ProjectModel(
-      id: suggestProjectId(ref.read(projectsProvider)),
+      // The list is API-backed now, so base the suggestion on what's loaded.
+      id: suggestProjectId(ref.read(projectsProvider).value ?? const []),
       name: name,
       customer: draft.customer!.trim(),
       status: draft.status,
       members: draft.members,
-      deadline: draft.deadline ?? now.add(const Duration(days: 30)),
+      // Left null when the user picks no date, matching the API's `deadline`.
+      deadline: draft.deadline,
       billingType: draft.billingType,
       totalRate: draft.totalRate,
       estimatedHours: draft.estimatedHours,

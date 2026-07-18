@@ -11,6 +11,7 @@ import '../data/leads_repository.dart';
 import '../model/lead_model.dart';
 import '../provider/lead_detail_provider.dart';
 import '../provider/leads_provider.dart';
+import '../provider/assign_providers.dart';
 import '../../Opportunities/model/opportunity_model.dart';
 import '../../Opportunities/provider/opportunities_provider.dart';
 import '../../calls/provider/call_providers.dart';
@@ -347,7 +348,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
 
   // ── Hero Card ────────────────────────────────────────────────────────────────
   Widget _buildHeroCard() {
-    final lead = widget.lead;
+    final lead = _lead;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -750,7 +751,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   }
 
   /// Digits-only primary phone number, suitable for tel:/sms:/wa.me URIs.
-  String? get _phoneDigits => _digits(widget.lead.phone);
+  String? get _phoneDigits => _digits(_lead.phone);
 
   /// Dials an arbitrary number (used by the primary and alternate phone).
   Future<void> _callNumber(String? raw) async {
@@ -765,7 +766,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     await _launch(Uri(scheme: 'tel', path: phone), 'phone dialer');
   }
 
-  Future<void> _callLead() => _callNumber(widget.lead.phone);
+  Future<void> _callLead() => _callNumber(_lead.phone);
 
   Future<void> _smsLead() async {
     final phone = _phoneDigits;
@@ -785,7 +786,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   }
 
   Future<void> _emailLead() async {
-    final email = widget.lead.email;
+    final email = _lead.email;
     if (email == null || email.trim().isEmpty) {
       return _showSnack('No email address for this lead.');
     }
@@ -809,7 +810,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
 
   // ── Contact Details Card ─────────────────────────────────────────────────────
   Widget _buildContactDetailsCard() {
-    final lead = widget.lead;
+    final lead = _lead;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -1214,6 +1215,9 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   }
 
   Widget _buildInformationTab() {
+    // Prefer the lead's own values (kept current by the Edit-Lead form and the
+    // detail fetch), falling back to the placeholder detail model.
+    final description = _lead.description ?? _detail.description;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1247,14 +1251,13 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
               ),
               const SizedBox(height: 12),
               Text(
-                _detail.description ??
-                    'No description provided for this lead record.',
+                description ?? 'No description provided for this lead record.',
                 style: GoogleFonts.poppins(
                   fontSize: 13,
-                  color: _detail.description != null
+                  color: description != null
                       ? AppColors.textPrimary
                       : AppColors.textSecondary,
-                  fontStyle: _detail.description != null
+                  fontStyle: description != null
                       ? FontStyle.normal
                       : FontStyle.italic,
                   height: 1.5,
@@ -1281,15 +1284,14 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
               const SizedBox(height: 14),
               _InfoField(
                   label: 'DESIGNATION',
-                  value: widget.lead.designation ?? _detail.designation),
+                  value: _lead.designation ?? _detail.designation),
               const SizedBox(height: 12),
               _InfoField(
-                  label: 'WEBSITE',
-                  value: widget.lead.website ?? _detail.website),
+                  label: 'WEBSITE', value: _lead.website ?? _detail.website),
               const SizedBox(height: 12),
               _InfoField(
                   label: 'ALT PHONE',
-                  value: widget.lead.alternatePhone ?? _detail.altPhone),
+                  value: _lead.alternatePhone ?? _detail.altPhone),
             ],
           ),
         ),
@@ -1309,11 +1311,16 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                 ),
               ),
               const SizedBox(height: 14),
-              _InfoField(label: 'LEAD TYPE', value: _detail.leadType),
+              _InfoField(
+                  label: 'LEAD TYPE',
+                  value: _lead.leadTypeName ?? _detail.leadType),
               const SizedBox(height: 12),
-              _InfoField(label: 'TERRITORY', value: _detail.territory),
+              _InfoField(
+                  label: 'TERRITORY',
+                  value: _lead.territoryName ?? _detail.territory),
               const SizedBox(height: 12),
-              _InfoField(label: 'BRANCH', value: _detail.branch),
+              _InfoField(
+                  label: 'BRANCH', value: _lead.branchName ?? _detail.branch),
             ],
           ),
         ),
@@ -2070,13 +2077,46 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
       builder: (_) => _MenuSheet(
         items: [
           _MenuItem(Icons.edit_rounded, 'Edit Lead', AppColors.primary),
-          _MenuItem(Icons.person_add_outlined, 'Reassign', AppColors.green),
+          _MenuItem(Icons.person_add_outlined, 'Assign Lead', AppColors.green),
           _MenuItem(Icons.archive_outlined, 'Archive', AppColors.textSecondary),
           _MenuItem(Icons.delete_outline_rounded, 'Delete Lead', AppColors.red),
         ],
-        onSelected: (label) => _showSnack(label),
+        onSelected: (label) {
+          if (label == 'Assign Lead') {
+            _showAssignLeadSheet();
+          } else if (label == 'Edit Lead') {
+            _openEditLead();
+          } else {
+            _showSnack(label);
+          }
+        },
       ),
     );
+  }
+
+  /// Opens the full-screen Edit-Lead form. It saves via `PUT /leads/{id}` and
+  /// pushes the result into [leadViewProvider] itself, so on return this screen
+  /// already shows the edit — there is nothing to apply here.
+  Future<void> _openEditLead() async {
+    final saved = await context.push<bool>(AppRoutes.editLead, extra: _lead);
+    if (saved == true && mounted) _showSnack('Lead updated');
+  }
+
+  /// Opens the "Assign Lead" popup. Routes the lead to one or more users
+  /// (optionally scoped to a territory/branch) via `POST /leads/{id}/assign`.
+  /// On success, refreshes the timeline and the leads list.
+  Future<void> _showAssignLeadSheet() async {
+    final assigned = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AssignLeadSheet(leadId: _lead.id),
+    );
+    if (assigned != true || !mounted) return;
+    // Reload the timeline (a new assignment activity) and the list card.
+    ref.invalidate(leadDetailProvider(_lead.id));
+    ref.read(leadsListProvider.notifier).refresh();
+    _showSnack('Lead assigned successfully');
   }
 
   /// Opens the "Schedule Next Follow-up" popup. Pre-fills its fields from the
@@ -3965,4 +4005,521 @@ class _MapGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_) => false;
+}
+
+// ── Assign Lead Sheet ─────────────────────────────────────────────────────────
+
+/// Bottom sheet to assign a lead to one or more users, optionally scoped to a
+/// territory/branch, with a remark and a privacy flag. Persists via
+/// `POST /leads/{id}/assign` and pops `true` on success. Assignees are
+/// mandatory.
+class _AssignLeadSheet extends ConsumerStatefulWidget {
+  final String leadId;
+  const _AssignLeadSheet({required this.leadId});
+
+  @override
+  ConsumerState<_AssignLeadSheet> createState() => _AssignLeadSheetState();
+}
+
+class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
+  NamedLookup? _territory;
+  NamedLookup? _branch;
+  final Set<int> _selectedUserIds = <int>{};
+  final TextEditingController _remarksCtrl = TextEditingController();
+  bool _isPrivate = false;
+  bool _saving = false;
+  // Turns the assignee picker red once a submit is attempted with none selected.
+  bool _assigneeError = false;
+
+  @override
+  void dispose() {
+    _remarksCtrl.dispose();
+    super.dispose();
+  }
+
+  /// Assigns the lead via `POST /leads/{id}/assign`. Keeps the sheet open on
+  /// error and pops `true` on success.
+  Future<void> _submit() async {
+    if (_saving) return;
+    if (_selectedUserIds.isEmpty) {
+      setState(() => _assigneeError = true);
+      _snack('Please select at least one assignee', AppColors.red);
+      return;
+    }
+    setState(() => _saving = true);
+    final result = await ref.read(leadsRepositoryProvider).assignLead(
+          widget.leadId,
+          territoryId: _territory?.id,
+          branchId: _branch?.id,
+          assigneeIds: _selectedUserIds.toList(),
+          remarks: _remarksCtrl.text.trim(),
+          isPrivate: _isPrivate,
+        );
+    if (!mounted) return;
+    result.when(
+      success: (_) => Navigator.pop(context, true),
+      failure: (error) {
+        setState(() => _saving = false);
+        _snack(error.message, AppColors.red);
+      },
+    );
+  }
+
+  void _snack(String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg,
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.white)),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    final territoriesAsync = ref.watch(territoriesProvider);
+    final territoryOptions =
+        territoriesAsync.asData?.value ?? const <NamedLookup>[];
+    final territoryHint = territoriesAsync.isLoading
+        ? 'Loading territories…'
+        : territoriesAsync.hasError
+            ? 'Could not load territories'
+            : 'Select territory';
+
+    // Branches are territory-scoped: only load them once a territory is picked.
+    final hasTerritory = _territory != null;
+    final branchesAsync = hasTerritory
+        ? ref.watch(branchesProvider(_territory!.id))
+        : const AsyncValue<List<NamedLookup>>.data(<NamedLookup>[]);
+    final branchOptions = branchesAsync.asData?.value ?? const <NamedLookup>[];
+    final branchHint = !hasTerritory
+        ? 'Select a territory first'
+        : branchesAsync.isLoading
+            ? 'Loading branches…'
+            : branchesAsync.hasError
+                ? 'Could not load branches'
+                : 'Select branch';
+
+    final usersAsync = ref.watch(assignableUsersProvider);
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            // Drag handle
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.green.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.person_add_alt_1_rounded,
+                        color: AppColors.green, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Assign Lead',
+                          style: GoogleFonts.poppins(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'Route this lead to your team',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.close_rounded,
+                          size: 18, color: AppColors.textSecondary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            // Scrollable form body
+            Flexible(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Territory (optional)
+                    _FieldLabel('Territory', Icons.public_rounded),
+                    const SizedBox(height: 8),
+                    _SheetDropdown<NamedLookup>(
+                      hint: territoryHint,
+                      value: _territory,
+                      options: territoryOptions,
+                      labelOf: (o) => o.name,
+                      onChanged: (v) => setState(() {
+                        _territory = v;
+                        // Territory drives the branch list — clear the stale
+                        // branch selection when it changes.
+                        _branch = null;
+                      }),
+                    ),
+                    const SizedBox(height: 18),
+                    // Branch (scoped to the selected territory)
+                    _FieldLabel('Branch', Icons.apartment_rounded),
+                    const SizedBox(height: 8),
+                    _SheetDropdown<NamedLookup>(
+                      hint: branchHint,
+                      value: _branch,
+                      options: branchOptions,
+                      labelOf: (o) => o.name,
+                      onChanged: (v) => setState(() => _branch = v),
+                    ),
+                    const SizedBox(height: 18),
+                    // Assignees (mandatory, multi-select)
+                    Row(
+                      children: [
+                        _FieldLabel('Assignees', Icons.group_rounded),
+                        Text(
+                          ' *',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.red,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_selectedUserIds.isNotEmpty)
+                          Text(
+                            '${_selectedUserIds.length} selected',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.green,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _buildAssigneePicker(usersAsync),
+                    if (_assigneeError && _selectedUserIds.isEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Select at least one assignee',
+                        style: GoogleFonts.poppins(
+                            fontSize: 11.5, color: AppColors.red),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    // Remarks (optional)
+                    _FieldLabel('Remarks', Icons.notes_rounded),
+                    const SizedBox(height: 8),
+                    _SheetTextField(
+                      controller: _remarksCtrl,
+                      hint: 'Add a remark for this assignment…',
+                    ),
+                    const SizedBox(height: 18),
+                    // Is Private
+                    _buildPrivateToggle(),
+                  ],
+                ),
+              ),
+            ),
+            // Footer: Cancel + Assign
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: OutlinedButton(
+                        onPressed:
+                            _saving ? null : () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.divider),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed: _saving ? null : _submit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.green,
+                          disabledBackgroundColor:
+                              AppColors.green.withOpacity(0.6),
+                          foregroundColor: Colors.white,
+                          disabledForegroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.check_rounded, size: 19),
+                        label: Text(
+                          _saving ? 'Assigning…' : 'Assign',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The assignee multi-select: loading / error / a wrap of toggleable user
+  /// chips. The bordering shell turns red when [_assigneeError] is set.
+  Widget _buildAssigneePicker(AsyncValue<List<AssignableUser>> usersAsync) {
+    return usersAsync.when(
+      loading: () => _pickerShell(
+        const Center(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        ),
+      ),
+      error: (_, _) => _pickerShell(
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Could not load users',
+                style:
+                    GoogleFonts.poppins(fontSize: 13, color: AppColors.red),
+              ),
+            ),
+            GestureDetector(
+              onTap: () => ref.invalidate(assignableUsersProvider),
+              child: Text(
+                'Retry',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      data: (users) {
+        if (users.isEmpty) {
+          return _pickerShell(
+            Text(
+              'No users available',
+              style: GoogleFonts.poppins(
+                  fontSize: 13, color: AppColors.textSecondary),
+            ),
+          );
+        }
+        return _pickerShell(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [for (final u in users) _userChip(u)],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _pickerShell(Widget child) {
+    final borderColor = (_assigneeError && _selectedUserIds.isEmpty)
+        ? AppColors.red
+        : AppColors.divider;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 0.8),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _userChip(AssignableUser u) {
+    final selected = _selectedUserIds.contains(u.id);
+    return GestureDetector(
+      onTap: () => setState(() {
+        if (!_selectedUserIds.remove(u.id)) _selectedUserIds.add(u.id);
+        _assigneeError = false;
+      }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.green.withOpacity(0.12)
+              : AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.green : AppColors.divider,
+            width: selected ? 1.4 : 0.8,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              selected
+                  ? Icons.check_circle_rounded
+                  : Icons.person_outline_rounded,
+              size: 15,
+              color: selected ? AppColors.green : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              u.name,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? AppColors.green : AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrivateToggle() {
+    return GestureDetector(
+      onTap: () => setState(() => _isPrivate = !_isPrivate),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.divider, width: 0.8),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: Checkbox(
+                value: _isPrivate,
+                onChanged: (v) => setState(() => _isPrivate = v ?? false),
+                activeColor: AppColors.green,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6)),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Is Private',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Private means this lead is visible only to the assigned '
+                    "user. If unchecked, everyone in the assigned user's "
+                    'branch can see it.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11.5,
+                      color: AppColors.textSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

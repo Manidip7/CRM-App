@@ -70,6 +70,56 @@ class OpportunitiesRepository {
     );
   }
 
+  /// GET /opportunity-stages — the selectable pipeline stages for the detail
+  /// header dropdown. Response shape: `{ success, data: [ { id, name } ] }`.
+  Future<ApiResult<List<StageOption>>> getStages() {
+    return _api.get<List<StageOption>>(
+      ApiConstants.opportunityStages,
+      decoder: (json) {
+        final list = (json is Map ? json['data'] : json) as List? ?? const [];
+        return list
+            .map((e) => StageOption.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(growable: false);
+      },
+    );
+  }
+
+  /// GET /products — the product catalog for the Add Product picker.
+  /// Response shape: `{ success, data: [ { id, name, selling_price, ... } ] }`.
+  Future<ApiResult<List<ProductModel>>> getProducts() {
+    return _api.get<List<ProductModel>>(
+      ApiConstants.products,
+      decoder: (json) {
+        final list = (json is Map ? json['data'] : json) as List? ?? const [];
+        return list
+            .map((e) =>
+                ProductModel.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(growable: false);
+      },
+    );
+  }
+
+  /// POST /opportunities/{id}/stage — updates an opportunity's pipeline stage.
+  /// Sent as an `x-www-form-urlencoded` body (`stage`), where [stage] is the raw
+  /// stage id from `GET /opportunity-statuses` (e.g. `"Prospecting"`).
+  Future<ApiResult<void>> updateStage(String id, String stage) {
+    return _api.post<void>(
+      ApiConstants.opportunityStage(id),
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+      data: {'stage': stage},
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not update stage.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
   /// POST /opportunities/{id}/followup — schedules the next follow-up for an
   /// opportunity. Sent as an `x-www-form-urlencoded` body. [nextFollowUpAt] must
   /// already be formatted as `yyyy-MM-dd HH:mm:ss`.

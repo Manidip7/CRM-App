@@ -24,7 +24,12 @@ final class OpportunityDetailControllerProvider
   /// the opportunity id so each one keeps its own state.
   OpportunityDetailControllerProvider._({
     required OpportunityDetailControllerFamily super.from,
-    required (String, {OpportunityStage initialStage, int initialProbability})
+    required (
+      String, {
+      OpportunityStage initialStage,
+      String? initialStageId,
+      int initialProbability,
+    })
     super.argument,
   }) : super(
          retry: null,
@@ -69,7 +74,7 @@ final class OpportunityDetailControllerProvider
 }
 
 String _$opportunityDetailControllerHash() =>
-    r'5f9874b41d5f1df5a67b0f054bc69eec712b1a61';
+    r'c00cf672c35a1784ee8c8ef83058994b586d7159';
 
 /// Editable stage / probability / won flag for a single opportunity, keyed by
 /// the opportunity id so each one keeps its own state.
@@ -81,7 +86,12 @@ final class OpportunityDetailControllerFamily extends $Family
           OpportunityDetailState,
           OpportunityDetailState,
           OpportunityDetailState,
-          (String, {OpportunityStage initialStage, int initialProbability})
+          (
+            String, {
+            OpportunityStage initialStage,
+            String? initialStageId,
+            int initialProbability,
+          })
         > {
   OpportunityDetailControllerFamily._()
     : super(
@@ -98,11 +108,13 @@ final class OpportunityDetailControllerFamily extends $Family
   OpportunityDetailControllerProvider call(
     String opportunityId, {
     OpportunityStage initialStage = OpportunityStage.proposal,
+    String? initialStageId,
     int initialProbability = 50,
   }) => OpportunityDetailControllerProvider._(
     argument: (
       opportunityId,
       initialStage: initialStage,
+      initialStageId: initialStageId,
       initialProbability: initialProbability,
     ),
     from: this,
@@ -119,14 +131,21 @@ abstract class _$OpportunityDetailController
     extends $Notifier<OpportunityDetailState> {
   late final _$args =
       ref.$arg
-          as (String, {OpportunityStage initialStage, int initialProbability});
+          as (
+            String, {
+            OpportunityStage initialStage,
+            String? initialStageId,
+            int initialProbability,
+          });
   String get opportunityId => _$args.$1;
   OpportunityStage get initialStage => _$args.initialStage;
+  String? get initialStageId => _$args.initialStageId;
   int get initialProbability => _$args.initialProbability;
 
   OpportunityDetailState build(
     String opportunityId, {
     OpportunityStage initialStage = OpportunityStage.proposal,
+    String? initialStageId,
     int initialProbability = 50,
   });
   @$mustCallSuper
@@ -147,6 +166,7 @@ abstract class _$OpportunityDetailController
       () => build(
         _$args.$1,
         initialStage: _$args.initialStage,
+        initialStageId: _$args.initialStageId,
         initialProbability: _$args.initialProbability,
       ),
     );
