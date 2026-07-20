@@ -362,11 +362,18 @@ class ProjectProgress {
   double get fraction => (percentage.clamp(0, 100)) / 100;
 
   factory ProjectProgress.fromJson(Map<String, dynamic> json) {
+    // Tolerate numbers arriving as strings (Laravel serializes some numeric
+    // columns that way), so one string value can't break the whole decode.
+    int toInt(dynamic v) {
+      if (v is num) return v.round();
+      if (v is String) return double.tryParse(v)?.round() ?? 0;
+      return 0;
+    }
+
     return ProjectProgress(
-      completedTasks: (json['completed_tasks_count'] as num?)?.toInt() ?? 0,
-      totalTasks: (json['total_tasks_count'] as num?)?.toInt() ?? 0,
-      percentage:
-          (json['project_progress_percentage'] as num?)?.round() ?? 0,
+      completedTasks: toInt(json['completed_tasks_count']),
+      totalTasks: toInt(json['total_tasks_count']),
+      percentage: toInt(json['project_progress_percentage']),
     );
   }
 }

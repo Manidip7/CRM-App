@@ -151,7 +151,7 @@ void main() {
       expect(p.name, 'wfggh');
       expect(p.customer, 'Demo Lead 2 Opportunity');
       expect(p.status, ProjectStatus.inProgress);
-      expect(p.billingType, BillingType.fixed);
+      expect(p.billingType, BillingType.fixedRate);
       expect(p.createdAt, DateTime.parse('2026-07-10T06:50:10.000000Z'));
       expect(p.deadline, isNull);
     });

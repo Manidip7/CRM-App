@@ -121,8 +121,8 @@ final projectSummaryProvider =
 /// The project list from `GET /projects`, refetched from page 1 whenever a
 /// filter changes and extended by [loadMore] as the user scrolls.
 ///
-/// [delete] and [upsert] only mutate the loaded list — there is no projects
-/// write endpoint wired up yet.
+/// [createProject] and [deleteProject] persist via the API then reload;
+/// [upsert] only mutates the loaded list.
 class ProjectsNotifier extends AsyncNotifier<List<ProjectModel>> {
   // Active query, captured on each build so loadMore reuses it.
   String? _search;
@@ -215,6 +215,36 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectModel>> {
     }
   }
 
+  /// Creates a project via `POST /projects`, then reloads the list from page 1
+  /// so the new row and `meta` totals appear. Returns null on success, or the
+  /// error message on failure.
+  Future<String?> createProject(ProjectDraft draft) async {
+    final result = await ref.read(projectsRepositoryProvider).createProject(
+          name: draft.name.trim(),
+          customerId: draft.customerId!,
+          billingType: draft.billingType.apiValue,
+          status: draft.status.apiValue,
+          totalRate: draft.totalRate,
+          estimatedHours: draft.estimatedHours,
+          startDate:
+              draft.startDate == null ? null : _fmtDate(draft.startDate!),
+          deadline: draft.deadline == null ? null : _fmtDate(draft.deadline!),
+          tags: draft.tags.join(', '),
+          description: draft.description.trim(),
+          memberIds: draft.memberIds,
+        );
+    final error = result.errorOrNull;
+    if (error != null) return error.message;
+    await refresh();
+    return null;
+  }
+
+  /// Formats a date as the API's plain `yyyy-MM-dd`.
+  static String _fmtDate(DateTime d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
   void upsert(ProjectModel updated) {
     final current = state.value ?? const <ProjectModel>[];
     final exists = current.any((p) => p.id == updated.id);
@@ -232,72 +262,81 @@ final projectsProvider =
 //  Create-project draft
 // ─────────────────────────────────────────────
 
-/// Selectable team members powering the Members multi-select. Swap for a
-/// repository call (`GET /users`) once the endpoint exists.
-final projectMembersProvider = Provider<List<String>>((ref) => const [
-      'Priya Sharma',
-      'Rahul Verma',
-      'Ankit Gupta',
-      'Sneha Iyer',
-      'Vikram Rao',
-      'Meera Nair',
-    ]);
-
 /// Full state of the "New Project" form. Kept in Riverpod (not [setState]) so
 /// every field — dropdowns, dates, member chips and tags — drives the UI
-/// reactively.
+/// reactively. The customer and members carry backend **ids** (with names kept
+/// only for display) so the form can POST to `/projects` directly.
 class ProjectDraft {
   final String name;
-  final String? customer;
+
+  /// Selected customer id (sent as `customer_id`) and its name for the label.
+  final int? customerId;
+  final String? customerName;
+
   final BillingType billingType;
   final ProjectStatus status;
-  final double totalRate;
-  final double estimatedHours;
+
+  /// Integers, matching the API's `total_rate` / `estimated_hours`.
+  final int totalRate;
+  final int estimatedHours;
+
   final DateTime? startDate;
   final DateTime? deadline;
-  final List<String> members;
+
+  /// Selected member user ids (sent as `members`).
+  final List<int> memberIds;
+
   final List<String> tags;
   final String description;
 
+  /// Whether a create request is in flight (drives the Save button spinner).
+  final bool saving;
+
   const ProjectDraft({
     this.name = '',
-    this.customer,
-    this.billingType = BillingType.fixed,
-    this.status = ProjectStatus.planning,
+    this.customerId,
+    this.customerName,
+    this.billingType = BillingType.fixedRate,
+    this.status = ProjectStatus.inProgress,
     this.totalRate = 0,
     this.estimatedHours = 0,
     this.startDate,
     this.deadline,
-    this.members = const [],
+    this.memberIds = const [],
     this.tags = const [],
     this.description = '',
+    this.saving = false,
   });
 
   ProjectDraft copyWith({
     String? name,
-    String? customer,
+    int? customerId,
+    String? customerName,
     BillingType? billingType,
     ProjectStatus? status,
-    double? totalRate,
-    double? estimatedHours,
+    int? totalRate,
+    int? estimatedHours,
     DateTime? startDate,
     DateTime? deadline,
-    List<String>? members,
+    List<int>? memberIds,
     List<String>? tags,
     String? description,
+    bool? saving,
   }) {
     return ProjectDraft(
       name: name ?? this.name,
-      customer: customer ?? this.customer,
+      customerId: customerId ?? this.customerId,
+      customerName: customerName ?? this.customerName,
       billingType: billingType ?? this.billingType,
       status: status ?? this.status,
       totalRate: totalRate ?? this.totalRate,
       estimatedHours: estimatedHours ?? this.estimatedHours,
       startDate: startDate ?? this.startDate,
       deadline: deadline ?? this.deadline,
-      members: members ?? this.members,
+      memberIds: memberIds ?? this.memberIds,
       tags: tags ?? this.tags,
       description: description ?? this.description,
+      saving: saving ?? this.saving,
     );
   }
 }
@@ -310,19 +349,35 @@ class ProjectDraftNotifier extends Notifier<ProjectDraft> {
   void reset() => state = const ProjectDraft();
 
   void setName(String v) => state = state.copyWith(name: v);
-  void setCustomer(String? v) => state = state.copyWith(customer: v);
+  void setCustomer(int? id, String? name) =>
+      state = ProjectDraft(
+        name: state.name,
+        customerId: id,
+        customerName: name,
+        billingType: state.billingType,
+        status: state.status,
+        totalRate: state.totalRate,
+        estimatedHours: state.estimatedHours,
+        startDate: state.startDate,
+        deadline: state.deadline,
+        memberIds: state.memberIds,
+        tags: state.tags,
+        description: state.description,
+        saving: state.saving,
+      );
   void setBillingType(BillingType v) => state = state.copyWith(billingType: v);
   void setStatus(ProjectStatus v) => state = state.copyWith(status: v);
-  void setTotalRate(double v) => state = state.copyWith(totalRate: v);
-  void setEstimatedHours(double v) => state = state.copyWith(estimatedHours: v);
+  void setTotalRate(int v) => state = state.copyWith(totalRate: v);
+  void setEstimatedHours(int v) => state = state.copyWith(estimatedHours: v);
   void setStartDate(DateTime v) => state = state.copyWith(startDate: v);
   void setDeadline(DateTime v) => state = state.copyWith(deadline: v);
   void setDescription(String v) => state = state.copyWith(description: v);
+  void setSaving(bool v) => state = state.copyWith(saving: v);
 
-  void toggleMember(String name) {
-    final members = [...state.members];
-    members.contains(name) ? members.remove(name) : members.add(name);
-    state = state.copyWith(members: members);
+  void toggleMember(int id) {
+    final ids = [...state.memberIds];
+    ids.contains(id) ? ids.remove(id) : ids.add(id);
+    state = state.copyWith(memberIds: ids);
   }
 
   void addTag(String tag) {

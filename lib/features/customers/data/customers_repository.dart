@@ -18,14 +18,19 @@ class CustomersRepository {
   static const int perPage = 15;
 
   /// GET /customers?page=N&per_page=15[&search=...] — one paginated page.
-  /// When [search] is non-empty the server filters by it.
-  Future<ApiResult<CustomersPage>> getCustomers({int page = 1, String? search}) {
+  /// When [search] is non-empty the server filters by it. [perPage] overrides
+  /// the default page size (used by the picker to pull a large single page).
+  Future<ApiResult<CustomersPage>> getCustomers({
+    int page = 1,
+    String? search,
+    int? perPage,
+  }) {
     final q = search?.trim() ?? '';
     return _api.get<CustomersPage>(
       ApiConstants.customers,
       queryParameters: {
         'page': page,
-        'per_page': perPage,
+        'per_page': perPage ?? CustomersRepository.perPage,
         if (q.isNotEmpty) 'search': q,
       },
       decoder: _decodeCustomersPage,

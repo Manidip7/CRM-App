@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
-import '../../customers/provider/customers_provider.dart';
+import '../../customers/model/customer_list_item.dart';
+import '../../customers/provider/customers_api_provider.dart';
 import '../model/invoice_model.dart';
 import '../provider/invoices_provider.dart';
 
@@ -153,18 +154,25 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
   }
 
   Widget _customerField() {
-    final customers = ref.watch(customersProvider);
+    final customersAsync = ref.watch(customerOptionsProvider);
+    final customers = customersAsync.asData?.value ?? const <CustomerListItem>[];
     final selected =
         ref.watch(invoiceDraftProvider.select((d) => d.customer));
+    final value = customers.any((c) => c.name == selected) ? selected : null;
     return _labeledField(
       'Bill To (Customer)',
       _dropdownShell(
         DropdownButton<String>(
-          value: selected,
+          value: value,
           isExpanded: true,
-          hint: Text('Select customer',
-              style: GoogleFonts.poppins(
-                  fontSize: 14, color: AppColors.textLight)),
+          hint: Text(
+            customersAsync.isLoading
+                ? 'Loading customers…'
+                : customersAsync.hasError
+                    ? 'Could not load customers'
+                    : 'Select customer',
+            style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textLight),
+          ),
           icon: const Icon(Icons.keyboard_arrow_down_rounded,
               color: AppColors.textSecondary),
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),

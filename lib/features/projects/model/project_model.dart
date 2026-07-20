@@ -5,59 +5,64 @@ import '../../../core/utils/AppColors.dart';
 /// Lifecycle state of a project. Colours map onto the shared [AppColors]
 /// palette so cards/badges stay visually consistent with the rest of the app.
 enum ProjectStatus {
-  planning,
   inProgress,
   onHold,
-  completed;
+  cancelled,
+  finished;
 
   String get label {
     switch (this) {
-      case ProjectStatus.planning:
-        return 'Planning';
       case ProjectStatus.inProgress:
         return 'In Progress';
       case ProjectStatus.onHold:
         return 'On Hold';
-      case ProjectStatus.completed:
-        return 'Completed';
+      case ProjectStatus.cancelled:
+        return 'Cancelled';
+      case ProjectStatus.finished:
+        return 'Finished';
     }
   }
 
   Color get color {
     switch (this) {
-      case ProjectStatus.planning:
-        return AppColors.primaryLight;
       case ProjectStatus.inProgress:
         return const Color(0xFFF5A623); // amber
       case ProjectStatus.onHold:
         return AppColors.textSecondary;
-      case ProjectStatus.completed:
+      case ProjectStatus.cancelled:
+        return AppColors.red;
+      case ProjectStatus.finished:
         return AppColors.green;
     }
   }
 
-  bool get isCompleted => this == ProjectStatus.completed;
+  /// The string sent to the backend on create/update. The API round-trips the
+  /// display label (see `GET /projects` → `"status": "In Progress"`).
+  String get apiValue => label;
+
+  bool get isCompleted => this == ProjectStatus.finished;
 }
 
 /// How a project is billed to the customer.
 enum BillingType {
-  fixed,
-  hourly,
-  retainer,
-  milestone;
+  fixedRate,
+  projectHours,
+  taskHours;
 
   String get label {
     switch (this) {
-      case BillingType.fixed:
-        return 'Fixed Price';
-      case BillingType.hourly:
-        return 'Hourly';
-      case BillingType.retainer:
-        return 'Retainer';
-      case BillingType.milestone:
-        return 'Milestone';
+      case BillingType.fixedRate:
+        return 'Fixed Rate';
+      case BillingType.projectHours:
+        return 'Project Hours';
+      case BillingType.taskHours:
+        return 'Task Hours';
     }
   }
+
+  /// The string sent to the backend on create/update. The API round-trips the
+  /// display label (see `GET /projects` → `"billing_type": "Fixed Rate"`).
+  String get apiValue => label;
 }
 
 /// A single project shown on the Projects screen.
@@ -93,7 +98,7 @@ class ProjectModel {
     required this.members,
     this.deadline,
     this.pendingTasks = 0,
-    this.billingType = BillingType.fixed,
+    this.billingType = BillingType.fixedRate,
     this.totalRate = 0,
     this.estimatedHours = 0,
     this.startDate,
@@ -118,10 +123,12 @@ class ProjectModel {
       members: _namesFrom(json['members']),
       deadline: _parseDate(json['deadline']),
       // Not part of the list payload today; the aggregate lives in `meta`.
-      pendingTasks: (json['pending_tasks'] as num?)?.toInt() ?? 0,
+      pendingTasks: _toInt(json['pending_tasks']),
       billingType: _billingFromName(json['billing_type'] as String?),
-      totalRate: (json['total_rate'] as num?)?.toDouble() ?? 0,
-      estimatedHours: (json['estimated_hours'] as num?)?.toDouble() ?? 0,
+      // Laravel serializes `decimal` columns as strings (e.g. "5000.00"), so
+      // parse leniently rather than casting straight to num.
+      totalRate: _toDouble(json['total_rate']),
+      estimatedHours: _toDouble(json['estimated_hours']),
       startDate: _parseDate(json['start_date']),
       createdAt: _parseDate(json['created_at']),
       tags: _tagsFrom(json['tags']),
@@ -132,32 +139,60 @@ class ProjectModel {
   static DateTime? _parseDate(dynamic value) =>
       value is String ? DateTime.tryParse(value) : null;
 
+  /// Parses a numeric field that may arrive as a number or a string (Laravel
+  /// serializes `decimal` columns as strings). Falls back to 0.
+  static double _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  static int _toInt(dynamic value) {
+    if (value is num) return value.toInt();
+    if (value is String) {
+      return int.tryParse(value) ?? (double.tryParse(value)?.toInt() ?? 0);
+    }
+    return 0;
+  }
+
   /// Compares names ignoring case and separators, so "In Progress",
   /// "in_progress" and "inProgress" all land on the same enum value.
   static String _normalise(String v) =>
       v.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
   static ProjectStatus _statusFromName(String? value) {
-    if (value == null) return ProjectStatus.planning;
+    if (value == null) return ProjectStatus.inProgress;
     final key = _normalise(value);
+    // Older/legacy vocabularies map onto the current set.
+    if (key == 'completed' || key == 'complete' || key == 'done') {
+      return ProjectStatus.finished;
+    }
+    if (key == 'planning' || key == 'backlog' || key == 'new') {
+      return ProjectStatus.inProgress;
+    }
     for (final s in ProjectStatus.values) {
       if (_normalise(s.label) == key || s.name.toLowerCase() == key) return s;
     }
-    return ProjectStatus.planning;
+    return ProjectStatus.inProgress;
   }
 
-  /// The backend spells the fixed type "Fixed Rate"; the enum's own label says
-  /// "Fixed Price", so match on both rather than on the label alone.
+  /// Maps the backend's billing label ("Fixed Rate" / "Project Hours" /
+  /// "Task Hours") onto [BillingType], tolerating snake_case / camelCase and the
+  /// older "Fixed Price" / "Hourly" spellings.
   static BillingType _billingFromName(String? value) {
-    if (value == null) return BillingType.fixed;
+    if (value == null) return BillingType.fixedRate;
     final key = _normalise(value);
     if (key == 'fixedrate' || key == 'fixedprice' || key == 'fixed') {
-      return BillingType.fixed;
+      return BillingType.fixedRate;
     }
+    if (key == 'projecthours' || key == 'hourly') {
+      return BillingType.projectHours;
+    }
+    if (key == 'taskhours') return BillingType.taskHours;
     for (final b in BillingType.values) {
       if (_normalise(b.label) == key || b.name.toLowerCase() == key) return b;
     }
-    return BillingType.fixed;
+    return BillingType.fixedRate;
   }
 
   /// Member names from an array of user objects (`{ id, name }`), tolerating a

@@ -57,6 +57,56 @@ class ProjectsRepository {
     );
   }
 
+  /// POST /projects — creates a project. Sent as a raw JSON body matching the
+  /// backend contract: `customer_id` and `members` are ids, `billing_type` /
+  /// `status` are the display labels, `total_rate` / `estimated_hours` are
+  /// integers, dates are `yyyy-MM-dd`, and `tags` is a comma-separated string.
+  /// Returns the created project when the reply carries one.
+  Future<ApiResult<ProjectModel?>> createProject({
+    required String name,
+    required int customerId,
+    required String billingType,
+    required String status,
+    required int totalRate,
+    required int estimatedHours,
+    String? startDate,
+    String? deadline,
+    String? tags,
+    String? description,
+    required List<int> memberIds,
+  }) {
+    return _api.post<ProjectModel?>(
+      ApiConstants.projects,
+      options: Options(contentType: Headers.jsonContentType),
+      data: {
+        'name': name,
+        'customer_id': customerId,
+        'billing_type': billingType,
+        'status': status,
+        'total_rate': totalRate,
+        'estimated_hours': estimatedHours,
+        if (startDate != null && startDate.isNotEmpty) 'start_date': startDate,
+        if (deadline != null && deadline.isNotEmpty) 'deadline': deadline,
+        if (tags != null && tags.isNotEmpty) 'tags': tags,
+        if (description != null && description.isNotEmpty)
+          'description': description,
+        'members': memberIds,
+      },
+      decoder: (json) {
+        final map = json is Map ? json.cast<String, dynamic>() : null;
+        if (map != null && map['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: map['message'] as String? ?? 'Could not create project.',
+            raw: json,
+          );
+        }
+        final data = (map?['data'] as Map?)?.cast<String, dynamic>();
+        return data == null ? null : ProjectModel.fromJson(data);
+      },
+    );
+  }
+
   /// GET /projects/{id} — the project plus its tasks, files, notes and
   /// activities, and the `meta` progress counters.
   Future<ApiResult<ProjectDetailBundle>> getProject(String id) {

@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
-import '../../customers/provider/customers_provider.dart';
+import '../../Leads/provider/assign_providers.dart';
+import '../../customers/model/customer_list_item.dart';
+import '../../customers/provider/customers_api_provider.dart';
 import '../model/project_model.dart';
 import '../provider/projects_provider.dart';
 
@@ -160,29 +162,48 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
   }
 
   Widget _customerField() {
-    final customers = ref.watch(customersProvider);
-    final selected =
-        ref.watch(projectDraftProvider.select((d) => d.customer));
+    final customersAsync = ref.watch(customerOptionsProvider);
+    final customers = customersAsync.asData?.value ?? const <CustomerListItem>[];
+    final selectedId =
+        ref.watch(projectDraftProvider.select((d) => d.customerId));
+    // Guard the dropdown's value: it must match exactly one item (or be null),
+    // so drop a stale selection that isn't in the loaded options.
+    final value = customers.any((c) => c.id == selectedId) ? selectedId : null;
     return _labeledField(
       'Customer',
       _dropdownShell(
-        DropdownButton<String>(
-          value: selected,
+        DropdownButton<int>(
+          value: value,
           isExpanded: true,
-          hint: Text('Select customer',
-              style: GoogleFonts.poppins(
-                  fontSize: 14, color: AppColors.textLight)),
+          hint: Text(
+            customersAsync.isLoading
+                ? 'Loading customers…'
+                : customersAsync.hasError
+                    ? 'Could not load customers'
+                    : 'Select customer',
+            style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textLight),
+          ),
           icon: const Icon(Icons.keyboard_arrow_down_rounded,
               color: AppColors.textSecondary),
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
           items: customers
-              .map((c) => DropdownMenuItem<String>(
-                    value: c.name,
+              .map((c) => DropdownMenuItem<int>(
+                    value: c.id,
                     child: Text(c.name, overflow: TextOverflow.ellipsis),
                   ))
               .toList(),
-          onChanged: (v) =>
-              ref.read(projectDraftProvider.notifier).setCustomer(v),
+          onChanged: (id) {
+            CustomerListItem? picked;
+            for (final c in customers) {
+              if (c.id == id) {
+                picked = c;
+                break;
+              }
+            }
+            ref
+                .read(projectDraftProvider.notifier)
+                .setCustomer(picked?.id, picked?.name);
+          },
         ),
       ),
     );
@@ -259,11 +280,12 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
       'Total Rate',
       TextField(
         controller: _totalRate,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        inputFormatters: [_decimalFormatter],
+        keyboardType: TextInputType.number,
+        // Numbers only — digits, no decimal point or other characters.
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         onChanged: (v) => ref
             .read(projectDraftProvider.notifier)
-            .setTotalRate(double.tryParse(v) ?? 0),
+            .setTotalRate(int.tryParse(v) ?? 0),
         style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
         decoration: _inputDecoration('₹ 0'),
       ),
@@ -275,11 +297,12 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
       'Estimated Hours',
       TextField(
         controller: _estimatedHours,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        inputFormatters: [_decimalFormatter],
+        keyboardType: TextInputType.number,
+        // Whole hours only, matching the API's integer `estimated_hours`.
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         onChanged: (v) => ref
             .read(projectDraftProvider.notifier)
-            .setEstimatedHours(double.tryParse(v) ?? 0),
+            .setEstimatedHours(int.tryParse(v) ?? 0),
         style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
         decoration: _inputDecoration('0'),
       ),
@@ -377,53 +400,268 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
     if (picked != null) onPicked(picked);
   }
 
-  // ── Members multi-select ──
+  // ── Members multi-select dropdown (API-backed: GET /users) ──
   Widget _membersField() {
-    final all = ref.watch(projectMembersProvider);
-    final selected = ref.watch(projectDraftProvider.select((d) => d.members));
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: all.map((m) {
-        final isSelected = selected.contains(m);
-        return GestureDetector(
-          onTap: () => ref.read(projectDraftProvider.notifier).toggleMember(m),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? AppColors.primary.withOpacity(0.12)
-                  : AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isSelected ? AppColors.primary : AppColors.divider,
+    final usersAsync = ref.watch(assignableUsersProvider);
+    return usersAsync.when(
+      loading: () => _dropdownLikeBox(
+        const Row(
+          children: [
+            SizedBox(
+              height: 18,
+              width: 18,
+              child: CircularProgressIndicator(strokeWidth: 2.2),
+            ),
+            SizedBox(width: 10),
+            Text('Loading members…',
+                style: TextStyle(fontSize: 14, color: AppColors.textLight)),
+          ],
+        ),
+      ),
+      error: (e, _) => GestureDetector(
+        onTap: () => ref.invalidate(assignableUsersProvider),
+        child: _dropdownLikeBox(
+          Row(
+            children: [
+              const Icon(Icons.cloud_off_rounded,
+                  size: 18, color: AppColors.textSecondary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Could not load members. Tap to retry.',
+                    style: GoogleFonts.poppins(
+                        fontSize: 14, color: AppColors.textSecondary)),
+              ),
+            ],
+          ),
+        ),
+      ),
+      data: (users) {
+        final selectedIds =
+            ref.watch(projectDraftProvider.select((d) => d.memberIds));
+        final count = selectedIds.length;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Dropdown-style trigger — opens the checkable members menu.
+            GestureDetector(
+              onTap: users.isEmpty ? null : () => _openMembersMenu(users),
+              child: _dropdownLikeBox(
+                Row(
+                  children: [
+                    const Icon(Icons.group_outlined,
+                        size: 18, color: AppColors.textSecondary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        users.isEmpty
+                            ? 'No members available'
+                            : count == 0
+                                ? 'Select members'
+                                : '$count member${count == 1 ? '' : 's'} selected',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: count == 0
+                              ? AppColors.textLight
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.textSecondary),
+                  ],
+                ),
               ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isSelected
-                      ? Icons.check_circle_rounded
-                      : Icons.person_outline_rounded,
-                  size: 15,
-                  color: isSelected ? AppColors.primary : AppColors.textSecondary,
+            // Selected members shown as removable chips (name looked up by id).
+            if (count > 0) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: selectedIds.map((id) {
+                  String name = '#$id';
+                  for (final u in users) {
+                    if (u.id == id) {
+                      name = u.name;
+                      break;
+                    }
+                  }
+                  return Container(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          name,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () => ref
+                              .read(projectDraftProvider.notifier)
+                              .toggleMember(id),
+                          child: const Icon(Icons.close_rounded,
+                              size: 15, color: AppColors.primary),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  /// The dropdown-style container shared by the members trigger's states.
+  Widget _dropdownLikeBox(Widget child) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: child,
+    );
+  }
+
+  /// Opens the multi-select members menu as a bottom sheet. Rows toggle the
+  /// draft directly, so the sheet stays open while several members are picked.
+  Future<void> _openMembersMenu(List<dynamic> users) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const SizedBox(width: 6),
+              ),
+            ),
+            Row(
+              children: [
                 Text(
-                  m,
+                  'Select Members',
                   style: GoogleFonts.poppins(
-                    fontSize: 12.5,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    color:
-                        isSelected ? AppColors.primary : AppColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
                   ),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Done',
+                      style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary)),
                 ),
               ],
             ),
-          ),
-        );
-      }).toList(),
+            const SizedBox(height: 4),
+            Flexible(
+              child: Consumer(
+                builder: (ctx, r, __) {
+                  final selected =
+                      r.watch(projectDraftProvider.select((d) => d.memberIds));
+                  return ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: users.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, color: AppColors.divider),
+                    itemBuilder: (_, i) {
+                      final u = users[i];
+                      final id = u.id as int;
+                      final name = u.name as String;
+                      final isSelected = selected.contains(id);
+                      final designation = u.designation as String?;
+                      return InkWell(
+                        onTap: () => r
+                            .read(projectDraftProvider.notifier)
+                            .toggleMember(id),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Row(
+                            children: [
+                              Icon(
+                                isSelected
+                                    ? Icons.check_box_rounded
+                                    : Icons.check_box_outline_blank_rounded,
+                                size: 20,
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.w500,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    if (designation != null &&
+                                        designation.trim().isNotEmpty)
+                                      Text(
+                                        designation,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11.5,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -546,22 +784,36 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
           flex: 2,
           child: SizedBox(
             height: 50,
-            child: ElevatedButton(
-              onPressed: _save,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
-              child: Text(
-                'Save Project',
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
+            child: Consumer(
+              builder: (context, ref, _) {
+                final saving =
+                    ref.watch(projectDraftProvider.select((d) => d.saving));
+                return ElevatedButton(
+                  onPressed: saving ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: saving
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.2, color: Colors.white),
+                        )
+                      : Text(
+                          'Save Project',
+                          style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                );
+              },
             ),
           ),
         ),
@@ -569,7 +821,8 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
     );
   }
 
-  void _save() {
+  Future<void> _save() async {
+    final notifier = ref.read(projectDraftProvider.notifier);
     final draft = ref.read(projectDraftProvider);
     final name = draft.name.trim();
 
@@ -577,31 +830,23 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
       _toast('Project name is required');
       return;
     }
-    if (draft.customer == null || draft.customer!.trim().isEmpty) {
+    if (draft.customerId == null) {
       _toast('Please select a customer');
       return;
     }
 
-    final project = ProjectModel(
-      // The list is API-backed now, so base the suggestion on what's loaded.
-      id: suggestProjectId(ref.read(projectsProvider).value ?? const []),
-      name: name,
-      customer: draft.customer!.trim(),
-      status: draft.status,
-      members: draft.members,
-      // Left null when the user picks no date, matching the API's `deadline`.
-      deadline: draft.deadline,
-      billingType: draft.billingType,
-      totalRate: draft.totalRate,
-      estimatedHours: draft.estimatedHours,
-      startDate: draft.startDate,
-      tags: draft.tags,
-      description: draft.description.trim(),
-    );
+    notifier.setSaving(true);
+    // POST /projects, then the list reloads so the new row appears.
+    final error = await ref.read(projectsProvider.notifier).createProject(draft);
+    if (!mounted) return;
+    notifier.setSaving(false);
 
-    ref.read(projectsProvider.notifier).upsert(project);
+    if (error != null) {
+      _toast(error);
+      return;
+    }
     Navigator.maybePop(context);
-    _toast('${project.name} created');
+    _toast('$name created');
   }
 
   // ── Shared field helpers ──
@@ -681,7 +926,3 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
     return '${months[d.month - 1]} ${d.day}, ${d.year}';
   }
 }
-
-/// Only digits and a single decimal point.
-final _decimalFormatter =
-    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'));

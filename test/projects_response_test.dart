@@ -69,8 +69,7 @@ void main() {
       // Flattened out of the nested customer object.
       expect(p.customer, 'Demo Lead 2 Opportunity');
       expect(p.status, ProjectStatus.inProgress);
-      // The backend spells this "Fixed Rate"; the enum's label says "Fixed Price".
-      expect(p.billingType, BillingType.fixed);
+      expect(p.billingType, BillingType.fixedRate);
       expect(p.startDate, DateTime.parse('2026-07-09T18:30:00.000000Z'));
       // Backs "Date Created" on the detail screen's Overview tab.
       expect(p.createdAt, DateTime.parse('2026-07-10T06:50:10.000000Z'));
@@ -89,6 +88,21 @@ void main() {
       expect(p.pendingTasks, 0);
     });
 
+    test('parses decimal columns sent as strings (Laravel serialization)', () {
+      // Once a project has real values, the backend returns `total_rate` /
+      // `estimated_hours` as strings like "5000.00" — these must not throw.
+      final p = ProjectModel.fromJson({
+        ..._firstProject,
+        'total_rate': '5000.00',
+        'estimated_hours': '100.00',
+        'tags': 'Web, Design',
+      });
+
+      expect(p.totalRate, 5000);
+      expect(p.estimatedHours, 100);
+      expect(p.tags, ['Web', 'Design']);
+    });
+
     test('a project with no deadline is never overdue', () {
       expect(ProjectModel.fromJson(_firstProject).isOverdue, isFalse);
     });
@@ -100,8 +114,11 @@ void main() {
       expect(statusOf('In Progress'), ProjectStatus.inProgress);
       expect(statusOf('in_progress'), ProjectStatus.inProgress);
       expect(statusOf('On Hold'), ProjectStatus.onHold);
-      expect(statusOf('Completed'), ProjectStatus.completed);
-      expect(statusOf('Planning'), ProjectStatus.planning);
+      expect(statusOf('Cancelled'), ProjectStatus.cancelled);
+      expect(statusOf('Finished'), ProjectStatus.finished);
+      // Legacy vocabulary still maps onto the current set.
+      expect(statusOf('Completed'), ProjectStatus.finished);
+      expect(statusOf('Planning'), ProjectStatus.inProgress);
     });
 
     test('reads members as user objects', () {

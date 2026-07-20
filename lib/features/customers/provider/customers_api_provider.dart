@@ -155,3 +155,18 @@ class CustomersApi extends Notifier<CustomersApiState> {
 
 final customersApiProvider =
     NotifierProvider<CustomersApi, CustomersApiState>(CustomersApi.new);
+
+/// Customer options for pickers (the Create-Project and Create-Invoice
+/// dropdowns), from `GET /customers`. Pulls a large single page so most
+/// customers fit without paging; cached so opening several forms shares one
+/// fetch, and reused rather than the sample-data list.
+final customerOptionsProvider =
+    FutureProvider<List<CustomerListItem>>((ref) async {
+  final result = await ref
+      .read(customersRepositoryProvider)
+      .getCustomers(page: 1, perPage: 100);
+  return result.when(
+    success: (data) => data.items,
+    failure: (error) => throw error,
+  );
+});
