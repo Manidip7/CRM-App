@@ -1,3 +1,5 @@
+import '../../calls/model/call_record.dart';
+
 /// One entry from a lead's `activities` timeline (`GET /leads/{id}`).
 class LeadActivity {
   final int id;
@@ -94,16 +96,21 @@ class LeadTask {
 }
 
 /// The expandable parts of a lead's detail response: its activity timeline,
-/// notes and tasks. Bundled so the screen fetches `GET /leads/{id}` once.
+/// notes, tasks and call logs. Bundled so the screen fetches `GET /leads/{id}`
+/// once.
 class LeadDetailBundle {
   final List<LeadActivity> activities;
   final List<LeadNote> notes;
   final List<LeadTask> tasks;
 
+  /// CRM-recorded calls from the response's `call_logs` array, newest first.
+  final List<LeadCallLog> callLogs;
+
   const LeadDetailBundle({
     required this.activities,
     required this.notes,
     required this.tasks,
+    this.callLogs = const [],
   });
 
   factory LeadDetailBundle.fromJson(Map<String, dynamic> json) {
@@ -114,10 +121,20 @@ class LeadDetailBundle {
           .toList(growable: false);
     }
 
+    final callLogs = parse('call_logs', LeadCallLog.fromJson).toList()
+      ..sort((a, b) {
+        final at = a.calledAt, bt = b.calledAt;
+        if (at == null && bt == null) return b.id.compareTo(a.id);
+        if (at == null) return 1;
+        if (bt == null) return -1;
+        return bt.compareTo(at);
+      });
+
     return LeadDetailBundle(
       activities: parse('activities', LeadActivity.fromJson),
       notes: parse('notes', LeadNote.fromJson),
       tasks: parse('tasks', LeadTask.fromJson),
+      callLogs: callLogs,
     );
   }
 }

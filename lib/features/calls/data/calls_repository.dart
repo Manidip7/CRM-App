@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -70,6 +71,39 @@ class CallsRepository {
           throw ApiException(
             type: ApiErrorType.validation,
             message: json['message'] as String? ?? 'Could not upload calls.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  /// POST /leads/{id}/call-logs — manually logs a single call against a lead.
+  /// Sent as `application/x-www-form-urlencoded` with `call_type`, `duration`,
+  /// `description` and `outcome`.
+  Future<ApiResult<void>> logLeadCall(
+    String leadId, {
+    required String callType,
+    required int duration,
+    String? description,
+    String? outcome,
+  }) {
+    return _api.post<void>(
+      ApiConstants.leadCallLogs(leadId),
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+      data: {
+        'call_type': callType,
+        'duration': duration,
+        // Always sent; a null/absent value goes as an empty string.
+        'description': description ?? '',
+        'outcome': outcome ?? '',
+      },
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not log call.',
             raw: json,
           );
         }

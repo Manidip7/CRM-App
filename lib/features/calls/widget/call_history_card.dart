@@ -6,6 +6,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../model/call_record.dart';
 import '../provider/call_providers.dart';
+import 'log_call_sheet.dart';
 
 /// A card that shows the captured call history for a lead or an opportunity,
 /// and surfaces the call-log permission state. Drop it into a detail screen:
@@ -28,6 +29,17 @@ class CallHistoryCard extends ConsumerWidget {
   FutureProvider<List<CallRecord>> get _historyProvider => isLead
       ? leadCallHistoryProvider(entityId)
       : opportunityCallHistoryProvider(entityId);
+
+  /// Opens the manual Log-Call sheet. On success it invalidates the history so
+  /// the new entry shows.
+  Future<void> _openLogCall(BuildContext context, WidgetRef ref) async {
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => LogCallSheet(leadId: entityId),
+    );
+  }
 
   Future<void> _enable(WidgetRef ref) async {
     // Requests permission, syncs, and refreshes the permission state — all via
@@ -81,6 +93,36 @@ class CallHistoryCard extends ConsumerWidget {
                   ),
                 ),
                 const Spacer(),
+                // Manual "Log Call" — leads only (uses /leads/{id}/call-logs).
+                // Available even without call-log permission since it's typed in.
+                if (isLead)
+                  GestureDetector(
+                    onTap: () => _openLogCall(context, ref),
+                    child: Container(
+                      height: 32,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.add_call,
+                              size: 15, color: AppColors.primary),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Log Call',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 if (granted)
                   GestureDetector(
                     onTap: () async {

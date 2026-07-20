@@ -16,6 +16,7 @@ import '../../Opportunities/model/opportunity_model.dart';
 import '../../Opportunities/provider/opportunities_provider.dart';
 import '../../calls/provider/call_providers.dart';
 import '../../calls/widget/call_history_card.dart';
+import '../../calls/widget/lead_call_logs_card.dart';
 
 class LeadDetailScreen extends ConsumerStatefulWidget {
   final LeadModel lead;
@@ -1211,7 +1212,16 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   }
 
   Widget _buildCallHistoryTab() {
-    return CallHistoryCard(entityId: widget.lead.id, isLead: true);
+    return Column(
+      children: [
+        // CRM-recorded calls from the lead detail's `call_logs` — shown for
+        // everyone, no device permission required.
+        LeadCallLogsCard(leadId: widget.lead.id),
+        const SizedBox(height: 12),
+        // Device-captured history + call-log permission / auto-sync controls.
+        CallHistoryCard(entityId: widget.lead.id, isLead: true),
+      ],
+    );
   }
 
   Widget _buildInformationTab() {

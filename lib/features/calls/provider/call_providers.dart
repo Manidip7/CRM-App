@@ -124,22 +124,60 @@ class CallSyncController extends Notifier<CallSyncState> {
 
       if (uploads.isEmpty) return 0;
 
-      final result = await _repo.uploadCalls(uploads);
-      return result.when(
-        success: (_) async {
-          await store.addUploaded(keys);
-          // Refresh any open history lists so the new calls appear.
-          ref.invalidate(leadCallHistoryProvider);
-          ref.invalidate(opportunityCallHistoryProvider);
-          state = state.copyWith(lastUploaded: uploads.length);
-          return uploads.length;
-        },
-        // On failure, re-queue these intents so we retry next time.
-        failure: (_) async {
-          await store.setPendingIntents(pending);
-          return 0;
-        },
-      );
+      // Lead-tagged calls go to POST /leads/{id}/call-logs (url-encoded), one
+      // per call. Anything else (e.g. opportunity calls) still batches to
+      // POST /calls, since there's no per-opportunity call-logs endpoint.
+      final leadRecords = <({CallUpload up, String key})>[];
+      final otherRecords = <({CallUpload up, String key})>[];
+      for (var i = 0; i < uploads.length; i++) {
+        final rec = (up: uploads[i], key: keys[i]);
+        (uploads[i].leadId != null ? leadRecords : otherRecords).add(rec);
+      }
+
+      final uploadedKeys = <String>[];
+      var uploadedCount = 0;
+      var anyFailure = false;
+
+      for (final rec in leadRecords) {
+        final res = await _repo.logLeadCall(
+          rec.up.leadId!,
+          callType: rec.up.type.directionApiValue,
+          duration: rec.up.durationSeconds,
+          // A connected call has a non-zero duration; missed/rejected are 0.
+          outcome: rec.up.durationSeconds > 0 ? 'answered' : 'no_answer',
+        );
+        if (res.errorOrNull == null) {
+          uploadedKeys.add(rec.key);
+          uploadedCount++;
+        } else {
+          anyFailure = true;
+        }
+      }
+
+      if (otherRecords.isNotEmpty) {
+        final res =
+            await _repo.uploadCalls(otherRecords.map((r) => r.up).toList());
+        if (res.errorOrNull == null) {
+          uploadedKeys.addAll(otherRecords.map((r) => r.key));
+          uploadedCount += otherRecords.length;
+        } else {
+          anyFailure = true;
+        }
+      }
+
+      if (uploadedKeys.isNotEmpty) {
+        await store.addUploaded(uploadedKeys);
+        // Refresh any open history lists so the new calls appear.
+        ref.invalidate(leadCallHistoryProvider);
+        ref.invalidate(opportunityCallHistoryProvider);
+        state = state.copyWith(lastUploaded: uploadedCount);
+      }
+      // Re-queue every intent when anything failed; the isUploaded() check
+      // skips the ones that already succeeded on the next run.
+      if (anyFailure) {
+        await store.setPendingIntents(pending);
+      }
+      return uploadedCount;
     } finally {
       state = state.copyWith(syncing: false);
     }
@@ -194,6 +232,82 @@ class CallPermissionController extends AsyncNotifier<CallPermissionState> {
 final callPermissionProvider =
     AsyncNotifierProvider<CallPermissionController, CallPermissionState>(
         CallPermissionController.new);
+
+// ─────────────────────────────────────────────
+//  Manual "Log Call" form (POST /leads/{id}/call-logs)
+// ─────────────────────────────────────────────
+
+/// The outcome of a manually-logged call, sent as the `outcome` field.
+enum CallOutcome { answered, noAnswer }
+
+extension CallOutcomeX on CallOutcome {
+  String get label {
+    switch (this) {
+      case CallOutcome.answered:
+        return 'Answered';
+      case CallOutcome.noAnswer:
+        return 'No Answer';
+    }
+  }
+
+  /// Value sent to the API (`outcome` field).
+  String get apiValue {
+    switch (this) {
+      case CallOutcome.answered:
+        return 'answered';
+      case CallOutcome.noAnswer:
+        return 'no_answer';
+    }
+  }
+}
+
+/// The call directions offered in the Log-Call form — the endpoint expects
+/// `Outbound` / `Inbound` (see [AppCallType.directionApiValue]).
+const kLogCallTypes = [
+  AppCallType.outgoing,
+  AppCallType.incoming,
+];
+
+/// Dropdown + submit state for the Log-Call sheet. Text fields (duration,
+/// description, contact name) stay in local controllers; the reactive bits live
+/// here so the sheet needs no [setState].
+class LogCallFormState {
+  final AppCallType callType;
+  final CallOutcome outcome;
+  final bool submitting;
+
+  const LogCallFormState({
+    this.callType = AppCallType.outgoing,
+    this.outcome = CallOutcome.answered,
+    this.submitting = false,
+  });
+
+  LogCallFormState copyWith({
+    AppCallType? callType,
+    CallOutcome? outcome,
+    bool? submitting,
+  }) {
+    return LogCallFormState(
+      callType: callType ?? this.callType,
+      outcome: outcome ?? this.outcome,
+      submitting: submitting ?? this.submitting,
+    );
+  }
+}
+
+class LogCallFormNotifier extends Notifier<LogCallFormState> {
+  @override
+  LogCallFormState build() => const LogCallFormState();
+
+  void reset() => state = const LogCallFormState();
+  void setCallType(AppCallType t) => state = state.copyWith(callType: t);
+  void setOutcome(CallOutcome o) => state = state.copyWith(outcome: o);
+  void setSubmitting(bool v) => state = state.copyWith(submitting: v);
+}
+
+final logCallFormProvider =
+    NotifierProvider<LogCallFormNotifier, LogCallFormState>(
+        LogCallFormNotifier.new);
 
 /// Call history for a lead (`GET /leads/{id}/calls`), keyed by lead id.
 final leadCallHistoryProvider =
