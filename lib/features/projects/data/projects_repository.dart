@@ -107,6 +107,55 @@ class ProjectsRepository {
     );
   }
 
+  /// PUT /projects/{id} — updates a project's core fields. Same JSON contract
+  /// as [createProject]; `tags` / `description` / `members` are only sent when
+  /// provided so an edit that leaves them out doesn't clear them server-side.
+  Future<ApiResult<ProjectModel?>> updateProject(
+    String id, {
+    required String name,
+    required int customerId,
+    required String billingType,
+    required String status,
+    required int totalRate,
+    required int estimatedHours,
+    String? startDate,
+    String? deadline,
+    String? tags,
+    String? description,
+    List<int>? memberIds,
+  }) {
+    return _api.put<ProjectModel?>(
+      ApiConstants.projectDetail(id),
+      options: Options(contentType: Headers.jsonContentType),
+      data: {
+        'name': name,
+        'customer_id': customerId,
+        'billing_type': billingType,
+        'status': status,
+        'total_rate': totalRate,
+        'estimated_hours': estimatedHours,
+        if (startDate != null && startDate.isNotEmpty) 'start_date': startDate,
+        if (deadline != null && deadline.isNotEmpty) 'deadline': deadline,
+        if (tags != null && tags.isNotEmpty) 'tags': tags,
+        if (description != null && description.isNotEmpty)
+          'description': description,
+        if (memberIds != null && memberIds.isNotEmpty) 'members': memberIds,
+      },
+      decoder: (json) {
+        final map = json is Map ? json.cast<String, dynamic>() : null;
+        if (map != null && map['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: map['message'] as String? ?? 'Could not update project.',
+            raw: json,
+          );
+        }
+        final data = (map?['data'] as Map?)?.cast<String, dynamic>();
+        return data == null ? null : ProjectModel.fromJson(data);
+      },
+    );
+  }
+
   /// GET /projects/{id} — the project plus its tasks, files, notes and
   /// activities, and the `meta` progress counters.
   Future<ApiResult<ProjectDetailBundle>> getProject(String id) {

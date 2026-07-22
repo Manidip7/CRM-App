@@ -70,6 +70,11 @@ class ProjectModel {
   final String id;
   final String name;
   final String customer;
+
+  /// Backend `customer_id`, used to prefill the customer dropdown and send it
+  /// back on update. Null when the payload omitted it.
+  final int? customerId;
+
   final ProjectStatus status;
   final List<String> members;
 
@@ -94,6 +99,7 @@ class ProjectModel {
     required this.id,
     required this.name,
     required this.customer,
+    this.customerId,
     required this.status,
     required this.members,
     this.deadline,
@@ -119,6 +125,8 @@ class ProjectModel {
       id: '${json['id']}',
       name: json['name'] as String? ?? '',
       customer: (customer is Map ? customer['name'] as String? : null) ?? '',
+      customerId: (json['customer_id'] as num?)?.toInt() ??
+          (customer is Map ? (customer['id'] as num?)?.toInt() : null),
       status: _statusFromName(json['status'] as String?),
       members: _namesFrom(json['members']),
       deadline: _parseDate(json['deadline']),
@@ -243,6 +251,7 @@ class ProjectModel {
     String? id,
     String? name,
     String? customer,
+    int? customerId,
     ProjectStatus? status,
     List<String>? members,
     DateTime? deadline,
@@ -259,6 +268,7 @@ class ProjectModel {
       id: id ?? this.id,
       name: name ?? this.name,
       customer: customer ?? this.customer,
+      customerId: customerId ?? this.customerId,
       status: status ?? this.status,
       members: members ?? this.members,
       deadline: deadline ?? this.deadline,

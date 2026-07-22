@@ -10,10 +10,14 @@ import '../../customers/provider/customers_api_provider.dart';
 import '../model/project_model.dart';
 import '../provider/projects_provider.dart';
 
-/// Form to create a new project. All state (dropdowns, dates, member chips and
-/// tags) is held in [projectDraftProvider] so the screen needs no [setState].
+/// Form to create — or, when [project] is given, edit — a project. All state
+/// (dropdowns, dates, member chips and tags) is held in [projectDraftProvider]
+/// so the screen needs no [setState].
 class CreateProjectScreen extends ConsumerStatefulWidget {
-  const CreateProjectScreen({super.key});
+  /// The project being edited, or null for a brand-new project.
+  final ProjectModel? project;
+
+  const CreateProjectScreen({super.key, this.project});
 
   @override
   ConsumerState<CreateProjectScreen> createState() =>
@@ -27,12 +31,27 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
   final _tag = TextEditingController();
   final _description = TextEditingController();
 
+  bool get _isEdit => widget.project != null;
+
   @override
   void initState() {
     super.initState();
-    // Reset the draft so a previous, abandoned form never leaks in.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(projectDraftProvider.notifier).reset();
+      final project = widget.project;
+      if (project != null) {
+        // Edit: prefill the draft and the text controllers from the project.
+        ref.read(projectDraftProvider.notifier).seed(project);
+        _name.text = project.name;
+        _totalRate.text =
+            project.totalRate > 0 ? project.totalRate.round().toString() : '';
+        _estimatedHours.text = project.estimatedHours > 0
+            ? project.estimatedHours.round().toString()
+            : '';
+        _description.text = project.description;
+      } else {
+        // New: reset the draft so a previous, abandoned form never leaks in.
+        ref.read(projectDraftProvider.notifier).reset();
+      }
     });
   }
 
@@ -121,7 +140,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
             ),
           ),
           Text(
-            'New Project',
+            _isEdit ? 'Edit Project' : 'New Project',
             style: GoogleFonts.poppins(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -805,7 +824,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
                               strokeWidth: 2.2, color: Colors.white),
                         )
                       : Text(
-                          'Save Project',
+                          _isEdit ? 'Update Project' : 'Save Project',
                           style: GoogleFonts.poppins(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -836,8 +855,11 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
     }
 
     notifier.setSaving(true);
-    // POST /projects, then the list reloads so the new row appears.
-    final error = await ref.read(projectsProvider.notifier).createProject(draft);
+    // Edit → PUT /projects/{id}; new → POST /projects. Either reloads the list.
+    final projectsNotifier = ref.read(projectsProvider.notifier);
+    final error = _isEdit
+        ? await projectsNotifier.updateProject(widget.project!.id, draft)
+        : await projectsNotifier.createProject(draft);
     if (!mounted) return;
     notifier.setSaving(false);
 
@@ -846,7 +868,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
       return;
     }
     Navigator.maybePop(context);
-    _toast('$name created');
+    _toast(_isEdit ? '$name updated' : '$name created');
   }
 
   // ── Shared field helpers ──

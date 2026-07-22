@@ -239,6 +239,31 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectModel>> {
     return null;
   }
 
+  /// Updates a project via `PUT /projects/{id}`, then reloads the list so the
+  /// edited row reflects the change. Returns null on success, or the error
+  /// message on failure.
+  Future<String?> updateProject(String id, ProjectDraft draft) async {
+    final result = await ref.read(projectsRepositoryProvider).updateProject(
+          id,
+          name: draft.name.trim(),
+          customerId: draft.customerId!,
+          billingType: draft.billingType.apiValue,
+          status: draft.status.apiValue,
+          totalRate: draft.totalRate,
+          estimatedHours: draft.estimatedHours,
+          startDate:
+              draft.startDate == null ? null : _fmtDate(draft.startDate!),
+          deadline: draft.deadline == null ? null : _fmtDate(draft.deadline!),
+          tags: draft.tags.join(', '),
+          description: draft.description.trim(),
+          memberIds: draft.memberIds.isEmpty ? null : draft.memberIds,
+        );
+    final error = result.errorOrNull;
+    if (error != null) return error.message;
+    await refresh();
+    return null;
+  }
+
   /// Formats a date as the API's plain `yyyy-MM-dd`.
   static String _fmtDate(DateTime d) {
     String two(int n) => n.toString().padLeft(2, '0');
@@ -347,6 +372,26 @@ class ProjectDraftNotifier extends Notifier<ProjectDraft> {
 
   /// Clears the form. Call when the create screen opens.
   void reset() => state = const ProjectDraft();
+
+  /// Fills the form from an existing [project] for the Edit flow. Members are
+  /// left empty — the list model carries member names, not the ids the API
+  /// needs — so they are only sent if the user re-picks them.
+  void seed(ProjectModel project) {
+    state = ProjectDraft(
+      name: project.name,
+      customerId: project.customerId,
+      customerName: project.customer.isEmpty ? null : project.customer,
+      billingType: project.billingType,
+      status: project.status,
+      totalRate: project.totalRate.round(),
+      estimatedHours: project.estimatedHours.round(),
+      startDate: project.startDate,
+      deadline: project.deadline,
+      memberIds: const [],
+      tags: project.tags,
+      description: project.description,
+    );
+  }
 
   void setName(String v) => state = state.copyWith(name: v);
   void setCustomer(int? id, String? name) =>

@@ -142,7 +142,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     GoRoute(
       path: AppRoutes.createProject,
       name: 'createProject',
-      builder: (context, state) => const CreateProjectScreen(),
+      // `extra` carries the project to edit; null for a brand-new project.
+      builder: (context, state) =>
+          CreateProjectScreen(project: state.extra as ProjectModel?),
     ),
     GoRoute(
       path: AppRoutes.projectDetail,

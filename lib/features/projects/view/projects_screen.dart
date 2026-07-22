@@ -755,7 +755,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   /// Activity), replacing the old summary bottom sheet.
   void _openDetail(ProjectModel p) =>
       context.push(AppRoutes.projectDetail, extra: p);
-  void _onEdit(ProjectModel p) => context.push(AppRoutes.createProject);
+  void _onEdit(ProjectModel p) =>
+      context.push(AppRoutes.createProject, extra: p);
 
   Future<void> _onDelete(ProjectModel p) async {
     final confirmed = await showDialog<bool>(
