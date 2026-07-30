@@ -61,18 +61,34 @@ abstract class _$LeadsFilter extends $Notifier<LeadsFilterState> {
   }
 }
 
+/// Pagination metadata for the live list. Kept alive (like
+/// [LeadsBacklogPagination]) because the backlog toggle drops every listener on
+/// this provider while the backlog view is active — an auto-disposed instance
+/// would reset `total` to 0 and, since [LeadsList] itself stays alive and does
+/// not refetch, nothing would ever set it again on the way back.
+
 @ProviderFor(LeadsPaginationState)
 final leadsPaginationStateProvider = LeadsPaginationStateProvider._();
 
+/// Pagination metadata for the live list. Kept alive (like
+/// [LeadsBacklogPagination]) because the backlog toggle drops every listener on
+/// this provider while the backlog view is active — an auto-disposed instance
+/// would reset `total` to 0 and, since [LeadsList] itself stays alive and does
+/// not refetch, nothing would ever set it again on the way back.
 final class LeadsPaginationStateProvider
     extends $NotifierProvider<LeadsPaginationState, LeadsPagination> {
+  /// Pagination metadata for the live list. Kept alive (like
+  /// [LeadsBacklogPagination]) because the backlog toggle drops every listener on
+  /// this provider while the backlog view is active — an auto-disposed instance
+  /// would reset `total` to 0 and, since [LeadsList] itself stays alive and does
+  /// not refetch, nothing would ever set it again on the way back.
   LeadsPaginationStateProvider._()
     : super(
         from: null,
         argument: null,
         retry: null,
         name: r'leadsPaginationStateProvider',
-        isAutoDispose: true,
+        isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
@@ -94,7 +110,13 @@ final class LeadsPaginationStateProvider
 }
 
 String _$leadsPaginationStateHash() =>
-    r'7d266a10bb510fde92b170299df682570cd63644';
+    r'86341d73c229d09274f1212fc1e98837bfe51701';
+
+/// Pagination metadata for the live list. Kept alive (like
+/// [LeadsBacklogPagination]) because the backlog toggle drops every listener on
+/// this provider while the backlog view is active — an auto-disposed instance
+/// would reset `total` to 0 and, since [LeadsList] itself stays alive and does
+/// not refetch, nothing would ever set it again on the way back.
 
 abstract class _$LeadsPaginationState extends $Notifier<LeadsPagination> {
   LeadsPagination build();
@@ -269,7 +291,7 @@ final class LeadsListProvider
   LeadsList create() => LeadsList();
 }
 
-String _$leadsListHash() => r'd5541e00649f6042040bbb3e1254bd2077c263e4';
+String _$leadsListHash() => r'4d7da3df7886e157a500d65509e524841b6c74d3';
 
 abstract class _$LeadsList extends $AsyncNotifier<List<LeadModel>> {
   FutureOr<List<LeadModel>> build();

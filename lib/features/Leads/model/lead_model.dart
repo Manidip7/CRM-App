@@ -857,12 +857,18 @@ class LeadModel {
   }
 
   String get displayInitials {
-    if (avatarInitials != null) return avatarInitials!;
-    final parts = contactName.trim().split(' ');
+    final initials = avatarInitials?.trim() ?? '';
+    if (initials.isNotEmpty) return initials;
+    final parts = contactName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
     if (parts.length >= 2) {
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
     }
-    return contactName.isNotEmpty ? contactName[0].toUpperCase() : '?';
+    if (parts.length == 1) return parts[0][0].toUpperCase();
+    return '?';
   }
 
   static List<LeadModel> sampleLeads() {

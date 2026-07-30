@@ -88,7 +88,12 @@ abstract class LeadsPagination with _$LeadsPagination {
   bool get hasMore => currentPage < lastPage;
 }
 
-@riverpod
+/// Pagination metadata for the live list. Kept alive (like
+/// [LeadsBacklogPagination]) because the backlog toggle drops every listener on
+/// this provider while the backlog view is active — an auto-disposed instance
+/// would reset `total` to 0 and, since [LeadsList] itself stays alive and does
+/// not refetch, nothing would ever set it again on the way back.
+@Riverpod(keepAlive: true)
 class LeadsPaginationState extends _$LeadsPaginationState {
   @override
   LeadsPagination build() => const LeadsPagination();

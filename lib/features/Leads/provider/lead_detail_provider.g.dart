@@ -256,7 +256,7 @@ final class LeadViewProvider extends $NotifierProvider<LeadView, LeadModel?> {
   }
 }
 
-String _$leadViewHash() => r'568c69511a4ac7a6726b4f0cdec9472c5b4d4fba';
+String _$leadViewHash() => r'fff5c8d30923b25d639dd57e596521851acf2ff0';
 
 /// Holds the detail screen's display copy of a lead, keyed by lead id, so
 /// follow-up edits (scheduling) and server-loaded values update through Riverpod
