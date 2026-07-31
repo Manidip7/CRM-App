@@ -483,9 +483,13 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
               }
             }
 
+            final media = MediaQuery.of(ctx);
             return Padding(
-              padding: EdgeInsets.fromLTRB(
-                  20, 16, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+              // viewInsets = keyboard, viewPadding = system nav bar / gesture
+              // bar. Without the latter the action buttons sit under the
+              // Android navigation buttons.
+              padding: EdgeInsets.fromLTRB(20, 16, 20,
+                  20 + media.viewInsets.bottom + media.viewPadding.bottom),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -924,11 +928,12 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
               );
             }
 
+            final media = MediaQuery.of(ctx);
             return Padding(
-              padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(ctx).viewInsets.bottom),
+              padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+                padding: EdgeInsets.fromLTRB(
+                    20, 14, 20, 24 + media.viewPadding.bottom),
                 child: Form(
                   key: formKey,
                   autovalidateMode: AutovalidateMode.onUserInteraction,
