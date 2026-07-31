@@ -22,7 +22,7 @@ import '../model/opportunity_model.dart';
 import '../provider/opportunities_provider.dart';
 import '../provider/opportunity_detail_provider.dart';
 import '../../calls/provider/call_providers.dart';
-import '../../calls/widget/call_history_card.dart';
+import '../../calls/widget/opportunity_call_logs_card.dart';
 
 class OpportunityDetailScreen extends ConsumerStatefulWidget {
   final OpportunityModel opportunity;
@@ -66,6 +66,17 @@ class _OpportunityDetailScreenState
   void initState() {
     super.initState();
     _tabController = TabController(length: 7, vsync: this);
+    // Tie the contact's number to this opportunity for the resume-sync, so a
+    // call placed outside the app (number copied into the dialer, redial from
+    // Recents) is still captured — the in-app Call button is not the only path.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(callSyncControllerProvider.notifier).watchNumbers(
+        [_opp.phone],
+        leadId: _opp.leadId,
+        opportunityId: _opp.id,
+      );
+    });
   }
 
   /// The full detail bundle from `GET /opportunities/{id}`, watched so the
@@ -81,6 +92,23 @@ class _OpportunityDetailScreenState
 
   @override
   Widget build(BuildContext context) {
+    // Once the contact's phone loads, tie it to this opportunity for the
+    // resume-sync, so a call placed outside the app (number copied into the
+    // dialer, redial from Recents) is still attributed to this record.
+    ref.listen<AsyncValue<OpportunityDetailBundle>>(
+      opportunityDetailBundleProvider(_opp.id),
+      (prev, next) {
+        // Both the server phone and the navigation model's; watchNumbers drops
+        // blanks and duplicates. Tagged with the lead id too, so a swept call
+        // reaches /leads/{id}/call-logs and shows in the Call Logs section.
+        final leadId = next.asData?.value.leadId;
+        ref.read(callSyncControllerProvider.notifier).watchNumbers(
+          [next.asData?.value.phone, _opp.phone],
+          leadId: leadId != null ? '$leadId' : _opp.leadId,
+          opportunityId: _opp.id,
+        );
+      },
+    );
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -667,6 +695,19 @@ class _OpportunityDetailScreenState
   /// The contact email from the loaded detail bundle.
   String? get _contactEmail => _bundle.asData?.value.email;
 
+  /// The id of the lead this opportunity was converted from — the server value
+  /// when the detail has loaded, else the navigation model's. Calls are tagged
+  /// with it because the CRM keeps call logs on the lead
+  /// (`POST /leads/{id}/call-logs`); without it a captured call goes to the
+  /// generic `POST /calls` batch and never shows in the Call Logs section.
+  ///
+  /// Reads (not watches) the bundle: this is used from action handlers.
+  String? get _linkedLeadId {
+    final fromDetail =
+        ref.read(opportunityDetailBundleProvider(_opp.id)).asData?.value.leadId;
+    return fromDetail != null ? '$fromDetail' : _opp.leadId;
+  }
+
   /// Strips a phone string to digits/`+`, returning null if empty.
   String? _digits(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
@@ -677,10 +718,13 @@ class _OpportunityDetailScreenState
   Future<void> _call() async {
     final phone = _digits(_contactPhone);
     if (phone == null) return _showSnack('No phone number for this contact.');
-    // Tag this call with the opportunity so the captured call-log entry links
-    // back to it (the resume-sync uploads it on return from the dialer).
+    // Tag this call with the opportunity *and* its lead so the captured entry
+    // links back to both (the resume-sync uploads it on return from the
+    // dialer). The lead id is what routes it to /leads/{id}/call-logs, so it
+    // lands in the Call Logs section this screen shows.
     await ref.read(callSyncControllerProvider.notifier).recordDirectCall(
           number: phone,
+          leadId: _linkedLeadId,
           opportunityId: _opp.id,
         );
     await _launch(Uri(scheme: 'tel', path: phone), 'phone dialer');
@@ -1919,7 +1963,9 @@ class _OpportunityDetailScreenState
 
   // ── Call Tab ──────────────────────────────────────────────────────────────────
   Widget _buildCallTab() {
-    return CallHistoryCard(entityId: _opp.id, isLead: false);
+    // The same CRM Call Logs section the Lead Details screen shows — sourced
+    // from the linked lead, since that is where the CRM keeps call logs.
+    return OpportunityCallLogsCard(opportunityId: _opp.id);
   }
 
   // ── Timeline Tab ──────────────────────────────────────────────────────────────

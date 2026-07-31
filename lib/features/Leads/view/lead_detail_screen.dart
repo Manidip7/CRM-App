@@ -65,9 +65,15 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     _detail = LeadDetailModel.fromLead(widget.lead);
     // Seed the Riverpod-held display lead from the navigation lead (once).
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        ref.read(leadViewProvider(widget.lead.id).notifier).seed(widget.lead);
-      }
+      if (!mounted) return;
+      ref.read(leadViewProvider(widget.lead.id).notifier).seed(widget.lead);
+      // Tie this lead's numbers to it for the resume-sync, so a call the user
+      // places by copying the number into the dialer (or one the lead makes to
+      // them) is still captured — the in-app Call button is not the only path.
+      ref.read(callSyncControllerProvider.notifier).watchNumbers(
+        [widget.lead.phone, widget.lead.alternatePhone],
+        leadId: widget.lead.id,
+      );
     });
   }
 

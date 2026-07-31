@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_result.dart';
+import '../../Leads/provider/lead_detail_provider.dart';
+import '../../Opportunities/provider/opportunity_detail_provider.dart';
 import '../data/call_log_service.dart';
 import '../data/call_sync_store.dart';
 import '../data/calls_repository.dart';
@@ -25,14 +27,18 @@ class CallSyncState {
 
 /// Orchestrates capturing call details and pushing them to the backend.
 ///
-/// Two entry points, covering both ways a user can call a contact:
+/// Three entry points, covering every way a user can end up on a call with a
+/// contact:
 ///  * [recordDirectCall] — call this right before launching the dialer from an
 ///    in-app Call button, so the captured call is tagged with the exact
 ///    lead/opportunity.
-///  * [syncNow] — scans the device call log for anything new since the last
-///    sync (catching copy-paste / native-dialer calls too), matches it to a
-///    pending in-app intent when possible, and uploads. Wired to run whenever
-///    the app resumes.
+///  * [watchNumbers] — call this when a lead/opportunity's phone number is
+///    shown, so a call placed *outside* the app (number copied into the
+///    dialer, redial from Recents) or an incoming call from that contact can
+///    still be attributed by number.
+///  * [syncNow] — scans the device call log, matches entries against pending
+///    in-app intents first and watched numbers second, and uploads. Wired to
+///    run whenever the app resumes.
 class CallSyncController extends Notifier<CallSyncState> {
   @override
   CallSyncState build() => const CallSyncState();
@@ -58,9 +64,44 @@ class CallSyncController extends Notifier<CallSyncState> {
         launchedAt: DateTime.now(),
       ),
     );
+    // Also watch the number, so a redial from Recents (or the contact calling
+    // back) after this one is still attributed to the same record.
+    await store.addWatchedNumbers([
+      WatchedNumber(
+        number: number,
+        leadId: leadId,
+        opportunityId: opportunityId,
+        seenAt: DateTime.now(),
+      ),
+    ]);
     // Ask for permission now (the natural moment) so the result is readable
     // when the user comes back from the call.
     await _service.ensurePermission(request: true);
+  }
+
+  /// Registers [numbers] as belonging to a lead / opportunity, so [syncNow] can
+  /// attribute calls that never went through the in-app Call button. Call it
+  /// when a detail screen shows the contact's phone. Blank / duplicate numbers
+  /// are ignored; nothing is uploaded here.
+  Future<void> watchNumbers(
+    Iterable<String?> numbers, {
+    String? leadId,
+    String? opportunityId,
+  }) async {
+    if (!_service.isSupported) return;
+    final now = DateTime.now();
+    final entries = numbers
+        .whereType<String>()
+        .where((n) => n.trim().isNotEmpty)
+        .map((n) => WatchedNumber(
+              number: n,
+              leadId: leadId,
+              opportunityId: opportunityId,
+              seenAt: now,
+            ));
+    if (entries.isEmpty) return;
+    final store = await ref.read(callSyncStoreProvider.future);
+    await store.addWatchedNumbers(entries);
   }
 
   /// For every number the user called from the app, finds the **single latest**
@@ -76,12 +117,13 @@ class CallSyncController extends Notifier<CallSyncState> {
     try {
       final store = await ref.read(callSyncStoreProvider.future);
       final pending = store.pendingIntents;
-      if (pending.isEmpty) return 0;
+      final syncStartedAt = DateTime.now();
 
       final uploads = <CallUpload>[];
       final keys = <String>[];
       final doneIntents = <PendingCallIntent>{};
 
+      // ── 1. Calls launched from the in-app Call button ───────────────────
       for (final intent in pending) {
         // The latest call for this number since it was dialed (2-minute grace
         // for dial + connect lag).
@@ -91,9 +133,7 @@ class CallSyncController extends Notifier<CallSyncState> {
         );
         if (latest == null) continue; // call not in the log yet — keep waiting
 
-        final key = '${PhoneUtils.normalize(latest.number)}|'
-            '${latest.timestamp.millisecondsSinceEpoch}|'
-            '${latest.durationSeconds}';
+        final key = _keyFor(latest);
         // Already uploaded this exact call — just clear the intent.
         if (store.isUploaded(key)) {
           doneIntents.add(intent);
@@ -122,7 +162,47 @@ class CallSyncController extends Notifier<CallSyncState> {
         );
       }
 
-      if (uploads.isEmpty) return 0;
+      // ── 2. Calls that never went through the in-app Call button ─────────
+      // The number copied into the native dialer, a redial from Recents, or an
+      // incoming call from the contact: no pending intent exists, so match the
+      // device log against the numbers of the records the user has opened.
+      final watched = store.watchedNumbers;
+      if (watched.isNotEmpty) {
+        final floor = syncStartedAt.subtract(CallSyncStore.sweepLookback);
+        final since =
+            store.lastSync.isBefore(floor) ? floor : store.lastSync;
+        for (final entry in await _service.query(since: since)) {
+          final key = _keyFor(entry);
+          // Skip calls already uploaded, or captured by an intent just above.
+          if (keys.contains(key) || store.isUploaded(key)) continue;
+
+          WatchedNumber? match;
+          for (final w in watched) {
+            if (!PhoneUtils.sameNumber(w.number, entry.number)) continue;
+            // Newest registration wins when the same line is on two records.
+            if (match == null || w.seenAt.isAfter(match.seenAt)) match = w;
+          }
+          if (match == null) continue; // not a CRM number — leave it alone
+
+          uploads.add(
+            CallUpload(
+              phone: entry.number,
+              type: entry.type,
+              durationSeconds: entry.durationSeconds,
+              calledAt: entry.timestamp,
+              contactName: entry.name,
+              leadId: match.leadId,
+              opportunityId: match.opportunityId,
+            ),
+          );
+          keys.add(key);
+        }
+      }
+
+      if (uploads.isEmpty) {
+        await _advanceLastSync(store, syncStartedAt);
+        return 0;
+      }
 
       // Lead-tagged calls go to POST /leads/{id}/call-logs (url-encoded), one
       // per call. Anything else (e.g. opportunity calls) still batches to
@@ -170,18 +250,37 @@ class CallSyncController extends Notifier<CallSyncState> {
         // Refresh any open history lists so the new calls appear.
         ref.invalidate(leadCallHistoryProvider);
         ref.invalidate(opportunityCallHistoryProvider);
+        // The Lead Details screen renders its "Call Logs" section from the
+        // detail response (`GET /leads/{id}`), not from the history provider —
+        // refetch it too or a freshly-uploaded call stays invisible there.
+        ref.invalidate(leadDetailProvider);
+        ref.invalidate(opportunityDetailBundleProvider);
         state = state.copyWith(lastUploaded: uploadedCount);
       }
       // Re-queue every intent when anything failed; the isUploaded() check
       // skips the ones that already succeeded on the next run.
       if (anyFailure) {
         await store.setPendingIntents(pending);
+      } else {
+        await _advanceLastSync(store, syncStartedAt);
       }
       return uploadedCount;
     } finally {
       state = state.copyWith(syncing: false);
     }
   }
+
+  /// De-dup identity for a device call: line + start time + duration.
+  static String _keyFor(DeviceCallEntry e) =>
+      '${PhoneUtils.normalize(e.number)}|'
+      '${e.timestamp.millisecondsSinceEpoch}|'
+      '${e.durationSeconds}';
+
+  /// Moves the sweep window forward, keeping a 5-minute overlap because a call
+  /// can land in the device log a moment after it ends. Re-reading those few
+  /// minutes is free — [CallSyncStore.isUploaded] filters the duplicates.
+  Future<void> _advanceLastSync(CallSyncStore store, DateTime startedAt) =>
+      store.setLastSync(startedAt.subtract(const Duration(minutes: 5)));
 }
 
 final callSyncControllerProvider =

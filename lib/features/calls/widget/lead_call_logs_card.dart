@@ -39,6 +39,57 @@ class LeadCallLogsCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(leadDetailProvider(leadId));
+    return CallLogsCardFrame(
+      count: async.asData?.value.callLogs.length,
+      onLogCall: () => _openLogCall(context, ref),
+      onRefresh: () => ref.invalidate(leadDetailProvider(leadId)),
+      child: async.when(
+        loading: () => const CallLogsLoading(),
+        error: (e, _) => _buildError(ref, e),
+        data: (detail) => CallLogsList(logs: detail.callLogs),
+      ),
+    );
+  }
+
+  Widget _buildError(WidgetRef ref, Object error) {
+    final message =
+        error is ApiException ? error.message : 'Could not load call logs.';
+    return Column(
+      children: [
+        CallLogsNote(icon: Icons.cloud_off_rounded, text: message),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          onPressed: () => ref.invalidate(leadDetailProvider(leadId)),
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: Text('Retry', style: GoogleFonts.poppins(fontSize: 13)),
+        ),
+      ],
+    );
+  }
+}
+
+/// The card chrome shared by [LeadCallLogsCard] and its opportunity twin: the
+/// rounded container, the "Call Logs" heading with its count badge, the
+/// "Log Call" button and the refresh button. [child] fills the body.
+class CallLogsCardFrame extends StatelessWidget {
+  /// Number shown in the badge; hidden when null or zero.
+  final int? count;
+
+  /// Omit to hide the "Log Call" button (nothing to log against).
+  final VoidCallback? onLogCall;
+  final VoidCallback onRefresh;
+  final Widget child;
+
+  const CallLogsCardFrame({
+    super.key,
+    this.count,
+    this.onLogCall,
+    required this.onRefresh,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -80,7 +131,7 @@ class LeadCallLogsCard extends ConsumerWidget {
                   ),
                 ),
                 // Count badge once the logs load.
-                if (async.asData?.value.callLogs.isNotEmpty ?? false) ...[
+                if ((count ?? 0) > 0) ...[
                   const SizedBox(width: 8),
                   Container(
                     padding:
@@ -90,7 +141,7 @@ class LeadCallLogsCard extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      '${async.asData!.value.callLogs.length}',
+                      '$count',
                       style: GoogleFonts.poppins(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -100,35 +151,36 @@ class LeadCallLogsCard extends ConsumerWidget {
                   ),
                 ],
                 const Spacer(),
-                GestureDetector(
-                  onTap: () => _openLogCall(context, ref),
-                  child: Container(
-                    height: 32,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.add_call,
-                            size: 15, color: AppColors.primary),
-                        const SizedBox(width: 5),
-                        Text(
-                          'Log Call',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary,
+                if (onLogCall != null)
+                  GestureDetector(
+                    onTap: onLogCall,
+                    child: Container(
+                      height: 32,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.add_call,
+                              size: 15, color: AppColors.primary),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Log Call',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 GestureDetector(
-                  onTap: () => ref.invalidate(leadDetailProvider(leadId)),
+                  onTap: onRefresh,
                   child: Container(
                     width: 32,
                     height: 32,
@@ -146,34 +198,53 @@ class LeadCallLogsCard extends ConsumerWidget {
           const Divider(height: 0, color: AppColors.divider),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: async.when(
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-              error: (e, _) => _buildError(ref, e),
-              data: (detail) {
-                final logs = detail.callLogs;
-                if (logs.isEmpty) {
-                  return _note(
-                    Icons.call_missed_outgoing_rounded,
-                    'No calls logged yet. Tap "Log Call" to record one.',
-                  );
-                }
-                return Column(
-                  children: [
-                    for (var i = 0; i < logs.length; i++) ...[
-                      if (i > 0)
-                        const Divider(height: 1, color: AppColors.divider),
-                      _buildCallRow(logs[i]),
-                    ],
-                  ],
-                );
-              },
-            ),
+            child: child,
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The body spinner used while a call-logs card loads.
+class CallLogsLoading extends StatelessWidget {
+  const CallLogsLoading({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(child: CircularProgressIndicator()),
+      );
+}
+
+/// The list of call rows, or the empty-state note when there are none.
+class CallLogsList extends StatelessWidget {
+  final List<LeadCallLog> logs;
+
+  /// Shown when [logs] is empty.
+  final String emptyText;
+
+  const CallLogsList({
+    super.key,
+    required this.logs,
+    this.emptyText = 'No calls logged yet. Tap "Log Call" to record one.',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (logs.isEmpty) {
+      return CallLogsNote(
+        icon: Icons.call_missed_outgoing_rounded,
+        text: emptyText,
+      );
+    }
+    return Column(
+      children: [
+        for (var i = 0; i < logs.length; i++) ...[
+          if (i > 0) const Divider(height: 1, color: AppColors.divider),
+          _buildCallRow(logs[i]),
+        ],
+      ],
     );
   }
 
@@ -280,42 +351,6 @@ class LeadCallLogsCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildError(WidgetRef ref, Object error) {
-    final message =
-        error is ApiException ? error.message : 'Could not load call logs.';
-    return Column(
-      children: [
-        _note(Icons.cloud_off_rounded, message),
-        const SizedBox(height: 8),
-        TextButton.icon(
-          onPressed: () => ref.invalidate(leadDetailProvider(leadId)),
-          icon: const Icon(Icons.refresh_rounded, size: 18),
-          label: Text('Retry', style: GoogleFonts.poppins(fontSize: 13)),
-        ),
-      ],
-    );
-  }
-
-  Widget _note(IconData icon, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: AppColors.textSecondary),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            style: GoogleFonts.poppins(
-              fontSize: 12.5,
-              color: AppColors.textSecondary,
-              height: 1.4,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   /// (color, icon) for a call log's direction/type.
   (Color, IconData) _typeConfig(LeadCallLog call) {
     switch (call.type) {
@@ -346,5 +381,35 @@ class LeadCallLogsCard extends ConsumerWidget {
       'Jul','Aug','Sep','Oct','Nov','Dec'
     ];
     return '${months[time.month - 1]} ${time.day}, ${time.year}';
+  }
+}
+
+/// An icon + muted text line used for the empty / error states inside a
+/// [CallLogsCardFrame].
+class CallLogsNote extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const CallLogsNote({super.key, required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: AppColors.textSecondary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: GoogleFonts.poppins(
+              fontSize: 12.5,
+              color: AppColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
