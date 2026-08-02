@@ -7,10 +7,6 @@ import '../data/calls_repository.dart';
 import '../model/call_record.dart';
 import '../provider/call_providers.dart';
 
-/// Bottom sheet to manually log a call against a lead. Submits url-encoded
-/// `{ call_type, duration, description, contact_name, outcome }` to
-/// `POST /leads/{id}/call-logs`, then refreshes the lead's call history. Pops
-/// `true` on success.
 class LogCallSheet extends ConsumerStatefulWidget {
   final String leadId;
 

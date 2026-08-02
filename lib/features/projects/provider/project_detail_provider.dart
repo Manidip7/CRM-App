@@ -141,7 +141,7 @@ class ProjectTaskDraftNotifier extends Notifier<ProjectTaskDraft> {
 
   void setDueDate(DateTime v) => state = state.copyWith(dueDate: v);
   void setPriority(TaskPriority v) => state = state.copyWith(priority: v);
-  void setState(TaskState v) => state = state.copyWith(state: v);
+  void setTaskState(TaskState v) => state = state.copyWith(state: v);
 
   /// `due_at` in this endpoint's plain `yyyy-MM-dd` form.
   static String fmtDue(DateTime d) {

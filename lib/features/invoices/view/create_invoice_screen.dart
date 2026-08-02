@@ -9,9 +9,7 @@ import '../../customers/provider/customers_api_provider.dart';
 import '../model/invoice_model.dart';
 import '../provider/invoices_provider.dart';
 
-/// Form to create a new invoice. All state (header fields, the dynamic line-item
-/// list and the live price summary) is held in [invoiceDraftProvider] so the
-/// screen needs no [setState].
+
 class CreateInvoiceScreen extends ConsumerStatefulWidget {
   const CreateInvoiceScreen({super.key});
 

@@ -1280,7 +1280,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen>
                           label: s.label,
                           color: s.color,
                           selected: draft.state == s,
-                          onTap: () => notifier.setState(s),
+                          onTap: () => notifier.setTaskState(s),
                         ),
                         const SizedBox(width: 8),
                       ],

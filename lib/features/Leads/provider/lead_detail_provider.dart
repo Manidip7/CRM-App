@@ -332,3 +332,43 @@ class FollowUpForm extends _$FollowUpForm {
   void setScore(double s) => state = state.copyWith(score: s);
   void setSaving(bool b) => state = state.copyWith(saving: b);
 }
+
+/// Transient form state for the "Assign Lead" bottom sheet.
+@freezed
+abstract class AssignLeadFormState with _$AssignLeadFormState {
+  const factory AssignLeadFormState({
+    NamedLookup? territory,
+    NamedLookup? branch,
+    @Default(<int>{}) Set<int> selectedUserIds,
+    @Default(false) bool isPrivate,
+    @Default(false) bool saving,
+
+    /// Turns the assignee picker red once a submit is attempted with none
+    /// selected.
+    @Default(false) bool assigneeError,
+  }) = _AssignLeadFormState;
+}
+
+/// Holds the "Assign Lead" form state, keyed by lead id and auto-disposed so
+/// each time the sheet opens it starts fresh. Replaces the sheet's local
+/// `setState` so the form is Riverpod-managed too.
+@riverpod
+class AssignLeadForm extends _$AssignLeadForm {
+  @override
+  AssignLeadFormState build(String leadId) => const AssignLeadFormState();
+
+  /// Territory scopes the branch list, so changing it drops the stale branch.
+  void setTerritory(NamedLookup? v) =>
+      state = state.copyWith(territory: v, branch: null);
+  void setBranch(NamedLookup? v) => state = state.copyWith(branch: v);
+  void setPrivate(bool v) => state = state.copyWith(isPrivate: v);
+  void setSaving(bool v) => state = state.copyWith(saving: v);
+  void flagAssigneeError() => state = state.copyWith(assigneeError: true);
+
+  /// Adds the user if not already picked, removes them if they were.
+  void toggleUser(int id) {
+    final next = Set<int>.of(state.selectedUserIds);
+    if (!next.remove(id)) next.add(id);
+    state = state.copyWith(selectedUserIds: next, assigneeError: false);
+  }
+}

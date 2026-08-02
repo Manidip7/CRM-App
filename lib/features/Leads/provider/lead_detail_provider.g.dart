@@ -933,3 +933,122 @@ abstract class _$FollowUpForm extends $Notifier<FollowUpFormState> {
     element.handleCreate(ref, () => build(_$args));
   }
 }
+
+/// Holds the "Assign Lead" form state, keyed by lead id and auto-disposed so
+/// each time the sheet opens it starts fresh. Replaces the sheet's local
+/// `setState` so the form is Riverpod-managed too.
+
+@ProviderFor(AssignLeadForm)
+final assignLeadFormProvider = AssignLeadFormFamily._();
+
+/// Holds the "Assign Lead" form state, keyed by lead id and auto-disposed so
+/// each time the sheet opens it starts fresh. Replaces the sheet's local
+/// `setState` so the form is Riverpod-managed too.
+final class AssignLeadFormProvider
+    extends $NotifierProvider<AssignLeadForm, AssignLeadFormState> {
+  /// Holds the "Assign Lead" form state, keyed by lead id and auto-disposed so
+  /// each time the sheet opens it starts fresh. Replaces the sheet's local
+  /// `setState` so the form is Riverpod-managed too.
+  AssignLeadFormProvider._({
+    required AssignLeadFormFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'assignLeadFormProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
+
+  @override
+  String debugGetCreateSourceHash() => _$assignLeadFormHash();
+
+  @override
+  String toString() {
+    return r'assignLeadFormProvider'
+        ''
+        '($argument)';
+  }
+
+  @$internal
+  @override
+  AssignLeadForm create() => AssignLeadForm();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(AssignLeadFormState value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<AssignLeadFormState>(value),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AssignLeadFormProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
+}
+
+String _$assignLeadFormHash() => r'acbc1ac44eb08f361ebd5436847432c797ad37ca';
+
+/// Holds the "Assign Lead" form state, keyed by lead id and auto-disposed so
+/// each time the sheet opens it starts fresh. Replaces the sheet's local
+/// `setState` so the form is Riverpod-managed too.
+
+final class AssignLeadFormFamily extends $Family
+    with
+        $ClassFamilyOverride<
+          AssignLeadForm,
+          AssignLeadFormState,
+          AssignLeadFormState,
+          AssignLeadFormState,
+          String
+        > {
+  AssignLeadFormFamily._()
+    : super(
+        retry: null,
+        name: r'assignLeadFormProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  /// Holds the "Assign Lead" form state, keyed by lead id and auto-disposed so
+  /// each time the sheet opens it starts fresh. Replaces the sheet's local
+  /// `setState` so the form is Riverpod-managed too.
+
+  AssignLeadFormProvider call(String leadId) =>
+      AssignLeadFormProvider._(argument: leadId, from: this);
+
+  @override
+  String toString() => r'assignLeadFormProvider';
+}
+
+/// Holds the "Assign Lead" form state, keyed by lead id and auto-disposed so
+/// each time the sheet opens it starts fresh. Replaces the sheet's local
+/// `setState` so the form is Riverpod-managed too.
+
+abstract class _$AssignLeadForm extends $Notifier<AssignLeadFormState> {
+  late final _$args = ref.$arg as String;
+  String get leadId => _$args;
+
+  AssignLeadFormState build(String leadId);
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final ref = this.ref as $Ref<AssignLeadFormState, AssignLeadFormState>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<AssignLeadFormState, AssignLeadFormState>,
+              AssignLeadFormState,
+              Object?,
+              Object?
+            >;
+    element.handleCreate(ref, () => build(_$args));
+  }
+}

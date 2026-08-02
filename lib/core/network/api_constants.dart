@@ -5,7 +5,8 @@ class ApiConstants {
   ApiConstants._();
 
   /// Root of the backend API. Change this for staging / production builds.
-  static const String baseUrl = 'https://crm.mindverge.in';
+  // static const String baseUrl = 'https://crm.mindverge.in';
+  static const String baseUrl = 'https://demo.peplocrm.in';
   // static const String baseUrl = 'https://mbbsguidance.peplocrm.com';
 
   /// Common prefix appended to [baseUrl] (e.g. `/api/v1`).

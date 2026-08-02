@@ -4030,14 +4030,13 @@ class _AssignLeadSheet extends ConsumerStatefulWidget {
 }
 
 class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
-  NamedLookup? _territory;
-  NamedLookup? _branch;
-  final Set<int> _selectedUserIds = <int>{};
   final TextEditingController _remarksCtrl = TextEditingController();
-  bool _isPrivate = false;
-  bool _saving = false;
-  // Turns the assignee picker red once a submit is attempted with none selected.
-  bool _assigneeError = false;
+
+  /// The form's state lives in Riverpod — see [assignLeadFormProvider].
+  AssignLeadFormState get _form =>
+      ref.watch(assignLeadFormProvider(widget.leadId));
+  AssignLeadForm get _formNotifier =>
+      ref.read(assignLeadFormProvider(widget.leadId).notifier);
 
   @override
   void dispose() {
@@ -4048,26 +4047,27 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
   /// Assigns the lead via `POST /leads/{id}/assign`. Keeps the sheet open on
   /// error and pops `true` on success.
   Future<void> _submit() async {
-    if (_saving) return;
-    if (_selectedUserIds.isEmpty) {
-      setState(() => _assigneeError = true);
+    final form = ref.read(assignLeadFormProvider(widget.leadId));
+    if (form.saving) return;
+    if (form.selectedUserIds.isEmpty) {
+      _formNotifier.flagAssigneeError();
       _snack('Please select at least one assignee', AppColors.red);
       return;
     }
-    setState(() => _saving = true);
+    _formNotifier.setSaving(true);
     final result = await ref.read(leadsRepositoryProvider).assignLead(
           widget.leadId,
-          territoryId: _territory?.id,
-          branchId: _branch?.id,
-          assigneeIds: _selectedUserIds.toList(),
+          territoryId: form.territory?.id,
+          branchId: form.branch?.id,
+          assigneeIds: form.selectedUserIds.toList(),
           remarks: _remarksCtrl.text.trim(),
-          isPrivate: _isPrivate,
+          isPrivate: form.isPrivate,
         );
     if (!mounted) return;
     result.when(
       success: (_) => Navigator.pop(context, true),
       failure: (error) {
-        setState(() => _saving = false);
+        _formNotifier.setSaving(false);
         _snack(error.message, AppColors.red);
       },
     );
@@ -4088,6 +4088,7 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final form = _form;
 
     final territoriesAsync = ref.watch(territoriesProvider);
     final territoryOptions =
@@ -4099,9 +4100,9 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
             : 'Select territory';
 
     // Branches are territory-scoped: only load them once a territory is picked.
-    final hasTerritory = _territory != null;
+    final hasTerritory = form.territory != null;
     final branchesAsync = hasTerritory
-        ? ref.watch(branchesProvider(_territory!.id))
+        ? ref.watch(branchesProvider(form.territory!.id))
         : const AsyncValue<List<NamedLookup>>.data(<NamedLookup>[]);
     final branchOptions = branchesAsync.asData?.value ?? const <NamedLookup>[];
     final branchHint = !hasTerritory
@@ -4206,15 +4207,11 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
                     const SizedBox(height: 8),
                     _SheetDropdown<NamedLookup>(
                       hint: territoryHint,
-                      value: _territory,
+                      value: form.territory,
                       options: territoryOptions,
                       labelOf: (o) => o.name,
-                      onChanged: (v) => setState(() {
-                        _territory = v;
-                        // Territory drives the branch list — clear the stale
-                        // branch selection when it changes.
-                        _branch = null;
-                      }),
+                      // The notifier also clears the now-stale branch.
+                      onChanged: _formNotifier.setTerritory,
                     ),
                     const SizedBox(height: 18),
                     // Branch (scoped to the selected territory)
@@ -4222,10 +4219,10 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
                     const SizedBox(height: 8),
                     _SheetDropdown<NamedLookup>(
                       hint: branchHint,
-                      value: _branch,
+                      value: form.branch,
                       options: branchOptions,
                       labelOf: (o) => o.name,
-                      onChanged: (v) => setState(() => _branch = v),
+                      onChanged: _formNotifier.setBranch,
                     ),
                     const SizedBox(height: 18),
                     // Assignees (mandatory, multi-select)
@@ -4241,9 +4238,9 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
                           ),
                         ),
                         const Spacer(),
-                        if (_selectedUserIds.isNotEmpty)
+                        if (form.selectedUserIds.isNotEmpty)
                           Text(
-                            '${_selectedUserIds.length} selected',
+                            '${form.selectedUserIds.length} selected',
                             style: GoogleFonts.poppins(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -4254,7 +4251,7 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
                     ),
                     const SizedBox(height: 8),
                     _buildAssigneePicker(usersAsync),
-                    if (_assigneeError && _selectedUserIds.isEmpty) ...[
+                    if (form.assigneeError && form.selectedUserIds.isEmpty) ...[
                       const SizedBox(height: 6),
                       Text(
                         'Select at least one assignee',
@@ -4287,7 +4284,7 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
                       height: 50,
                       child: OutlinedButton(
                         onPressed:
-                            _saving ? null : () => Navigator.pop(context),
+                            form.saving ? null : () => Navigator.pop(context),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: AppColors.divider),
                           shape: RoundedRectangleBorder(
@@ -4309,7 +4306,7 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
                     child: SizedBox(
                       height: 50,
                       child: ElevatedButton.icon(
-                        onPressed: _saving ? null : _submit,
+                        onPressed: form.saving ? null : _submit,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.green,
                           disabledBackgroundColor:
@@ -4320,7 +4317,7 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
                         ),
-                        icon: _saving
+                        icon: form.saving
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
@@ -4332,7 +4329,7 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
                               )
                             : const Icon(Icons.check_rounded, size: 19),
                         label: Text(
-                          _saving ? 'Assigning…' : 'Assign',
+                          form.saving ? 'Assigning…' : 'Assign',
                           style: GoogleFonts.poppins(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -4351,7 +4348,8 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
   }
 
   /// The assignee multi-select: loading / error / a wrap of toggleable user
-  /// chips. The bordering shell turns red when [_assigneeError] is set.
+  /// chips. The bordering shell turns red when the form's `assigneeError` is
+  /// set.
   Widget _buildAssigneePicker(AsyncValue<List<AssignableUser>> usersAsync) {
     return usersAsync.when(
       loading: () => _pickerShell(
@@ -4412,7 +4410,8 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
   }
 
   Widget _pickerShell(Widget child) {
-    final borderColor = (_assigneeError && _selectedUserIds.isEmpty)
+    final form = _form;
+    final borderColor = (form.assigneeError && form.selectedUserIds.isEmpty)
         ? AppColors.red
         : AppColors.divider;
     return Container(
@@ -4428,12 +4427,9 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
   }
 
   Widget _userChip(AssignableUser u) {
-    final selected = _selectedUserIds.contains(u.id);
+    final selected = _form.selectedUserIds.contains(u.id);
     return GestureDetector(
-      onTap: () => setState(() {
-        if (!_selectedUserIds.remove(u.id)) _selectedUserIds.add(u.id);
-        _assigneeError = false;
-      }),
+      onTap: () => _formNotifier.toggleUser(u.id),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -4473,8 +4469,9 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
   }
 
   Widget _buildPrivateToggle() {
+    final isPrivate = _form.isPrivate;
     return GestureDetector(
-      onTap: () => setState(() => _isPrivate = !_isPrivate),
+      onTap: () => _formNotifier.setPrivate(!isPrivate),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -4489,8 +4486,8 @@ class _AssignLeadSheetState extends ConsumerState<_AssignLeadSheet> {
               width: 24,
               height: 24,
               child: Checkbox(
-                value: _isPrivate,
-                onChanged: (v) => setState(() => _isPrivate = v ?? false),
+                value: isPrivate,
+                onChanged: (v) => _formNotifier.setPrivate(v ?? false),
                 activeColor: AppColors.green,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6)),

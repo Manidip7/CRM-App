@@ -6,6 +6,7 @@ import '../../../core/utils/AppColors.dart';
 import '../../quotations/model/quotation_model.dart';
 import '../../quotations/provider/quotations_provider.dart';
 import '../model/opportunity_model.dart';
+import '../provider/create_quotation_provider.dart';
 
 /// Full-screen form to create a quotation for an opportunity. Collects the
 /// "from" (our company), the "to" (customer) details, dates, tax, editable line
@@ -46,31 +47,27 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
   late final _customerAddressC =
       TextEditingController(text: widget.customerAddress ?? '');
 
-  // Meta
-  DateTime _date = DateTime.now();
-  DateTime _validUntil = DateTime.now().add(const Duration(days: 30));
-  final _taxC = TextEditingController(text: '18');
-
-  // Line items
-  final List<_ItemRow> _items = [];
-
   // Notes
   final _notesC = TextEditingController();
 
-  String? _error;
-
   Color get _accent => widget.accent;
+
+  /// Dates, tax, line items and the validation message all live in Riverpod —
+  /// see [createQuotationFormProvider].
+  CreateQuotationFormState get _form =>
+      ref.watch(createQuotationFormProvider(widget.opportunityId));
+  CreateQuotationForm get _formNotifier =>
+      ref.read(createQuotationFormProvider(widget.opportunityId).notifier);
 
   @override
   void initState() {
     super.initState();
-    if (widget.initialItems.isNotEmpty) {
-      for (final p in widget.initialItems) {
-        _items.add(_ItemRow(desc: p.name, qty: p.quantity, price: p.price));
-      }
-    } else {
-      _items.add(_ItemRow());
-    }
+    // Seed the rows from the products this screen was opened with. Deferred to
+    // after the first frame — modifying a provider synchronously during
+    // initState/build is disallowed by Riverpod.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _formNotifier.seed(widget.initialItems);
+    });
   }
 
   @override
@@ -80,66 +77,43 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
     _customerNameC.dispose();
     _customerCompanyC.dispose();
     _customerAddressC.dispose();
-    _taxC.dispose();
     _notesC.dispose();
-    for (final r in _items) {
-      r.dispose();
-    }
     super.dispose();
   }
 
-  // ── Totals ──
-  double get _subtotal =>
-      _items.fold<double>(0, (sum, r) => sum + r.lineTotal);
-
-  double get _taxPercent => double.tryParse(_taxC.text.trim()) ?? 0;
-
-  double get _taxAmount => _subtotal * _taxPercent / 100;
-
-  double get _grandTotal => _subtotal + _taxAmount;
-
   Future<void> _pickDate({required bool isValidUntil}) async {
+    final form = ref.read(createQuotationFormProvider(widget.opportunityId));
     final picked = await showDatePicker(
       context: context,
-      initialDate: isValidUntil ? _validUntil : _date,
+      initialDate: isValidUntil ? form.validUntil : form.date,
       firstDate: DateTime(2020),
       lastDate: DateTime(2035, 12, 31),
     );
     if (picked == null) return;
-    setState(() {
-      if (isValidUntil) {
-        _validUntil = picked;
-      } else {
-        _date = picked;
-      }
-    });
-  }
-
-  void _addItem() => setState(() => _items.add(_ItemRow()));
-
-  void _removeItem(int index) {
-    setState(() {
-      _items.removeAt(index).dispose();
-      if (_items.isEmpty) _items.add(_ItemRow());
-    });
+    if (isValidUntil) {
+      _formNotifier.setValidUntil(picked);
+    } else {
+      _formNotifier.setDate(picked);
+    }
   }
 
   void _generate() {
+    final form = ref.read(createQuotationFormProvider(widget.opportunityId));
     final name = _customerNameC.text.trim();
     if (name.isEmpty) {
-      setState(() => _error = 'Customer / Contact name is required');
+      _formNotifier.setError('Customer / Contact name is required');
       return;
     }
-    final items = _items
-        .where((r) => r.descC.text.trim().isNotEmpty)
-        .map((r) => QuotationItem(
-              name: r.descC.text.trim(),
-              quantity: int.tryParse(r.qtyC.text.trim()) ?? 0,
-              price: double.tryParse(r.priceC.text.trim()) ?? 0,
+    final items = form.lines
+        .where((l) => l.description.trim().isNotEmpty)
+        .map((l) => QuotationItem(
+              name: l.description.trim(),
+              quantity: l.quantity,
+              price: l.price,
             ))
         .toList();
     if (items.isEmpty) {
-      setState(() => _error = 'Add at least one item with a description');
+      _formNotifier.setError('Add at least one item with a description');
       return;
     }
 
@@ -152,13 +126,13 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
       companyName: _customerCompanyC.text.trim().isEmpty
           ? null
           : _customerCompanyC.text.trim(),
-      amount: _grandTotal,
+      amount: form.grandTotal,
       itemCount: items.length,
       status: QuotationStatus.draft,
-      createdDate: _date,
-      validUntil: _validUntil,
+      createdDate: form.date,
+      validUntil: form.validUntil,
       currency: '₹',
-      taxPercent: _taxPercent,
+      taxPercent: form.taxPercent,
       notes: _composeNotes(),
       items: items,
       opportunityId: widget.opportunityId,
@@ -189,6 +163,7 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final form = _form;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -289,7 +264,7 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
                                   _label('QUOTATION DATE'),
                                   const SizedBox(height: 6),
                                   _dateField(
-                                      value: _date,
+                                      value: form.date,
                                       onTap: () =>
                                           _pickDate(isValidUntil: false)),
                                 ],
@@ -303,7 +278,7 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
                                   _label('VALID UNTIL'),
                                   const SizedBox(height: 6),
                                   _dateField(
-                                      value: _validUntil,
+                                      value: form.validUntil,
                                       onTap: () =>
                                           _pickDate(isValidUntil: true)),
                                 ],
@@ -314,13 +289,15 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
                         const SizedBox(height: 12),
                         _label('TAX / GST (%)'),
                         const SizedBox(height: 6),
-                        _field(
-                          controller: _taxC,
+                        _valueField(
+                          fieldKey: const ValueKey('tax'),
+                          initialValue: _trimZeros(form.taxPercent),
                           hint: '18',
                           icon: Icons.percent_rounded,
                           keyboardType: const TextInputType.numberWithOptions(
                               decimal: true),
-                          onChanged: (_) => setState(() {}),
+                          onChanged: (v) => _formNotifier
+                              .setTaxPercent(double.tryParse(v.trim()) ?? 0),
                         ),
                       ],
                     ),
@@ -341,7 +318,7 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
                         ),
                       ],
                     ),
-                    if (_error != null) ...[
+                    if (form.error != null) ...[
                       const SizedBox(height: 14),
                       Row(
                         children: [
@@ -350,7 +327,7 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              _error!,
+                              form.error!,
                               style: GoogleFonts.poppins(
                                 fontSize: 12.5,
                                 color: AppColors.red,
@@ -374,6 +351,7 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
 
   // ── Items card ──
   Widget _buildItemsCard() {
+    final form = _form;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
@@ -398,7 +376,7 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
               ),
               const Spacer(),
               GestureDetector(
-                onTap: _addItem,
+                onTap: _formNotifier.addLine,
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -425,20 +403,21 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          ...List.generate(_items.length, (i) => _buildItemRow(i)),
+          for (var i = 0; i < form.lines.length; i++)
+            _buildItemRow(i, form.lines[i]),
           const Divider(height: 20, color: AppColors.divider),
-          _totalRow('Subtotal', _money(_subtotal)),
+          _totalRow('Subtotal', _money(form.subtotal)),
           const SizedBox(height: 6),
-          _totalRow('Tax (${_trimZeros(_taxPercent)}%)', _money(_taxAmount)),
+          _totalRow(
+              'Tax (${_trimZeros(form.taxPercent)}%)', _money(form.taxAmount)),
           const SizedBox(height: 8),
-          _totalRow('Grand Total', _money(_grandTotal), bold: true),
+          _totalRow('Grand Total', _money(form.grandTotal), bold: true),
         ],
       ),
     );
   }
 
-  Widget _buildItemRow(int index) {
-    final row = _items[index];
+  Widget _buildItemRow(int index, QuotationLineDraft row) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -456,40 +435,46 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
               ),
               const Spacer(),
               GestureDetector(
-                onTap: () => _removeItem(index),
+                onTap: () => _formNotifier.removeLine(row.id),
                 child: const Icon(Icons.close_rounded,
                     size: 18, color: AppColors.textLight),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          _field(
-            controller: row.descC,
+          _valueField(
+            fieldKey: ValueKey('desc-${row.id}'),
+            initialValue: row.description,
             hint: 'Item description',
             icon: Icons.inventory_2_outlined,
+            onChanged: (v) => _formNotifier.setLineDescription(row.id, v),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
-                child: _field(
-                  controller: row.qtyC,
+                child: _valueField(
+                  fieldKey: ValueKey('qty-${row.id}'),
+                  initialValue: '${row.quantity}',
                   hint: 'Qty',
                   icon: Icons.tag_rounded,
                   keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (v) => _formNotifier.setLineQuantity(
+                      row.id, int.tryParse(v.trim()) ?? 0),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 flex: 2,
-                child: _field(
-                  controller: row.priceC,
+                child: _valueField(
+                  fieldKey: ValueKey('price-${row.id}'),
+                  initialValue: row.price > 0 ? _trimZeros(row.price) : '',
                   hint: 'Unit price',
                   icon: Icons.payments_outlined,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (v) => _formNotifier.setLinePrice(
+                      row.id, double.tryParse(v.trim()) ?? 0),
                 ),
               ),
             ],
@@ -648,6 +633,53 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
     );
   }
 
+  /// A text field whose value is owned by Riverpod rather than a controller.
+  /// [fieldKey] must be stable for the life of the field (line rows key on the
+  /// row id) — it is what keeps [initialValue] from clobbering what the user
+  /// has typed on later rebuilds.
+  Widget _valueField({
+    required Key fieldKey,
+    required String initialValue,
+    required String hint,
+    required IconData icon,
+    required ValueChanged<String> onChanged,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+  }) {
+    return TextFormField(
+      key: fieldKey,
+      initialValue: initialValue,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      onChanged: onChanged,
+      style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textPrimary),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle:
+            GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textLight),
+        prefixIcon: maxLines > 1
+            ? null
+            : Icon(icon, size: 18, color: AppColors.textSecondary),
+        filled: true,
+        fillColor: AppColors.background,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.divider),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.divider),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: _accent, width: 1.4),
+        ),
+      ),
+    );
+  }
+
   Widget _dateField({required DateTime value, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
@@ -739,28 +771,3 @@ class _CreateQuotationScreenState extends ConsumerState<CreateQuotationScreen> {
 }
 
 /// One editable line-item row in the create-quotation form.
-class _ItemRow {
-  final TextEditingController descC;
-  final TextEditingController qtyC;
-  final TextEditingController priceC;
-
-  _ItemRow({String desc = '', int qty = 1, double price = 0})
-      : descC = TextEditingController(text: desc),
-        qtyC = TextEditingController(text: '$qty'),
-        priceC = TextEditingController(
-            text: price > 0
-                ? (price == price.roundToDouble()
-                    ? price.toStringAsFixed(0)
-                    : price.toStringAsFixed(2))
-                : '');
-
-  double get lineTotal =>
-      (int.tryParse(qtyC.text.trim()) ?? 0) *
-      (double.tryParse(priceC.text.trim()) ?? 0);
-
-  void dispose() {
-    descC.dispose();
-    qtyC.dispose();
-    priceC.dispose();
-  }
-}

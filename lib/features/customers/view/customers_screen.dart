@@ -10,6 +10,19 @@ import '../../dashbord/provider/dashboard_provider.dart';
 import '../model/customer_list_item.dart';
 import '../provider/customers_api_provider.dart';
 
+/// Mirrors the search field's text so the clear (×) button shows/hides
+/// reactively. Held in Riverpod rather than `setState` — the debounced
+/// server-side query itself lives in [customersApiProvider].
+class _SearchQuery extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void set(String value) => state = value;
+}
+
+final _searchQueryProvider =
+    NotifierProvider<_SearchQuery, String>(_SearchQuery.new);
+
 /// Lists every customer (API-backed, `GET /customers`) with a server-side
 /// search field. Scrolling to the bottom fetches the next page; pull-to-refresh
 /// reloads from page 1. Each row shows the contact's name, location, email,
@@ -240,6 +253,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
   // ── Search ──
   Widget _buildSearchRow() {
+    final query = ref.watch(_searchQueryProvider);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: Container(
@@ -253,8 +267,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           controller: _searchController,
           onChanged: (v) {
             ref.read(customersApiProvider.notifier).setSearch(v);
-            // Rebuild so the clear (×) button shows/hides with the text.
-            setState(() {});
+            // Drives the clear (×) button's visibility.
+            ref.read(_searchQueryProvider.notifier).set(v);
           },
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
           decoration: InputDecoration(
@@ -268,7 +282,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
               color: AppColors.textLight,
               size: 20,
             ),
-            suffixIcon: _searchController.text.isEmpty
+            suffixIcon: query.isEmpty
                 ? null
                 : IconButton(
                     icon: const Icon(
@@ -279,7 +293,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                     onPressed: () {
                       _searchController.clear();
                       ref.read(customersApiProvider.notifier).setSearch('');
-                      setState(() {});
+                      ref.read(_searchQueryProvider.notifier).set('');
                     },
                   ),
             border: InputBorder.none,

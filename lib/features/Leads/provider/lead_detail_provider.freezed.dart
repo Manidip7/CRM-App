@@ -1071,4 +1071,286 @@ as bool,
 
 }
 
+/// @nodoc
+mixin _$AssignLeadFormState {
+
+ NamedLookup? get territory; NamedLookup? get branch; Set<int> get selectedUserIds; bool get isPrivate; bool get saving;/// Turns the assignee picker red once a submit is attempted with none
+/// selected.
+ bool get assigneeError;
+/// Create a copy of AssignLeadFormState
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AssignLeadFormStateCopyWith<AssignLeadFormState> get copyWith => _$AssignLeadFormStateCopyWithImpl<AssignLeadFormState>(this as AssignLeadFormState, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AssignLeadFormState&&(identical(other.territory, territory) || other.territory == territory)&&(identical(other.branch, branch) || other.branch == branch)&&const DeepCollectionEquality().equals(other.selectedUserIds, selectedUserIds)&&(identical(other.isPrivate, isPrivate) || other.isPrivate == isPrivate)&&(identical(other.saving, saving) || other.saving == saving)&&(identical(other.assigneeError, assigneeError) || other.assigneeError == assigneeError));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,territory,branch,const DeepCollectionEquality().hash(selectedUserIds),isPrivate,saving,assigneeError);
+
+@override
+String toString() {
+  return 'AssignLeadFormState(territory: $territory, branch: $branch, selectedUserIds: $selectedUserIds, isPrivate: $isPrivate, saving: $saving, assigneeError: $assigneeError)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AssignLeadFormStateCopyWith<$Res>  {
+  factory $AssignLeadFormStateCopyWith(AssignLeadFormState value, $Res Function(AssignLeadFormState) _then) = _$AssignLeadFormStateCopyWithImpl;
+@useResult
+$Res call({
+ NamedLookup? territory, NamedLookup? branch, Set<int> selectedUserIds, bool isPrivate, bool saving, bool assigneeError
+});
+
+
+
+
+}
+/// @nodoc
+class _$AssignLeadFormStateCopyWithImpl<$Res>
+    implements $AssignLeadFormStateCopyWith<$Res> {
+  _$AssignLeadFormStateCopyWithImpl(this._self, this._then);
+
+  final AssignLeadFormState _self;
+  final $Res Function(AssignLeadFormState) _then;
+
+/// Create a copy of AssignLeadFormState
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? territory = freezed,Object? branch = freezed,Object? selectedUserIds = null,Object? isPrivate = null,Object? saving = null,Object? assigneeError = null,}) {
+  return _then(_self.copyWith(
+territory: freezed == territory ? _self.territory : territory // ignore: cast_nullable_to_non_nullable
+as NamedLookup?,branch: freezed == branch ? _self.branch : branch // ignore: cast_nullable_to_non_nullable
+as NamedLookup?,selectedUserIds: null == selectedUserIds ? _self.selectedUserIds : selectedUserIds // ignore: cast_nullable_to_non_nullable
+as Set<int>,isPrivate: null == isPrivate ? _self.isPrivate : isPrivate // ignore: cast_nullable_to_non_nullable
+as bool,saving: null == saving ? _self.saving : saving // ignore: cast_nullable_to_non_nullable
+as bool,assigneeError: null == assigneeError ? _self.assigneeError : assigneeError // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [AssignLeadFormState].
+extension AssignLeadFormStatePatterns on AssignLeadFormState {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _AssignLeadFormState value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _AssignLeadFormState() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _AssignLeadFormState value)  $default,){
+final _that = this;
+switch (_that) {
+case _AssignLeadFormState():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _AssignLeadFormState value)?  $default,){
+final _that = this;
+switch (_that) {
+case _AssignLeadFormState() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( NamedLookup? territory,  NamedLookup? branch,  Set<int> selectedUserIds,  bool isPrivate,  bool saving,  bool assigneeError)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _AssignLeadFormState() when $default != null:
+return $default(_that.territory,_that.branch,_that.selectedUserIds,_that.isPrivate,_that.saving,_that.assigneeError);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( NamedLookup? territory,  NamedLookup? branch,  Set<int> selectedUserIds,  bool isPrivate,  bool saving,  bool assigneeError)  $default,) {final _that = this;
+switch (_that) {
+case _AssignLeadFormState():
+return $default(_that.territory,_that.branch,_that.selectedUserIds,_that.isPrivate,_that.saving,_that.assigneeError);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( NamedLookup? territory,  NamedLookup? branch,  Set<int> selectedUserIds,  bool isPrivate,  bool saving,  bool assigneeError)?  $default,) {final _that = this;
+switch (_that) {
+case _AssignLeadFormState() when $default != null:
+return $default(_that.territory,_that.branch,_that.selectedUserIds,_that.isPrivate,_that.saving,_that.assigneeError);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+
+
+class _AssignLeadFormState implements AssignLeadFormState {
+  const _AssignLeadFormState({this.territory, this.branch, final  Set<int> selectedUserIds = const <int>{}, this.isPrivate = false, this.saving = false, this.assigneeError = false}): _selectedUserIds = selectedUserIds;
+  
+
+@override final  NamedLookup? territory;
+@override final  NamedLookup? branch;
+ final  Set<int> _selectedUserIds;
+@override@JsonKey() Set<int> get selectedUserIds {
+  if (_selectedUserIds is EqualUnmodifiableSetView) return _selectedUserIds;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableSetView(_selectedUserIds);
+}
+
+@override@JsonKey() final  bool isPrivate;
+@override@JsonKey() final  bool saving;
+/// Turns the assignee picker red once a submit is attempted with none
+/// selected.
+@override@JsonKey() final  bool assigneeError;
+
+/// Create a copy of AssignLeadFormState
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$AssignLeadFormStateCopyWith<_AssignLeadFormState> get copyWith => __$AssignLeadFormStateCopyWithImpl<_AssignLeadFormState>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AssignLeadFormState&&(identical(other.territory, territory) || other.territory == territory)&&(identical(other.branch, branch) || other.branch == branch)&&const DeepCollectionEquality().equals(other._selectedUserIds, _selectedUserIds)&&(identical(other.isPrivate, isPrivate) || other.isPrivate == isPrivate)&&(identical(other.saving, saving) || other.saving == saving)&&(identical(other.assigneeError, assigneeError) || other.assigneeError == assigneeError));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,territory,branch,const DeepCollectionEquality().hash(_selectedUserIds),isPrivate,saving,assigneeError);
+
+@override
+String toString() {
+  return 'AssignLeadFormState(territory: $territory, branch: $branch, selectedUserIds: $selectedUserIds, isPrivate: $isPrivate, saving: $saving, assigneeError: $assigneeError)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$AssignLeadFormStateCopyWith<$Res> implements $AssignLeadFormStateCopyWith<$Res> {
+  factory _$AssignLeadFormStateCopyWith(_AssignLeadFormState value, $Res Function(_AssignLeadFormState) _then) = __$AssignLeadFormStateCopyWithImpl;
+@override @useResult
+$Res call({
+ NamedLookup? territory, NamedLookup? branch, Set<int> selectedUserIds, bool isPrivate, bool saving, bool assigneeError
+});
+
+
+
+
+}
+/// @nodoc
+class __$AssignLeadFormStateCopyWithImpl<$Res>
+    implements _$AssignLeadFormStateCopyWith<$Res> {
+  __$AssignLeadFormStateCopyWithImpl(this._self, this._then);
+
+  final _AssignLeadFormState _self;
+  final $Res Function(_AssignLeadFormState) _then;
+
+/// Create a copy of AssignLeadFormState
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? territory = freezed,Object? branch = freezed,Object? selectedUserIds = null,Object? isPrivate = null,Object? saving = null,Object? assigneeError = null,}) {
+  return _then(_AssignLeadFormState(
+territory: freezed == territory ? _self.territory : territory // ignore: cast_nullable_to_non_nullable
+as NamedLookup?,branch: freezed == branch ? _self.branch : branch // ignore: cast_nullable_to_non_nullable
+as NamedLookup?,selectedUserIds: null == selectedUserIds ? _self._selectedUserIds : selectedUserIds // ignore: cast_nullable_to_non_nullable
+as Set<int>,isPrivate: null == isPrivate ? _self.isPrivate : isPrivate // ignore: cast_nullable_to_non_nullable
+as bool,saving: null == saving ? _self.saving : saving // ignore: cast_nullable_to_non_nullable
+as bool,assigneeError: null == assigneeError ? _self.assigneeError : assigneeError // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
+
 // dart format on

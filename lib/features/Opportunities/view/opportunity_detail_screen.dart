@@ -2891,6 +2891,18 @@ class _AddProductError extends Notifier<String?> {
 final _addProductErrorProvider =
     NotifierProvider<_AddProductError, String?>(_AddProductError.new);
 
+/// The product chosen from the `GET /products` catalog dropdown. Kept in
+/// Riverpod (not `setState`) so the dropdown rebuilds from state.
+class _SelectedProduct extends Notifier<ProductModel?> {
+  @override
+  ProductModel? build() => null;
+
+  void set(ProductModel? product) => state = product;
+}
+
+final _selectedProductProvider =
+    NotifierProvider<_SelectedProduct, ProductModel?>(_SelectedProduct.new);
+
 class _AddProductSheet extends ConsumerStatefulWidget {
   const _AddProductSheet();
 
@@ -2901,9 +2913,6 @@ class _AddProductSheet extends ConsumerStatefulWidget {
 class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
   final _qtyController = TextEditingController(text: '1');
 
-  /// The product chosen from the `GET /products` catalog dropdown.
-  ProductModel? _selected;
-
   /// Match the detail screen's accent: red when launched from the backlog.
   Color get _accent =>
       ref.read(opportunitiesProvider).showBacklog
@@ -2913,11 +2922,13 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
   @override
   void initState() {
     super.initState();
-    // Clear any error left over from a previous time the sheet was opened.
-    // Deferred to after the first frame — modifying a provider synchronously
-    // during initState/build is disallowed by Riverpod.
+    // Clear any error / selection left over from a previous time the sheet was
+    // opened. Deferred to after the first frame — modifying a provider
+    // synchronously during initState/build is disallowed by Riverpod.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(_addProductErrorProvider.notifier).set(null);
+      if (!mounted) return;
+      ref.read(_addProductErrorProvider.notifier).set(null);
+      ref.read(_selectedProductProvider.notifier).set(null);
     });
   }
 
@@ -2930,12 +2941,12 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
   /// Selects a catalog product; its selling price is used as the unit price.
   void _onProductSelected(ProductModel? product) {
     if (product == null) return;
-    setState(() => _selected = product);
+    ref.read(_selectedProductProvider.notifier).set(product);
     ref.read(_addProductErrorProvider.notifier).set(null);
   }
 
   void _submit() {
-    final product = _selected;
+    final product = ref.read(_selectedProductProvider);
     final qty = int.tryParse(_qtyController.text.trim());
 
     final errorNotifier = ref.read(_addProductErrorProvider.notifier);
@@ -3149,7 +3160,7 @@ class _AddProductSheetState extends ConsumerState<_AddProductSheet> {
           );
         }
         return DropdownButtonFormField<ProductModel>(
-          initialValue: _selected,
+          initialValue: ref.watch(_selectedProductProvider),
           isExpanded: true,
           icon: const Icon(Icons.keyboard_arrow_down_rounded,
               color: AppColors.textSecondary),
