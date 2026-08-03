@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../model/opportunity_model.dart';
@@ -295,7 +296,12 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
             ),
           ),
           const SizedBox(width: 10),
-          _buildBacklogButton(showBacklog),
+          // Backlog opportunities are a separate module with their own view
+          // permission.
+          Can(
+            permission: AppPermissions.backlogOpportunitiesView,
+            child: _buildBacklogButton(showBacklog),
+          ),
         ],
       ),
     );

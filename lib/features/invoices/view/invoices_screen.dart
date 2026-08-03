@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
@@ -77,14 +78,17 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
             ],
           ),
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => context.push(AppRoutes.createInvoice),
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          icon: const Icon(Icons.add_rounded),
-          label: Text(
-            'New Invoice',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        floatingActionButton: Can(
+          permission: AppPermissions.invoicesAdd,
+          child: FloatingActionButton.extended(
+            onPressed: () => context.push(AppRoutes.createInvoice),
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              'New Invoice',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
           ),
         ),
       ),
@@ -330,6 +334,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   // ── Invoice card ──
   Widget _buildCard(InvoiceModel inv) {
     final accent = inv.status.color;
+    final perms = ref.watch(permissionsProvider);
     return GestureDetector(
       onTap: () => _onView(inv),
       child: Container(
@@ -483,13 +488,15 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                     tooltip: 'View',
                     onTap: () => _onView(inv),
                   ),
-                  const SizedBox(width: 6),
-                  _actionIcon(
-                    icon: Icons.edit_outlined,
-                    color: AppColors.accent,
-                    tooltip: 'Update',
-                    onTap: () => _onUpdate(inv),
-                  ),
+                  if (perms.can(AppPermissions.invoicesEdit)) ...[
+                    const SizedBox(width: 6),
+                    _actionIcon(
+                      icon: Icons.edit_outlined,
+                      color: AppColors.accent,
+                      tooltip: 'Update',
+                      onTap: () => _onUpdate(inv),
+                    ),
+                  ],
                   const SizedBox(width: 6),
                   _actionIcon(
                     icon: Icons.download_rounded,
@@ -498,12 +505,13 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                     onTap: () => _onDownload(inv),
                   ),
                   const Spacer(),
-                  _actionIcon(
-                    icon: Icons.delete_outline_rounded,
-                    color: AppColors.red,
-                    tooltip: 'Delete',
-                    onTap: () => _onDelete(inv),
-                  ),
+                  if (perms.can(AppPermissions.invoicesDelete))
+                    _actionIcon(
+                      icon: Icons.delete_outline_rounded,
+                      color: AppColors.red,
+                      tooltip: 'Delete',
+                      onTap: () => _onDelete(inv),
+                    ),
                 ],
               ),
             ],

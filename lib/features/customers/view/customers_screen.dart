@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
@@ -83,20 +84,23 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             ],
           ),
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => context.push(AppRoutes.createCustomer),
-          backgroundColor: AppColors.primary,
-          elevation: 4,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
-          icon: const Icon(Icons.person_add_alt_1_rounded,
-              color: Colors.white, size: 22),
-          label: Text(
-            'Create Customer',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
+        floatingActionButton: Can(
+          permission: AppPermissions.customersAdd,
+          child: FloatingActionButton.extended(
+            onPressed: () => context.push(AppRoutes.createCustomer),
+            backgroundColor: AppColors.primary,
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16)),
+            icon: const Icon(Icons.person_add_alt_1_rounded,
+                color: Colors.white, size: 22),
+            label: Text(
+              'Create Customer',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
             ),
           ),
         ),

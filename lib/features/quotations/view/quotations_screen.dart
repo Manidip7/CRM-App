@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/platform/downloads_saver.dart';
+import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../data/quotations_repository.dart';
@@ -67,14 +68,17 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: _onAdd,
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          icon: const Icon(Icons.add_rounded),
-          label: const Text(
-            'New Quote',
-            style: TextStyle(fontWeight: FontWeight.w600),
+        floatingActionButton: Can(
+          permission: AppPermissions.quotationsAdd,
+          child: FloatingActionButton.extended(
+            onPressed: _onAdd,
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text(
+              'New Quote',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
           ),
         ),
         body: SafeArea(
@@ -527,6 +531,7 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
   // ── Quotation card ──
   Widget _buildCard(QuotationModel item) {
     final accent = item.status.color;
+    final perms = ref.watch(permissionsProvider);
     return GestureDetector(
       onTap: () => _openOpportunity(item),
       child: Container(
@@ -654,26 +659,33 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
                   ),
                 ),
                 const Spacer(),
-                _actionIcon(
-                  icon: Icons.download_rounded,
-                  color: AppColors.primary,
-                  tooltip: 'Download',
-                  onTap: () => _onDownload(item),
-                ),
-                const SizedBox(width: 6),
-                _actionIcon(
-                  icon: Icons.edit_outlined,
-                  color: AppColors.green,
-                  tooltip: 'Edit',
-                  onTap: () => _onEdit(item),
-                ),
-                const SizedBox(width: 6),
-                _actionIcon(
-                  icon: Icons.delete_outline_rounded,
-                  color: AppColors.red,
-                  tooltip: 'Delete',
-                  onTap: () => _onDelete(item),
-                ),
+                // Each row action carries its own permission, so a role with
+                // only `quotations.download` sees exactly one icon here.
+                if (perms.can(AppPermissions.quotationsDownload)) ...[
+                  _actionIcon(
+                    icon: Icons.download_rounded,
+                    color: AppColors.primary,
+                    tooltip: 'Download',
+                    onTap: () => _onDownload(item),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                if (perms.can(AppPermissions.quotationsEdit)) ...[
+                  _actionIcon(
+                    icon: Icons.edit_outlined,
+                    color: AppColors.green,
+                    tooltip: 'Edit',
+                    onTap: () => _onEdit(item),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                if (perms.can(AppPermissions.quotationsDelete))
+                  _actionIcon(
+                    icon: Icons.delete_outline_rounded,
+                    color: AppColors.red,
+                    tooltip: 'Delete',
+                    onTap: () => _onDelete(item),
+                  ),
               ],
             ),
           ],

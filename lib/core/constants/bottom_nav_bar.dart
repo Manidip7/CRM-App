@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../features/dashbord/model/dashboard_section.dart';
+import '../permissions/permissions.dart';
 import '../utils/AppColors.dart';
 
-class BottomNavBar extends StatelessWidget {
+/// Bottom navigation for the dashboard shell.
+///
+/// The tabs come from [DashboardSection.all] (filtered by permission), so a
+/// section the role can't view disappears here and in the drawer together —
+/// and the bar hides entirely if fewer than two tabs survive, since a
+/// single-tab bar is just wasted space.
+class BottomNavBar extends ConsumerWidget {
   final int selectedIndex;
   final ValueChanged<int> onTap;
 
@@ -14,18 +23,17 @@ class BottomNavBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final perms = ref.watch(permissionsProvider);
+
     // `index` maps each tab to the dashboard body switch (Overview 0, Leads 1,
     // Tasks 2, Opportunities 3) so the visual order can differ from those ids.
     final items = [
-      _NavItem(icon: Icons.grid_view_rounded, label: 'Overview', index: 0),
-      _NavItem(icon: Icons.filter_list_rounded, label: 'Leads', index: 1),
-      _NavItem(
-          icon: Icons.trending_up_rounded,
-          label: 'Opportunities',
-          index: 3),
-      _NavItem(icon: Icons.task_alt_rounded, label: 'Tasks', index: 2),
-    ];
+      for (final section in DashboardSection.all)
+        if (section.inBottomBar && section.isVisibleTo(perms)) section,
+    ]..sort((a, b) => _barOrder(a.index).compareTo(_barOrder(b.index)));
+
+    if (items.length < 2) return const SizedBox.shrink();
 
     final bottomInset = MediaQuery.of(context).padding.bottom;
 
@@ -92,18 +100,14 @@ class BottomNavBar extends StatelessWidget {
       ),
     );
   }
-}
 
-class _NavItem {
-  final IconData icon;
-  final String label;
-
-  /// Dashboard body index this tab activates (see DashboardScreen switch).
-  final int index;
-
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.index,
-  });
+  /// Display order in the bar, which deliberately differs from the section
+  /// ids: Overview, Leads, Opportunities, Tasks.
+  static int _barOrder(int sectionIndex) => switch (sectionIndex) {
+        0 => 0,
+        1 => 1,
+        3 => 2,
+        2 => 3,
+        _ => 99,
+      };
 }

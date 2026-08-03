@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/permissions/permissions.dart';
 import '../features/auth/data/auth_repository.dart';
 import '../features/auth/model/auth_session.dart';
 import '../features/auth/view/LoginScreen.dart';
@@ -49,6 +50,27 @@ class AppRoutes {
   static const String taskList = '/task-list';
   static const String editQuotation = '/edit-quotation';
   static const String editProfile = '/edit-profile';
+
+  /// Permission required to open each guarded route. Routes left out of this
+  /// map are open to any logged-in user (splash, login, dashboard shell, and
+  /// the profile screen — everyone may edit their own profile).
+  ///
+  /// Hiding the button that pushes a route is the first line of defence; this
+  /// is the second, and it's the one that survives a deep link, a stale
+  /// back-stack entry, or a `context.push` someone forgets to wrap.
+  static const Map<String, String> routePermissions = {
+    leadDetail: AppPermissions.leadsView,
+    editLead: AppPermissions.leadsEdit,
+    opportunities: AppPermissions.opportunitiesView,
+    opportunityDetail: AppPermissions.opportunitiesView,
+    customerDetail: AppPermissions.customersView,
+    createCustomer: AppPermissions.customersAdd,
+    createInvoice: AppPermissions.invoicesAdd,
+    createProject: AppPermissions.projectsAdd,
+    projectDetail: AppPermissions.projectsView,
+    taskList: AppPermissions.tasksView,
+    editQuotation: AppPermissions.quotationsEdit,
+  };
 }
 
 /// Global router configuration. Complex arguments (models) are passed through
@@ -82,6 +104,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loggedIn && atLogin) return AppRoutes.dashboard;
       // Not logged in and trying to reach a protected screen → back to login.
       if (!loggedIn && !atLogin) return AppRoutes.login;
+
+      // Logged in, but does this role have the permission this route needs?
+      final required = AppRoutes.routePermissions[state.matchedLocation];
+      if (required != null &&
+          !ref.read(permissionsProvider).can(required)) {
+        return AppRoutes.dashboard;
+      }
       return null;
     },
     routes: [

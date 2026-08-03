@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../data/leads_repository.dart';
@@ -100,6 +101,9 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     final leads = ref.watch(filteredLeadsProvider);
     final showBacklog =
         ref.watch(leadsFilterProvider.select((s) => s.showBacklog));
+    // Read once here and pass down, rather than watching inside every row.
+    final maskSource = ref.watch(permissionsProvider)
+        .isMasked(AppPermissions.leadsMaskSource);
     // Keep the live list alive across toggles; in backlog mode the loading/error
     // UI is driven by the separate, lazily-loaded backlog list instead — so
     // tapping Backlog shows a spinner and then the backlog data, exactly like
@@ -173,6 +177,7 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
                                         _avatarColors.length],
                                 accent: _accent,
                                 isBacklog: showBacklog,
+                                maskSource: maskSource,
                                 onTap: () => _openDetail(lead),
                                 onMenuAction: (action) =>
                                     _handleAction(action, lead),
@@ -206,13 +211,16 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addLead,
-        backgroundColor: _accent,
-        elevation: 4,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
+      floatingActionButton: Can(
+        permission: AppPermissions.leadsAdd,
+        child: FloatingActionButton(
+          onPressed: _addLead,
+          backgroundColor: _accent,
+          elevation: 4,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: const Icon(Icons.add, color: Colors.white, size: 28),
+        ),
       ),
     );
   }
@@ -273,7 +281,12 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
             ],
           ),
           const Spacer(),
-          _buildBacklogButton(showBacklog),
+          // Backlog is a separate module with its own permission — a role that
+          // can see leads doesn't automatically get the overdue list.
+          Can(
+            permission: AppPermissions.backlogLeadsView,
+            child: _buildBacklogButton(showBacklog),
+          ),
         ],
       ),
     );
@@ -1366,6 +1379,12 @@ class _LeadCard extends StatelessWidget {
   final Color avatarColor;
   final Color accent;
   final bool isBacklog;
+
+  /// From `leads.mask_source`: when the role masks the source, the badge is
+  /// left off the card entirely. Passed down rather than read from `ref` here
+  /// so the permission set isn't watched once per row.
+  final bool maskSource;
+
   final VoidCallback onTap;
   final ValueChanged<String> onMenuAction;
 
@@ -1375,6 +1394,7 @@ class _LeadCard extends StatelessWidget {
     required this.avatarColor,
     required this.accent,
     this.isBacklog = false,
+    this.maskSource = false,
     required this.onTap,
     required this.onMenuAction,
   });
@@ -1554,11 +1574,14 @@ class _LeadCard extends StatelessWidget {
                           _PriorityBadge(priority: lead.priority!),
                         // Show the mapped badge for a recognized source; for an
                         // unrecognized one, show its raw name only. Hide entirely
-                        // when the backend sent no source at all.
-                        if (lead.sourceKnown)
-                          _SourceBadge(source: lead.source)
-                        else if (lead.sourceName?.trim().isNotEmpty ?? false)
-                          _SourceBadge.name(lead.sourceName!.trim()),
+                        // when the backend sent no source at all, or when the
+                        // role's `leads.mask_source` flag hides it.
+                        if (!maskSource) ...[
+                          if (lead.sourceKnown)
+                            _SourceBadge(source: lead.source)
+                          else if (lead.sourceName?.trim().isNotEmpty ?? false)
+                            _SourceBadge.name(lead.sourceName!.trim()),
+                        ],
                       ],
                     ),
                   ),

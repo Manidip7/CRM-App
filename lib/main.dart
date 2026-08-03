@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/network/network_providers.dart';
 import 'core/network/persistent_token_storage.dart';
+import 'core/permissions/permissions.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/auth/data/session_store.dart';
 import 'features/calls/provider/call_providers.dart';
@@ -13,16 +14,19 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Load persisted auth data before the app starts so the user stays logged in
-  // across restarts: the token (for the auth header) and the full session
-  // (user, roles, permissions) for the UI.
+  // across restarts: the token (for the auth header), the full session (user,
+  // roles, permissions) for the UI, and the last known permission map so the
+  // very first frame already hides what this role can't see.
   final tokenStorage = await PersistentTokenStorage.load();
   final sessionStore = await SessionStore.load();
+  final permissionsStore = await PermissionsStore.load();
 
   runApp(
     ProviderScope(
       overrides: [
         tokenStorageProvider.overrideWithValue(tokenStorage),
         sessionStoreProvider.overrideWithValue(sessionStore),
+        permissionsStoreProvider.overrideWithValue(permissionsStore),
       ],
       child: const MyApp(),
     ),

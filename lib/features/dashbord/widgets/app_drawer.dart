@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../profile/data/profile_repository.dart';
+import '../model/dashboard_section.dart';
 import '../provider/dashboard_provider.dart';
 
 /// Side navigation drawer opened from the dashboard header.
@@ -16,6 +18,18 @@ class AppDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = ref.watch(dashboardNavProvider);
+    final perms = ref.watch(permissionsProvider);
+
+    // Only the sections this role is allowed to view. A section whose `*.view`
+    // permission is false never reaches the list.
+    final sections = DashboardSection.visibleTo(perms);
+
+    // The bottom block is gated too — hide the divider when nothing survives.
+    final canSettings = perms.canAny(const [
+      AppPermissions.settingsView,
+      AppPermissions.mastersView,
+      AppPermissions.integrationsView,
+    ]);
 
     return Drawer(
       backgroundColor: AppColors.cardBackground,
@@ -30,72 +44,27 @@ class AppDrawer extends ConsumerWidget {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 children: [
-                  _DrawerItem(
-                    icon: Icons.grid_view_rounded,
-                    label: 'Overview',
-                    selected: selected == 0,
-                    onTap: () => _go(context, ref, 0),
-                  ),
-                  _DrawerItem(
-                    icon: Icons.filter_list_rounded,
-                    label: 'Leads',
-                    selected: selected == 1,
-                    onTap: () => _go(context, ref, 1),
-                  ),
-                  _DrawerItem(
-                    icon: Icons.task_alt_rounded,
-                    label: 'Tasks',
-                    selected: selected == 2,
-                    onTap: () => _go(context, ref, 2),
-                  ),
-                  _DrawerItem(
-                    icon: Icons.trending_up_rounded,
-                    label: 'Opportunities',
-                    selected: selected == 3,
-                    onTap: () => _go(context, ref, 3),
-                  ),
-                  _DrawerItem(
-                    icon: Icons.event_note_rounded,
-                    label: 'Next Follow-ups',
-                    selected: selected == 4,
-                    onTap: () => _go(context, ref, 4),
-                  ),
-                  _DrawerItem(
-                    icon: Icons.request_quote_rounded,
-                    label: 'Quotations',
-                    selected: selected == 5,
-                    onTap: () => _go(context, ref, 5),
-                  ),
-                  _DrawerItem(
-                    icon: Icons.people_alt_rounded,
-                    label: 'Customers',
-                    selected: selected == 6,
-                    onTap: () => _go(context, ref, 6),
-                  ),
-                  _DrawerItem(
-                    icon: Icons.receipt_long_rounded,
-                    label: 'Invoices',
-                    selected: selected == 7,
-                    onTap: () => _go(context, ref, 7),
-                  ),
-                  _DrawerItem(
-                    icon: Icons.folder_open_rounded,
-                    label: 'Projects',
-                    selected: selected == 8,
-                    onTap: () => _go(context, ref, 8),
-                  ),
+                  for (final section in sections)
+                    _DrawerItem(
+                      icon: section.icon,
+                      label: section.label,
+                      selected: selected == section.index,
+                      onTap: () => _go(context, ref, section.index),
+                    ),
                   const SizedBox(height: 8),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
                     child: Divider(color: AppColors.divider, height: 1),
                   ),
                   const SizedBox(height: 8),
-                  _DrawerItem(
-                    icon: Icons.settings_outlined,
-                    label: 'Settings',
-                    selected: false,
-                    onTap: () => _comingSoon(context, 'Settings'),
-                  ),
+                  if (canSettings)
+                    _DrawerItem(
+                      icon: Icons.settings_outlined,
+                      label: 'Settings',
+                      selected: false,
+                      onTap: () => _comingSoon(context, 'Settings'),
+                    ),
+                  // Help is intentionally ungated — everyone can ask for help.
                   _DrawerItem(
                     icon: Icons.help_outline_rounded,
                     label: 'Help & Support',

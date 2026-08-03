@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../../dashbord/provider/dashboard_provider.dart';
@@ -95,14 +96,17 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
             ],
           ),
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => context.push(AppRoutes.createProject),
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          icon: const Icon(Icons.add_rounded),
-          label: Text(
-            'New Project',
-            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        floatingActionButton: Can(
+          permission: AppPermissions.projectsAdd,
+          child: FloatingActionButton.extended(
+            onPressed: () => context.push(AppRoutes.createProject),
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              'New Project',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
           ),
         ),
       ),
@@ -463,6 +467,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   // ── Project card ──
   Widget _buildCard(ProjectModel p) {
     final accent = p.status.color;
+    final perms = ref.watch(permissionsProvider);
     return GestureDetector(
       onTap: () => _openDetail(p),
       child: Container(
@@ -586,20 +591,23 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                     tooltip: 'View',
                     onTap: () => _openDetail(p),
                   ),
-                  const SizedBox(width: 6),
-                  _actionIcon(
-                    icon: Icons.edit_outlined,
-                    color: AppColors.accent,
-                    tooltip: 'Edit',
-                    onTap: () => _onEdit(p),
-                  ),
+                  if (perms.can(AppPermissions.projectsEdit)) ...[
+                    const SizedBox(width: 6),
+                    _actionIcon(
+                      icon: Icons.edit_outlined,
+                      color: AppColors.accent,
+                      tooltip: 'Edit',
+                      onTap: () => _onEdit(p),
+                    ),
+                  ],
                   const Spacer(),
-                  _actionIcon(
-                    icon: Icons.delete_outline_rounded,
-                    color: AppColors.red,
-                    tooltip: 'Delete',
-                    onTap: () => _onDelete(p),
-                  ),
+                  if (perms.can(AppPermissions.projectsDelete))
+                    _actionIcon(
+                      icon: Icons.delete_outline_rounded,
+                      color: AppColors.red,
+                      tooltip: 'Delete',
+                      onTap: () => _onDelete(p),
+                    ),
                 ],
               ),
             ],

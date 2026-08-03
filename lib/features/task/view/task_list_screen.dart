@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../model/TaskStatus.dart';
 import '../model/task_item_model.dart';
@@ -77,16 +78,19 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
     final tasks = _applyFilters(apiState.items, filter);
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreateTask,
-        backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: Text(
-          'Add Task',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+      floatingActionButton: Can(
+        permission: AppPermissions.tasksAdd,
+        child: FloatingActionButton.extended(
+          onPressed: _openCreateTask,
+          backgroundColor: AppColors.primary,
+          icon: const Icon(Icons.add_rounded, color: Colors.white),
+          label: Text(
+            'Add Task',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
         ),
       ),

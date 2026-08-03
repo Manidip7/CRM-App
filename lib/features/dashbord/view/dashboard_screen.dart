@@ -23,6 +23,8 @@ import '../../invoices/view/invoices_screen.dart';
 import '../../projects/view/projects_screen.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../core/constants/bottom_nav_bar.dart';
+import '../../../core/permissions/permissions.dart';
+import '../model/dashboard_section.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -73,6 +75,25 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedNavIndex = ref.watch(dashboardNavProvider);
+    final perms = ref.watch(permissionsProvider);
+
+    // Second line of defence. The drawer and bottom bar already hide sections
+    // this role can't view, but the selected index can also survive a
+    // permission change (or arrive from a future deep link), so re-check it
+    // here rather than trusting the entry point.
+    final section = DashboardSection.byIndex(selectedNavIndex);
+    if (section == null || !section.isVisibleTo(perms)) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        drawer: const AppDrawer(),
+        body: SafeArea(child: NoAccessView(label: section?.label)),
+        bottomNavigationBar: BottomNavBar(
+          selectedIndex: selectedNavIndex,
+          onTap: (i) => ref.read(dashboardNavProvider.notifier).select(i),
+        ),
+      );
+    }
+
     Widget body;
     switch (selectedNavIndex) {
       case 0:

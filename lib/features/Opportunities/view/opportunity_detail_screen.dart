@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/permissions/permissions.dart';
 import '../../../core/platform/downloads_saver.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../quotations/data/quotations_repository.dart';
@@ -23,6 +24,24 @@ import '../provider/opportunities_provider.dart';
 import '../provider/opportunity_detail_provider.dart';
 import '../../calls/provider/call_providers.dart';
 import '../../calls/widget/opportunity_call_logs_card.dart';
+
+/// The detail tabs, each with the permission that reveals it. `null` means the
+/// tab is always shown — Information and Products are the core opportunity data
+/// the user already needed `opportunities.view` to get here for.
+enum _OppTab {
+  information('Information', null),
+  products('Products', null),
+  quotes('Quotes', AppPermissions.opportunitiesQuotation),
+  timeline('Timeline', AppPermissions.opportunitiesTimeline),
+  call('Call', AppPermissions.opportunitiesAddCallLog),
+  notes('Notes', AppPermissions.opportunitiesAddNotes),
+  tasks('Tasks', AppPermissions.opportunitiesAddTask);
+
+  final String label;
+  final String? permission;
+
+  const _OppTab(this.label, this.permission);
+}
 
 class OpportunityDetailScreen extends ConsumerStatefulWidget {
   final OpportunityModel opportunity;
@@ -38,6 +57,10 @@ class _OpportunityDetailScreenState
     extends ConsumerState<OpportunityDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+
+  /// The tabs this role may see, resolved once in [initState] because the
+  /// [TabController] needs a fixed length.
+  late List<_OppTab> _tabs;
 
   /// Whether this screen was opened from the Backlog view. The backlog state
   /// persists on [opportunitiesProvider] across navigation, so we capture it
@@ -65,7 +88,11 @@ class _OpportunityDetailScreenState
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 7, vsync: this);
+    final perms = ref.read(permissionsProvider);
+    _tabs = _OppTab.values
+        .where((t) => t.permission == null || perms.can(t.permission!))
+        .toList(growable: false);
+    _tabController = TabController(length: _tabs.length, vsync: this);
     // Tie the contact's number to this opportunity for the resume-sync, so a
     // call placed outside the app (number copied into the dialer, redial from
     // Recents) is still captured — the in-app Call button is not the only path.
@@ -425,7 +452,8 @@ class _OpportunityDetailScreenState
                     ],
                   ),
                 ),
-                // 3-dot menu
+                // 3-dot menu — hidden when this role can't do anything in it.
+                if (_cardMenuItems.isNotEmpty)
                 GestureDetector(
                   onTap: () => _showCardMenu(context),
                   child: const Padding(
@@ -662,14 +690,19 @@ class _OpportunityDetailScreenState
             iconColor: const Color(0xFF25D366),
             onTap: _whatsapp,
           ),
-          const SizedBox(width: 10),
-          _ActionButton(
-            icon: Icons.mail_rounded,
-            label: 'Email',
-            bgColor: AppColors.leadFunnelContacted.withOpacity(0.1),
-            iconColor: AppColors.leadFunnelContacted,
-            onTap: _email,
-          ),
+          // Emailing the contact is its own permission on this module.
+          if (ref
+              .watch(permissionsProvider)
+              .can(AppPermissions.opportunitiesSendEmail)) ...[
+            const SizedBox(width: 10),
+            _ActionButton(
+              icon: Icons.mail_rounded,
+              label: 'Email',
+              bgColor: AppColors.leadFunnelContacted.withOpacity(0.1),
+              iconColor: AppColors.leadFunnelContacted,
+              onTap: _email,
+            ),
+          ],
           const SizedBox(width: 10),
           _ActionButton(
             icon: Icons.sms_rounded,
@@ -979,6 +1012,11 @@ class _OpportunityDetailScreenState
             const SizedBox(height: 10),
             _buildInterestScore(score),
           ],
+          // The schedule read-out above stays visible to everyone; only the
+          // button that changes it needs `opportunities.follow_up`.
+          if (ref
+              .watch(permissionsProvider)
+              .can(AppPermissions.opportunitiesFollowUp)) ...[
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -1002,6 +1040,7 @@ class _OpportunityDetailScreenState
               ),
             ),
           ),
+          ],
         ],
       ),
     );
@@ -1014,15 +1053,8 @@ class _OpportunityDetailScreenState
       OpportunityStage.proposal;
 
   Widget _buildTabBar() {
-    final tabs = [
-      'Information',
-      'Products',
-      'Quotes',
-      'Timeline',
-      'Call',
-      'Notes',
-      'Tasks'
-    ];
+    // A single remaining tab is just a label — the bar adds nothing.
+    if (_tabs.length < 2) return const SizedBox.shrink();
     final quotesLocked = !_quotesUnlocked;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -1052,8 +1084,9 @@ class _OpportunityDetailScreenState
             GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w400),
         labelPadding: const EdgeInsets.symmetric(horizontal: 14),
         padding: const EdgeInsets.all(3),
-        tabs: tabs.map((t) {
-          if (t == 'Quotes' && quotesLocked) {
+        tabs: _tabs.map((tab) {
+          final t = tab.label;
+          if (tab == _OppTab.quotes && quotesLocked) {
             return const Tab(
               height: 34,
               child: Row(
@@ -1074,26 +1107,28 @@ class _OpportunityDetailScreenState
 
   // ── Tab Content ───────────────────────────────────────────────────────────────
   Widget _buildTabContent() {
+    if (_tabs.isEmpty) return const SizedBox.shrink();
     return AnimatedBuilder(
       animation: _tabController,
       builder: (_, __) {
-        switch (_tabController.index) {
-          case 0:
+        // Index into the *visible* tabs, so hiding one doesn't shift the rest
+        // onto the wrong content.
+        final tab = _tabs[_tabController.index.clamp(0, _tabs.length - 1)];
+        switch (tab) {
+          case _OppTab.information:
             return _buildInformationTab();
-          case 1:
+          case _OppTab.products:
             return _buildProductTab();
-          case 2:
+          case _OppTab.quotes:
             return _buildQuotesTab();
-          case 3:
+          case _OppTab.timeline:
             return _buildTimelineTab();
-          case 4:
+          case _OppTab.call:
             return _buildCallTab();
-          case 5:
+          case _OppTab.notes:
             return _buildNotesTab();
-          case 6:
+          case _OppTab.tasks:
             return _buildTasksTab();
-          default:
-            return _buildInformationTab();
         }
       },
     );
@@ -1678,6 +1713,11 @@ class _OpportunityDetailScreenState
   }
 
   Widget _buildCreateQuoteButton() {
+    // Creating a quote from here is `quotations.add`; the Quotes tab that hosts
+    // this button is already gated on `opportunities.quotation`.
+    if (!ref.watch(permissionsProvider).can(AppPermissions.quotationsAdd)) {
+      return const SizedBox.shrink();
+    }
     return SizedBox(
       height: 46,
       child: ElevatedButton.icon(
@@ -2484,19 +2524,32 @@ class _OpportunityDetailScreenState
     );
   }
 
+  /// The 3-dot menu entries this role is allowed to use. Exposed so the menu
+  /// button itself can be hidden when nothing would be left inside it.
+  List<_MenuItem> get _cardMenuItems {
+    final perms = ref.read(permissionsProvider);
+    return [
+      if (perms.can(AppPermissions.opportunitiesEdit)) ...[
+        _MenuItem(Icons.edit_rounded, 'Edit Opportunity', _accent),
+        _MenuItem(Icons.person_add_outlined, 'Reassign', AppColors.primary),
+      ],
+      // Archiving is the soft form of deleting, so it rides on the same flag.
+      if (perms.can(AppPermissions.opportunitiesDelete)) ...[
+        _MenuItem(Icons.archive_outlined, 'Archive', AppColors.textSecondary),
+        _MenuItem(Icons.delete_outline_rounded, 'Delete Opportunity',
+            AppColors.red),
+      ],
+    ];
+  }
+
   void _showCardMenu(BuildContext context) {
+    final items = _cardMenuItems;
+    if (items.isEmpty) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => _MenuSheet(
-        items: [
-          _MenuItem(Icons.edit_rounded, 'Edit Opportunity', _accent),
-          _MenuItem(Icons.person_add_outlined, 'Reassign', AppColors.primary),
-          _MenuItem(
-              Icons.archive_outlined, 'Archive', AppColors.textSecondary),
-          _MenuItem(
-              Icons.delete_outline_rounded, 'Delete Opportunity', AppColors.red),
-        ],
+        items: items,
         onSelected: (label) => _showSnack(label),
       ),
     );

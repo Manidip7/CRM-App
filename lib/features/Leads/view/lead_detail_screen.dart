@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../data/leads_repository.dart';
@@ -16,6 +17,22 @@ import '../../Opportunities/model/opportunity_model.dart';
 import '../../Opportunities/provider/opportunities_provider.dart';
 import '../../calls/provider/call_providers.dart';
 import '../../calls/widget/lead_call_logs_card.dart';
+
+/// The detail tabs, each with the permission that reveals it. `null` means the
+/// tab is always shown — Information carries the core lead data the user
+/// already needed `leads.view` to reach this screen for.
+enum _LeadTab {
+  information('Information', null),
+  timeline('Timeline', AppPermissions.leadsTimeline),
+  notes('Notes', AppPermissions.leadsAddNotes),
+  tasks('Tasks', AppPermissions.leadsAddTask),
+  calls('Calls', AppPermissions.leadsAddCallLog);
+
+  final String label;
+  final String? permission;
+
+  const _LeadTab(this.label, this.permission);
+}
 
 class LeadDetailScreen extends ConsumerStatefulWidget {
   final LeadModel lead;
@@ -30,6 +47,11 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late LeadDetailModel _detail;
+
+  /// The tabs this role may see, resolved once in [initState] because the
+  /// [TabController] needs a fixed length. Permissions only change on
+  /// login/logout, which tears this screen down anyway.
+  late List<_LeadTab> _tabs;
 
   /// The display lead, held in Riverpod ([leadViewProvider]) so follow-up edits
   /// and server-loaded values flow through state management — not `setState`.
@@ -61,7 +83,11 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    final perms = ref.read(permissionsProvider);
+    _tabs = _LeadTab.values
+        .where((t) => t.permission == null || perms.can(t.permission!))
+        .toList(growable: false);
+    _tabController = TabController(length: _tabs.length, vsync: this);
     _detail = LeadDetailModel.fromLead(widget.lead);
     // Seed the Riverpod-held display lead from the navigation lead (once).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -233,8 +259,11 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     final color = _hexColor(current?.colorHex);
     final label = current?.name ?? 'Status';
 
-    // While the options load (or none match), show a static chip.
-    if (statuses.isEmpty) {
+    // While the options load (or none match), show a static chip. A role
+    // without `leads.change_status` gets the same static chip permanently — it
+    // still sees *what* the status is, it just can't open the menu to change it.
+    if (statuses.isEmpty ||
+        !ref.watch(permissionsProvider).can(AppPermissions.leadsChangeStatus)) {
       return Container(
         height: 38,
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -433,7 +462,11 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                         ),
                       ],
                       const SizedBox(height: 6),
-                      // Source of lead
+                      // Source of lead — hidden when `leads.mask_source` is on
+                      // for this role.
+                      if (!ref
+                          .watch(permissionsProvider)
+                          .isMasked(AppPermissions.leadsMaskSource))
                       Row(
                         children: [
                           Icon(Icons.track_changes_rounded,
@@ -459,15 +492,16 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                     ],
                   ),
                 ),
-                // 3-dot menu
-                GestureDetector(
-                  onTap: () => _showCardMenu(context),
-                  child: const Padding(
-                    padding: EdgeInsets.only(left: 4, top: 2),
-                    child: Icon(Icons.more_vert,
-                        color: AppColors.textSecondary, size: 20),
+                // 3-dot menu — hidden when this role can't do anything in it.
+                if (_cardMenuItems.isNotEmpty)
+                  GestureDetector(
+                    onTap: () => _showCardMenu(context),
+                    child: const Padding(
+                      padding: EdgeInsets.only(left: 4, top: 2),
+                      child: Icon(Icons.more_vert,
+                          color: AppColors.textSecondary, size: 20),
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -500,6 +534,14 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     final temperature =
         ref.watch(_detailProvider.select((s) => s.temperature));
     final converted = ref.watch(_detailProvider.select((s) => s.converted));
+    final perms = ref.watch(permissionsProvider);
+    final canChangePriority = perms.can(AppPermissions.leadsChangePriority);
+    final canConvert = perms.can(AppPermissions.leadsConvert);
+
+    // Both halves of this card are actions, so each is hidden on its own and
+    // the card disappears once neither is available.
+    if (!canChangePriority && !canConvert) return const SizedBox.shrink();
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -519,6 +561,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Lead Temperature ──
+          if (canChangePriority) ...[
           Text(
             'LEAD TEMPERATURE',
             style: GoogleFonts.poppins(
@@ -594,6 +637,9 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
               );
             }).toList(),
           ),
+          ],
+          if (canConvert) ...[
+          if (canChangePriority)
           const SizedBox(height: 18),
           // ── Convert to Opportunity ──
           SizedBox(
@@ -627,6 +673,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
               ),
             ),
           ),
+          ],
         ],
       ),
     );
@@ -707,41 +754,57 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
 
   // ── Quick Actions ─────────────────────────────────────────────────────────────
   Widget _buildQuickActions() {
+    // These all act on contact details, so they follow the masking flags: a
+    // role whose phone is masked must not be able to dial it from here either.
+    final perms = ref.watch(permissionsProvider);
+    final hidePhone = perms.isMasked(AppPermissions.leadsMaskPhone);
+    final hideEmail = perms.isMasked(AppPermissions.leadsMaskEmail);
+
+    final buttons = <Widget>[
+      if (!hidePhone)
+        _ActionButton(
+          icon: Icons.phone_rounded,
+          label: 'Call',
+          bgColor: AppColors.primary.withOpacity(0.1),
+          iconColor: AppColors.primary,
+          onTap: _callLead,
+        ),
+      if (!hidePhone)
+        _ActionButton(
+          icon: Icons.chat_rounded,
+          label: 'WhatsApp',
+          bgColor: const Color(0xFF25D366).withOpacity(0.1),
+          iconColor: const Color(0xFF25D366),
+          onTap: _whatsappLead,
+        ),
+      if (!hideEmail)
+        _ActionButton(
+          icon: Icons.mail_rounded,
+          label: 'Email',
+          bgColor: AppColors.leadFunnelContacted.withOpacity(0.1),
+          iconColor: AppColors.leadFunnelContacted,
+          onTap: _emailLead,
+        ),
+      if (!hidePhone)
+        _ActionButton(
+          icon: Icons.sms_rounded,
+          label: 'SMS',
+          bgColor: AppColors.red.withOpacity(0.1),
+          iconColor: AppColors.red,
+          onTap: _smsLead,
+        ),
+    ];
+
+    if (buttons.isEmpty) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          _ActionButton(
-            icon: Icons.phone_rounded,
-            label: 'Call',
-            bgColor: AppColors.primary.withOpacity(0.1),
-            iconColor: AppColors.primary,
-            onTap: _callLead,
-          ),
-          const SizedBox(width: 10),
-          _ActionButton(
-            icon: Icons.chat_rounded,
-            label: 'WhatsApp',
-            bgColor: const Color(0xFF25D366).withOpacity(0.1),
-            iconColor: const Color(0xFF25D366),
-            onTap: _whatsappLead,
-          ),
-          const SizedBox(width: 10),
-          _ActionButton(
-            icon: Icons.mail_rounded,
-            label: 'Email',
-            bgColor: AppColors.leadFunnelContacted.withOpacity(0.1),
-            iconColor: AppColors.leadFunnelContacted,
-            onTap: _emailLead,
-          ),
-          const SizedBox(width: 10),
-          _ActionButton(
-            icon: Icons.sms_rounded,
-            label: 'SMS',
-            bgColor: AppColors.red.withOpacity(0.1),
-            iconColor: AppColors.red,
-            onTap: _smsLead,
-          ),
+          for (var i = 0; i < buttons.length; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            buttons[i],
+          ],
         ],
       ),
     );
@@ -817,6 +880,9 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   // ── Contact Details Card ─────────────────────────────────────────────────────
   Widget _buildContactDetailsCard() {
     final lead = _lead;
+    final perms = ref.watch(permissionsProvider);
+    final hidePhone = perms.isMasked(AppPermissions.leadsMaskPhone);
+    final hideEmail = perms.isMasked(AppPermissions.leadsMaskEmail);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -848,50 +914,58 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                   ),
                 ),
                 const Spacer(),
-                GestureDetector(
-                  onTap: () => _showSnack('Edit contact details'),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: AppColors.background,
-                      borderRadius: BorderRadius.circular(8),
+                Can(
+                  permission: AppPermissions.leadsEdit,
+                  child: GestureDetector(
+                    onTap: () => _showSnack('Edit contact details'),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.edit_outlined,
+                          size: 16, color: AppColors.textSecondary),
                     ),
-                    child: const Icon(Icons.edit_outlined,
-                        size: 16, color: AppColors.textSecondary),
                   ),
                 ),
               ],
             ),
           ),
           const Divider(height: 0, color: AppColors.divider),
-          // Email
-          _ContactRow(
-            icon: Icons.alternate_email_rounded,
-            iconBg: AppColors.leadFunnelContacted.withOpacity(0.1),
-            iconColor: AppColors.leadFunnelContacted,
-            label: 'Email',
-            value: lead.email ?? '—',
-            isLink: lead.email != null,
-            onTap: lead.email != null ? _emailLead : null,
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Divider(height: 0, color: AppColors.divider),
-          ),
-          // Phone
-          _ContactRow(
-            icon: Icons.phone_outlined,
-            iconBg: AppColors.primary.withOpacity(0.1),
-            iconColor: AppColors.primary,
-            label: 'Phone',
-            value: lead.phone ?? '—',
-            isLink: lead.phone != null,
-            onTap: lead.phone != null ? _callLead : null,
-            copyValue: lead.phone,
-          ),
-          // Alternate Phone (only when present)
-          if (lead.alternatePhone != null &&
+          // Email — hidden entirely when `leads.mask_email` is on. Masking is
+          // about the data, so we drop the row rather than show a blank one.
+          if (!hideEmail) ...[
+            _ContactRow(
+              icon: Icons.alternate_email_rounded,
+              iconBg: AppColors.leadFunnelContacted.withOpacity(0.1),
+              iconColor: AppColors.leadFunnelContacted,
+              label: 'Email',
+              value: lead.email ?? '—',
+              isLink: lead.email != null,
+              onTap: lead.email != null ? _emailLead : null,
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Divider(height: 0, color: AppColors.divider),
+            ),
+          ],
+          // Phone — same treatment via `leads.mask_phone`.
+          if (!hidePhone)
+            _ContactRow(
+              icon: Icons.phone_outlined,
+              iconBg: AppColors.primary.withOpacity(0.1),
+              iconColor: AppColors.primary,
+              label: 'Phone',
+              value: lead.phone ?? '—',
+              isLink: lead.phone != null,
+              onTap: lead.phone != null ? _callLead : null,
+              copyValue: lead.phone,
+            ),
+          // Alternate Phone (only when present, and not masked)
+          if (!hidePhone &&
+              lead.alternatePhone != null &&
               lead.alternatePhone!.isNotEmpty) ...[
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
@@ -1045,27 +1119,36 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
             const SizedBox(height: 10),
             _buildInterestScore(_lead.interestScore!),
           ],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: ElevatedButton.icon(
-              onPressed: _showScheduleFollowUpSheet,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-              icon: const Icon(Icons.calendar_month_rounded, size: 17),
-              label: Text(
-                'Schedule Next Follow-up',
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+          // The schedule read-out above stays visible to everyone; only the
+          // button that changes it needs `leads.follow_up`.
+          Can(
+            permission: AppPermissions.leadsFollowUp,
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    onPressed: _showScheduleFollowUpSheet,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.calendar_month_rounded, size: 17),
+                    label: Text(
+                      'Schedule Next Follow-up',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -1162,7 +1245,8 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
 
   // ── Tab Bar ───────────────────────────────────────────────────────────────────
   Widget _buildTabBar() {
-    final tabs = ['Information', 'Timeline', 'Notes', 'Tasks', 'Calls'];
+    // A single remaining tab is just a label — the bar adds nothing.
+    if (_tabs.length < 2) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       height: 42,
@@ -1188,29 +1272,31 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
         unselectedLabelStyle: GoogleFonts.poppins(
             fontSize: 12, fontWeight: FontWeight.w400),
         padding: const EdgeInsets.all(3),
-        tabs: tabs.map((t) => Tab(text: t, height: 34)).toList(),
+        tabs: _tabs.map((t) => Tab(text: t.label, height: 34)).toList(),
       ),
     );
   }
 
   // ── Tab Content ───────────────────────────────────────────────────────────────
   Widget _buildTabContent() {
+    if (_tabs.isEmpty) return const SizedBox.shrink();
     return AnimatedBuilder(
       animation: _tabController,
       builder: (_, __) {
-        switch (_tabController.index) {
-          case 0:
+        // Index into the *visible* tabs, so hiding one doesn't shift the rest
+        // onto the wrong content.
+        final tab = _tabs[_tabController.index.clamp(0, _tabs.length - 1)];
+        switch (tab) {
+          case _LeadTab.information:
             return _buildInformationTab();
-          case 1:
+          case _LeadTab.timeline:
             return _buildTimelineTab();
-          case 2:
+          case _LeadTab.notes:
             return _buildNotesTab();
-          case 3:
+          case _LeadTab.tasks:
             return _buildTasksTab();
-          case 4:
+          case _LeadTab.calls:
             return _buildCallHistoryTab();
-          default:
-            return _buildInformationTab();
         }
       },
     );
@@ -1296,10 +1382,15 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
               const SizedBox(height: 12),
               _InfoField(
                   label: 'WEBSITE', value: _lead.website ?? _detail.website),
-              const SizedBox(height: 12),
-              _InfoField(
-                  label: 'ALT PHONE',
-                  value: _lead.alternatePhone ?? _detail.altPhone),
+              // Same masking rule as the contact card above.
+              if (!ref
+                  .watch(permissionsProvider)
+                  .isMasked(AppPermissions.leadsMaskPhone)) ...[
+                const SizedBox(height: 12),
+                _InfoField(
+                    label: 'ALT PHONE',
+                    value: _lead.alternatePhone ?? _detail.altPhone),
+              ],
             ],
           ),
         ),
@@ -2078,17 +2169,31 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     );
   }
 
+  /// The 3-dot menu entries this role is allowed to use. Exposed so the menu
+  /// button itself can be hidden when nothing would be left inside it.
+  List<_MenuItem> get _cardMenuItems {
+    final perms = ref.read(permissionsProvider);
+    return [
+      if (perms.can(AppPermissions.leadsEdit))
+        _MenuItem(Icons.edit_rounded, 'Edit Lead', AppColors.primary),
+      if (perms.can(AppPermissions.leadsAssign))
+        _MenuItem(Icons.person_add_outlined, 'Assign Lead', AppColors.green),
+      // Archiving is the soft form of deleting, so it rides on the same flag.
+      if (perms.can(AppPermissions.leadsDelete)) ...[
+        _MenuItem(Icons.archive_outlined, 'Archive', AppColors.textSecondary),
+        _MenuItem(Icons.delete_outline_rounded, 'Delete Lead', AppColors.red),
+      ],
+    ];
+  }
+
   void _showCardMenu(BuildContext context) {
+    final items = _cardMenuItems;
+    if (items.isEmpty) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => _MenuSheet(
-        items: [
-          _MenuItem(Icons.edit_rounded, 'Edit Lead', AppColors.primary),
-          _MenuItem(Icons.person_add_outlined, 'Assign Lead', AppColors.green),
-          _MenuItem(Icons.archive_outlined, 'Archive', AppColors.textSecondary),
-          _MenuItem(Icons.delete_outline_rounded, 'Delete Lead', AppColors.red),
-        ],
+        items: items,
         onSelected: (label) {
           if (label == 'Assign Lead') {
             _showAssignLeadSheet();

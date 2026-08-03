@@ -31,6 +31,14 @@ class ApiConstants {
   static const String refreshToken = '/refresh';
   static const String myProfile = '/my-profile';
 
+  // Roles & permissions.
+  //
+  // This one lives at `{baseUrl}/api/roles` — *outside* the `/api/v1` prefix
+  // every other endpoint uses — so it has to be an absolute URL, which Dio
+  // takes as-is instead of appending to `baseUrl`. If the backend ever moves
+  // it under the versioned prefix, delete [rolesUrl] and use `'/roles'`.
+  static String get rolesUrl => '$baseUrl/api/roles';
+
   // Leads
   static const String leads = '/leads';
   static String leadDetail(String id) => '/leads/$id';

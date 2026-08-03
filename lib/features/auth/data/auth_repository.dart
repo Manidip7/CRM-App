@@ -9,6 +9,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_result.dart';
 import '../../../core/network/network_providers.dart';
 import '../../../core/network/token_storage.dart';
+import '../../../core/permissions/permissions_store.dart';
 import '../model/auth_session.dart';
 import 'session_store.dart';
 
@@ -109,6 +110,10 @@ class AuthSessionNotifier extends Notifier<AuthSession?> {
 
   /// Stores the full session in local storage and updates app state.
   Future<void> setSession(AuthSession session) async {
+    // Drop the previous user's cached permission map before the new session
+    // goes live, otherwise the first frame after login could briefly gate the
+    // UI with the *old* account's role.
+    await ref.read(permissionsStoreProvider).clear();
     await ref.read(sessionStoreProvider).save(session);
     state = session;
   }
@@ -116,6 +121,7 @@ class AuthSessionNotifier extends Notifier<AuthSession?> {
   Future<void> logout() async {
     await ref.read(authRepositoryProvider).logout();
     await ref.read(sessionStoreProvider).clear();
+    await ref.read(permissionsStoreProvider).clear();
     state = null;
   }
 }
