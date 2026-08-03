@@ -9,13 +9,28 @@ part of 'dashboard_provider.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 /// Currently selected bottom-navigation index for the dashboard shell.
+///
+/// The starting section is permission-aware: a role without `dashboard.view`
+/// would otherwise land on an Overview it isn't allowed to see, so we open the
+/// first section it *can* see instead. Re-evaluated if the permission set
+/// changes (login, or the roles request landing after a cold start).
 
 @ProviderFor(DashboardNav)
 final dashboardNavProvider = DashboardNavProvider._();
 
 /// Currently selected bottom-navigation index for the dashboard shell.
+///
+/// The starting section is permission-aware: a role without `dashboard.view`
+/// would otherwise land on an Overview it isn't allowed to see, so we open the
+/// first section it *can* see instead. Re-evaluated if the permission set
+/// changes (login, or the roles request landing after a cold start).
 final class DashboardNavProvider extends $NotifierProvider<DashboardNav, int> {
   /// Currently selected bottom-navigation index for the dashboard shell.
+  ///
+  /// The starting section is permission-aware: a role without `dashboard.view`
+  /// would otherwise land on an Overview it isn't allowed to see, so we open the
+  /// first section it *can* see instead. Re-evaluated if the permission set
+  /// changes (login, or the roles request landing after a cold start).
   DashboardNavProvider._()
     : super(
         from: null,
@@ -43,9 +58,14 @@ final class DashboardNavProvider extends $NotifierProvider<DashboardNav, int> {
   }
 }
 
-String _$dashboardNavHash() => r'cd987ae2643e46d7e65c9f7c0996bd0bd7311f79';
+String _$dashboardNavHash() => r'8a88fca8dbfead102f9bb937c7f3a719a0663f22';
 
 /// Currently selected bottom-navigation index for the dashboard shell.
+///
+/// The starting section is permission-aware: a role without `dashboard.view`
+/// would otherwise land on an Overview it isn't allowed to see, so we open the
+/// first section it *can* see instead. Re-evaluated if the permission set
+/// changes (login, or the roles request landing after a cold start).
 
 abstract class _$DashboardNav extends $Notifier<int> {
   int build();

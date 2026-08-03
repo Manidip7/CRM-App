@@ -11,6 +11,7 @@ import '../../../routes/app_routes.dart';
 import '../data/leads_repository.dart';
 import '../model/lead_model.dart';
 import '../provider/leads_provider.dart';
+import 'leads_filter_sheet.dart';
 
 class LeadsScreen extends ConsumerStatefulWidget {
   const LeadsScreen({super.key});
@@ -368,8 +369,11 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
   }
 
   Widget _buildSearchBar() {
-    final hasDateFilter =
-        ref.watch(leadsFilterProvider.select((s) => s.hasDateFilter));
+    // Badge count for the tune button — how many advanced dropdowns are
+    // narrowing the list right now.
+    final activeFilters = ref.watch(
+        leadsFilterProvider.select((s) => s.advancedFilterCount));
+    final hasFilters = activeFilters > 0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: Row(
@@ -431,25 +435,57 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
             ),
           ),
           const SizedBox(width: 10),
-          // Filter button (date range). Shows a dot when a filter is active.
+          // Filter button — opens the advanced filter panel (status, source,
+          // lead type, territory, date range, assignee). Carries a badge with
+          // the number of active filters.
           GestureDetector(
-            onTap: _openDateFilterSheet,
-            child: Container(
-              height: 46,
-              width: 46,
-              decoration: BoxDecoration(
-                color: hasDateFilter ? _accent : AppColors.cardBackground,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: hasDateFilter ? _accent : AppColors.divider,
-                  width: 0.8,
+            onTap: _openAdvancedFilterSheet,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  height: 46,
+                  width: 46,
+                  decoration: BoxDecoration(
+                    color: hasFilters ? _accent : AppColors.cardBackground,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: hasFilters ? _accent : AppColors.divider,
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.tune_rounded,
+                    size: 21,
+                    color:
+                        hasFilters ? Colors.white : AppColors.textSecondary,
+                  ),
                 ),
-              ),
-              child: Icon(
-                Icons.tune_rounded,
-                size: 21,
-                color: hasDateFilter ? Colors.white : AppColors.textSecondary,
-              ),
+                if (hasFilters)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: Container(
+                      width: 19,
+                      height: 19,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppColors.red,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: AppColors.background, width: 1.5),
+                      ),
+                      child: Text(
+                        '$activeFilters',
+                        style: GoogleFonts.poppins(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
@@ -457,179 +493,11 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
     );
   }
 
-  /// Bottom sheet to pick the `from_date` / `to_date` server-side filter.
-  Future<void> _openDateFilterSheet() async {
-    final filter = ref.read(leadsFilterProvider);
-    DateTime? from = filter.fromDate;
-    DateTime? to = filter.toDate;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.cardBackground,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      isScrollControlled: true,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            String fmt(DateTime? d) => d == null
-                ? 'Select date'
-                : '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-            Future<void> pick(bool isFrom) async {
-              final now = DateTime.now();
-              final picked = await showDatePicker(
-                context: ctx,
-                initialDate: (isFrom ? from : to) ?? now,
-                firstDate: DateTime(2020),
-                lastDate: DateTime(now.year + 2),
-              );
-              if (picked != null) {
-                setSheetState(() {
-                  if (isFrom) {
-                    from = picked;
-                  } else {
-                    to = picked;
-                  }
-                });
-              }
-            }
-
-            final media = MediaQuery.of(ctx);
-            return Padding(
-              // viewInsets = keyboard, viewPadding = system nav bar / gesture
-              // bar. Without the latter the action buttons sit under the
-              // Android navigation buttons.
-              padding: EdgeInsets.fromLTRB(20, 16, 20,
-                  20 + media.viewInsets.bottom + media.viewPadding.bottom),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.divider,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Filter by date',
-                    style: GoogleFonts.poppins(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _dateField('From date', fmt(from), () => pick(true)),
-                  const SizedBox(height: 12),
-                  _dateField('To date', fmt(to), () => pick(false)),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () {
-                            ref.read(leadsFilterProvider.notifier)
-                                .clearDateRange();
-                            Navigator.pop(ctx);
-                          },
-                          style: OutlinedButton.styleFrom(
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
-                            side: BorderSide(color: AppColors.divider),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: Text(
-                            'Clear',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () {
-                            ref
-                                .read(leadsFilterProvider.notifier)
-                                .setDateRange(from: from, to: to);
-                            Navigator.pop(ctx);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _accent,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: Text(
-                            'Apply',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _dateField(String label, String value, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.divider, width: 0.8),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.calendar_today_rounded,
-                size: 16, color: _accent),
-            const SizedBox(width: 10),
-            Text(
-              '$label: ',
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            Text(
-              value,
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  /// Opens the advanced filter panel. Every dropdown maps to one `GET /leads`
+  /// query param; the sheet applies them all at once so the list refetches
+  /// a single time.
+  Future<void> _openAdvancedFilterSheet() =>
+      showLeadsFilterSheet(context, accent: _accent);
 
   Widget _buildFilterChips() {
     final filter = ref.watch(leadsFilterProvider);

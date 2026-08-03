@@ -35,12 +35,17 @@ class LeadsRepository {
   /// How many leads to fetch per page.
   static const int perPage = 10;
 
-  /// GET /leads?page=N&per_page=10 — supports optional search, `status_id`,
-  /// `source`, repeated `quick_filter` and date-range query params, and returns
-  /// one paginated [LeadsPage].
+  /// GET /leads?page=N&per_page=10 — every filter the endpoint accepts is
+  /// optional; anything left `null` is omitted from the query string entirely
+  /// (rather than sent empty, which the backend would treat as a real filter).
+  /// Returns one paginated [LeadsPage].
   ///
   /// [quickFilters] is sent as repeated `quick_filter=today&quick_filter=...`
   /// params (Dio is configured with `ListFormat.multi`, so no `[]` brackets).
+  ///
+  /// [fromDate] / [toDate] are `yyyy-MM-dd`. When both are present the combined
+  /// `date_range=<from> to <to>` param is sent alongside them, since the API
+  /// documents both spellings.
   Future<ApiResult<LeadsPage>> getLeads({
     int page = 1,
     String? search,
@@ -49,7 +54,17 @@ class LeadsRepository {
     List<String>? quickFilters,
     String? fromDate,
     String? toDate,
+    int? leadSourceId,
+    int? leadTypeId,
+    int? territoryId,
+    int? assignedTo,
+    int? branchId,
+    String? category,
+    String? priority,
   }) {
+    final hasFrom = fromDate != null && fromDate.isNotEmpty;
+    final hasTo = toDate != null && toDate.isNotEmpty;
+
     return _api.get<LeadsPage>(
       ApiConstants.leads,
       queryParameters: {
@@ -60,8 +75,16 @@ class LeadsRepository {
         if (source != null && source.isNotEmpty) 'source': source,
         if (quickFilters != null && quickFilters.isNotEmpty)
           'quick_filter': quickFilters,
-        if (fromDate != null && fromDate.isNotEmpty) 'from_date': fromDate,
-        if (toDate != null && toDate.isNotEmpty) 'to_date': toDate,
+        if (hasFrom) 'from_date': fromDate,
+        if (hasTo) 'to_date': toDate,
+        if (hasFrom && hasTo) 'date_range': '$fromDate to $toDate',
+        if (leadSourceId != null) 'lead_source_id': leadSourceId,
+        if (leadTypeId != null) 'lead_type_id': leadTypeId,
+        if (territoryId != null) 'territory_id': territoryId,
+        if (assignedTo != null) 'assigned_to': assignedTo,
+        if (branchId != null) 'branch_id': branchId,
+        if (category != null && category.isNotEmpty) 'category': category,
+        if (priority != null && priority.isNotEmpty) 'priority': priority,
       },
       decoder: _decodePage,
     );

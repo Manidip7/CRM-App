@@ -41,7 +41,7 @@ final class LeadsFilterProvider
   }
 }
 
-String _$leadsFilterHash() => r'206d0edfc04711ec5f7cd06040f1b227fbc7c35a';
+String _$leadsFilterHash() => r'86fbdd645c262e7387205dc5d98c2646f77e5da9';
 
 abstract class _$LeadsFilter extends $Notifier<LeadsFilterState> {
   LeadsFilterState build();
@@ -155,38 +155,54 @@ final class LeadsServerQueryProvider
     extends
         $FunctionalProvider<
           ({
+            int? assignedTo,
             DateTime? fromDate,
+            int? leadSourceId,
+            int? leadTypeId,
             String quickFilters,
             String search,
             String? source,
             int? statusId,
+            int? territoryId,
             DateTime? toDate,
           }),
           ({
+            int? assignedTo,
             DateTime? fromDate,
+            int? leadSourceId,
+            int? leadTypeId,
             String quickFilters,
             String search,
             String? source,
             int? statusId,
+            int? territoryId,
             DateTime? toDate,
           }),
           ({
+            int? assignedTo,
             DateTime? fromDate,
+            int? leadSourceId,
+            int? leadTypeId,
             String quickFilters,
             String search,
             String? source,
             int? statusId,
+            int? territoryId,
             DateTime? toDate,
           })
         >
     with
         $Provider<
           ({
+            int? assignedTo,
             DateTime? fromDate,
+            int? leadSourceId,
+            int? leadTypeId,
             String quickFilters,
             String search,
             String? source,
             int? statusId,
+            int? territoryId,
             DateTime? toDate,
           })
         > {
@@ -213,11 +229,15 @@ final class LeadsServerQueryProvider
   @override
   $ProviderElement<
     ({
+      int? assignedTo,
       DateTime? fromDate,
+      int? leadSourceId,
+      int? leadTypeId,
       String quickFilters,
       String search,
       String? source,
       int? statusId,
+      int? territoryId,
       DateTime? toDate,
     })
   >
@@ -225,11 +245,15 @@ final class LeadsServerQueryProvider
 
   @override
   ({
+    int? assignedTo,
     DateTime? fromDate,
+    int? leadSourceId,
+    int? leadTypeId,
     String quickFilters,
     String search,
     String? source,
     int? statusId,
+    int? territoryId,
     DateTime? toDate,
   })
   create(Ref ref) {
@@ -239,11 +263,15 @@ final class LeadsServerQueryProvider
   /// {@macro riverpod.override_with_value}
   Override overrideWithValue(
     ({
+      int? assignedTo,
       DateTime? fromDate,
+      int? leadSourceId,
+      int? leadTypeId,
       String quickFilters,
       String search,
       String? source,
       int? statusId,
+      int? territoryId,
       DateTime? toDate,
     })
     value,
@@ -253,11 +281,15 @@ final class LeadsServerQueryProvider
       providerOverride:
           $SyncValueProvider<
             ({
+              int? assignedTo,
               DateTime? fromDate,
+              int? leadSourceId,
+              int? leadTypeId,
               String quickFilters,
               String search,
               String? source,
               int? statusId,
+              int? territoryId,
               DateTime? toDate,
             })
           >(value),
@@ -265,7 +297,7 @@ final class LeadsServerQueryProvider
   }
 }
 
-String _$leadsServerQueryHash() => r'636bc74068a29e8a7efc6439e9f65d4426b26d8e';
+String _$leadsServerQueryHash() => r'2070a6c3d6729746d6a24b98e8a0a1a4f1a9c525';
 
 @ProviderFor(LeadsList)
 final leadsListProvider = LeadsListProvider._();
@@ -291,7 +323,7 @@ final class LeadsListProvider
   LeadsList create() => LeadsList();
 }
 
-String _$leadsListHash() => r'4d7da3df7886e157a500d65509e524841b6c74d3';
+String _$leadsListHash() => r'2b26d8c965a9972c3b7aab77c49adbc06ef3ff42';
 
 abstract class _$LeadsList extends $AsyncNotifier<List<LeadModel>> {
   FutureOr<List<LeadModel>> build();

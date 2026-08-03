@@ -17,7 +17,17 @@ mixin _$LeadsFilterState {
  String get searchQuery; LeadStatus? get filterStatus; LeadSource? get filterSource;/// Server-side `quick_filter` values (today / upcoming / overdue /
 /// my_leads). Multiple can be active at once.
  Set<String> get quickFilters; bool get showBacklog;/// Server-side date range filter (`from_date` / `to_date`).
- DateTime? get fromDate; DateTime? get toDate;
+ DateTime? get fromDate; DateTime? get toDate;// ── Advanced filter (the dropdowns behind the tune button) ──────────────
+// Each maps to one query param on `GET /leads`. `null` means "All …" and
+// the param is left off the request entirely.
+/// `status_id` — takes precedence over the [filterStatus] chip.
+ int? get statusId;/// `lead_source_id`.
+ int? get leadSourceId;/// `lead_type_id`.
+ int? get leadTypeId;/// `territory_id`.
+ int? get territoryId;/// `assigned_to`.
+ int? get assignedTo;/// Which preset the "All Time" dropdown is showing. The dates it resolved
+/// to live in [fromDate] / [toDate].
+ LeadDateRange get dateRange;
 /// Create a copy of LeadsFilterState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -28,16 +38,16 @@ $LeadsFilterStateCopyWith<LeadsFilterState> get copyWith => _$LeadsFilterStateCo
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LeadsFilterState&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.filterStatus, filterStatus) || other.filterStatus == filterStatus)&&(identical(other.filterSource, filterSource) || other.filterSource == filterSource)&&const DeepCollectionEquality().equals(other.quickFilters, quickFilters)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.fromDate, fromDate) || other.fromDate == fromDate)&&(identical(other.toDate, toDate) || other.toDate == toDate));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LeadsFilterState&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.filterStatus, filterStatus) || other.filterStatus == filterStatus)&&(identical(other.filterSource, filterSource) || other.filterSource == filterSource)&&const DeepCollectionEquality().equals(other.quickFilters, quickFilters)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.fromDate, fromDate) || other.fromDate == fromDate)&&(identical(other.toDate, toDate) || other.toDate == toDate)&&(identical(other.statusId, statusId) || other.statusId == statusId)&&(identical(other.leadSourceId, leadSourceId) || other.leadSourceId == leadSourceId)&&(identical(other.leadTypeId, leadTypeId) || other.leadTypeId == leadTypeId)&&(identical(other.territoryId, territoryId) || other.territoryId == territoryId)&&(identical(other.assignedTo, assignedTo) || other.assignedTo == assignedTo)&&(identical(other.dateRange, dateRange) || other.dateRange == dateRange));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,searchQuery,filterStatus,filterSource,const DeepCollectionEquality().hash(quickFilters),showBacklog,fromDate,toDate);
+int get hashCode => Object.hash(runtimeType,searchQuery,filterStatus,filterSource,const DeepCollectionEquality().hash(quickFilters),showBacklog,fromDate,toDate,statusId,leadSourceId,leadTypeId,territoryId,assignedTo,dateRange);
 
 @override
 String toString() {
-  return 'LeadsFilterState(searchQuery: $searchQuery, filterStatus: $filterStatus, filterSource: $filterSource, quickFilters: $quickFilters, showBacklog: $showBacklog, fromDate: $fromDate, toDate: $toDate)';
+  return 'LeadsFilterState(searchQuery: $searchQuery, filterStatus: $filterStatus, filterSource: $filterSource, quickFilters: $quickFilters, showBacklog: $showBacklog, fromDate: $fromDate, toDate: $toDate, statusId: $statusId, leadSourceId: $leadSourceId, leadTypeId: $leadTypeId, territoryId: $territoryId, assignedTo: $assignedTo, dateRange: $dateRange)';
 }
 
 
@@ -48,7 +58,7 @@ abstract mixin class $LeadsFilterStateCopyWith<$Res>  {
   factory $LeadsFilterStateCopyWith(LeadsFilterState value, $Res Function(LeadsFilterState) _then) = _$LeadsFilterStateCopyWithImpl;
 @useResult
 $Res call({
- String searchQuery, LeadStatus? filterStatus, LeadSource? filterSource, Set<String> quickFilters, bool showBacklog, DateTime? fromDate, DateTime? toDate
+ String searchQuery, LeadStatus? filterStatus, LeadSource? filterSource, Set<String> quickFilters, bool showBacklog, DateTime? fromDate, DateTime? toDate, int? statusId, int? leadSourceId, int? leadTypeId, int? territoryId, int? assignedTo, LeadDateRange dateRange
 });
 
 
@@ -65,7 +75,7 @@ class _$LeadsFilterStateCopyWithImpl<$Res>
 
 /// Create a copy of LeadsFilterState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? searchQuery = null,Object? filterStatus = freezed,Object? filterSource = freezed,Object? quickFilters = null,Object? showBacklog = null,Object? fromDate = freezed,Object? toDate = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? searchQuery = null,Object? filterStatus = freezed,Object? filterSource = freezed,Object? quickFilters = null,Object? showBacklog = null,Object? fromDate = freezed,Object? toDate = freezed,Object? statusId = freezed,Object? leadSourceId = freezed,Object? leadTypeId = freezed,Object? territoryId = freezed,Object? assignedTo = freezed,Object? dateRange = null,}) {
   return _then(_self.copyWith(
 searchQuery: null == searchQuery ? _self.searchQuery : searchQuery // ignore: cast_nullable_to_non_nullable
 as String,filterStatus: freezed == filterStatus ? _self.filterStatus : filterStatus // ignore: cast_nullable_to_non_nullable
@@ -74,7 +84,13 @@ as LeadSource?,quickFilters: null == quickFilters ? _self.quickFilters : quickFi
 as Set<String>,showBacklog: null == showBacklog ? _self.showBacklog : showBacklog // ignore: cast_nullable_to_non_nullable
 as bool,fromDate: freezed == fromDate ? _self.fromDate : fromDate // ignore: cast_nullable_to_non_nullable
 as DateTime?,toDate: freezed == toDate ? _self.toDate : toDate // ignore: cast_nullable_to_non_nullable
-as DateTime?,
+as DateTime?,statusId: freezed == statusId ? _self.statusId : statusId // ignore: cast_nullable_to_non_nullable
+as int?,leadSourceId: freezed == leadSourceId ? _self.leadSourceId : leadSourceId // ignore: cast_nullable_to_non_nullable
+as int?,leadTypeId: freezed == leadTypeId ? _self.leadTypeId : leadTypeId // ignore: cast_nullable_to_non_nullable
+as int?,territoryId: freezed == territoryId ? _self.territoryId : territoryId // ignore: cast_nullable_to_non_nullable
+as int?,assignedTo: freezed == assignedTo ? _self.assignedTo : assignedTo // ignore: cast_nullable_to_non_nullable
+as int?,dateRange: null == dateRange ? _self.dateRange : dateRange // ignore: cast_nullable_to_non_nullable
+as LeadDateRange,
   ));
 }
 
@@ -159,10 +175,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  Set<String> quickFilters,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  Set<String> quickFilters,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate,  int? statusId,  int? leadSourceId,  int? leadTypeId,  int? territoryId,  int? assignedTo,  LeadDateRange dateRange)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _LeadsFilterState() when $default != null:
-return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.quickFilters,_that.showBacklog,_that.fromDate,_that.toDate);case _:
+return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.quickFilters,_that.showBacklog,_that.fromDate,_that.toDate,_that.statusId,_that.leadSourceId,_that.leadTypeId,_that.territoryId,_that.assignedTo,_that.dateRange);case _:
   return orElse();
 
 }
@@ -180,10 +196,10 @@ return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.qu
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  Set<String> quickFilters,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  Set<String> quickFilters,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate,  int? statusId,  int? leadSourceId,  int? leadTypeId,  int? territoryId,  int? assignedTo,  LeadDateRange dateRange)  $default,) {final _that = this;
 switch (_that) {
 case _LeadsFilterState():
-return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.quickFilters,_that.showBacklog,_that.fromDate,_that.toDate);case _:
+return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.quickFilters,_that.showBacklog,_that.fromDate,_that.toDate,_that.statusId,_that.leadSourceId,_that.leadTypeId,_that.territoryId,_that.assignedTo,_that.dateRange);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -200,10 +216,10 @@ return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.qu
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  Set<String> quickFilters,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String searchQuery,  LeadStatus? filterStatus,  LeadSource? filterSource,  Set<String> quickFilters,  bool showBacklog,  DateTime? fromDate,  DateTime? toDate,  int? statusId,  int? leadSourceId,  int? leadTypeId,  int? territoryId,  int? assignedTo,  LeadDateRange dateRange)?  $default,) {final _that = this;
 switch (_that) {
 case _LeadsFilterState() when $default != null:
-return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.quickFilters,_that.showBacklog,_that.fromDate,_that.toDate);case _:
+return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.quickFilters,_that.showBacklog,_that.fromDate,_that.toDate,_that.statusId,_that.leadSourceId,_that.leadTypeId,_that.territoryId,_that.assignedTo,_that.dateRange);case _:
   return null;
 
 }
@@ -215,7 +231,7 @@ return $default(_that.searchQuery,_that.filterStatus,_that.filterSource,_that.qu
 
 
 class _LeadsFilterState extends LeadsFilterState {
-  const _LeadsFilterState({this.searchQuery = '', this.filterStatus, this.filterSource, final  Set<String> quickFilters = const <String>{}, this.showBacklog = false, this.fromDate, this.toDate}): _quickFilters = quickFilters,super._();
+  const _LeadsFilterState({this.searchQuery = '', this.filterStatus, this.filterSource, final  Set<String> quickFilters = const <String>{}, this.showBacklog = false, this.fromDate, this.toDate, this.statusId, this.leadSourceId, this.leadTypeId, this.territoryId, this.assignedTo, this.dateRange = LeadDateRange.allTime}): _quickFilters = quickFilters,super._();
   
 
 @override@JsonKey() final  String searchQuery;
@@ -236,6 +252,22 @@ class _LeadsFilterState extends LeadsFilterState {
 /// Server-side date range filter (`from_date` / `to_date`).
 @override final  DateTime? fromDate;
 @override final  DateTime? toDate;
+// ── Advanced filter (the dropdowns behind the tune button) ──────────────
+// Each maps to one query param on `GET /leads`. `null` means "All …" and
+// the param is left off the request entirely.
+/// `status_id` — takes precedence over the [filterStatus] chip.
+@override final  int? statusId;
+/// `lead_source_id`.
+@override final  int? leadSourceId;
+/// `lead_type_id`.
+@override final  int? leadTypeId;
+/// `territory_id`.
+@override final  int? territoryId;
+/// `assigned_to`.
+@override final  int? assignedTo;
+/// Which preset the "All Time" dropdown is showing. The dates it resolved
+/// to live in [fromDate] / [toDate].
+@override@JsonKey() final  LeadDateRange dateRange;
 
 /// Create a copy of LeadsFilterState
 /// with the given fields replaced by the non-null parameter values.
@@ -247,16 +279,16 @@ _$LeadsFilterStateCopyWith<_LeadsFilterState> get copyWith => __$LeadsFilterStat
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LeadsFilterState&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.filterStatus, filterStatus) || other.filterStatus == filterStatus)&&(identical(other.filterSource, filterSource) || other.filterSource == filterSource)&&const DeepCollectionEquality().equals(other._quickFilters, _quickFilters)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.fromDate, fromDate) || other.fromDate == fromDate)&&(identical(other.toDate, toDate) || other.toDate == toDate));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LeadsFilterState&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.filterStatus, filterStatus) || other.filterStatus == filterStatus)&&(identical(other.filterSource, filterSource) || other.filterSource == filterSource)&&const DeepCollectionEquality().equals(other._quickFilters, _quickFilters)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.fromDate, fromDate) || other.fromDate == fromDate)&&(identical(other.toDate, toDate) || other.toDate == toDate)&&(identical(other.statusId, statusId) || other.statusId == statusId)&&(identical(other.leadSourceId, leadSourceId) || other.leadSourceId == leadSourceId)&&(identical(other.leadTypeId, leadTypeId) || other.leadTypeId == leadTypeId)&&(identical(other.territoryId, territoryId) || other.territoryId == territoryId)&&(identical(other.assignedTo, assignedTo) || other.assignedTo == assignedTo)&&(identical(other.dateRange, dateRange) || other.dateRange == dateRange));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,searchQuery,filterStatus,filterSource,const DeepCollectionEquality().hash(_quickFilters),showBacklog,fromDate,toDate);
+int get hashCode => Object.hash(runtimeType,searchQuery,filterStatus,filterSource,const DeepCollectionEquality().hash(_quickFilters),showBacklog,fromDate,toDate,statusId,leadSourceId,leadTypeId,territoryId,assignedTo,dateRange);
 
 @override
 String toString() {
-  return 'LeadsFilterState(searchQuery: $searchQuery, filterStatus: $filterStatus, filterSource: $filterSource, quickFilters: $quickFilters, showBacklog: $showBacklog, fromDate: $fromDate, toDate: $toDate)';
+  return 'LeadsFilterState(searchQuery: $searchQuery, filterStatus: $filterStatus, filterSource: $filterSource, quickFilters: $quickFilters, showBacklog: $showBacklog, fromDate: $fromDate, toDate: $toDate, statusId: $statusId, leadSourceId: $leadSourceId, leadTypeId: $leadTypeId, territoryId: $territoryId, assignedTo: $assignedTo, dateRange: $dateRange)';
 }
 
 
@@ -267,7 +299,7 @@ abstract mixin class _$LeadsFilterStateCopyWith<$Res> implements $LeadsFilterSta
   factory _$LeadsFilterStateCopyWith(_LeadsFilterState value, $Res Function(_LeadsFilterState) _then) = __$LeadsFilterStateCopyWithImpl;
 @override @useResult
 $Res call({
- String searchQuery, LeadStatus? filterStatus, LeadSource? filterSource, Set<String> quickFilters, bool showBacklog, DateTime? fromDate, DateTime? toDate
+ String searchQuery, LeadStatus? filterStatus, LeadSource? filterSource, Set<String> quickFilters, bool showBacklog, DateTime? fromDate, DateTime? toDate, int? statusId, int? leadSourceId, int? leadTypeId, int? territoryId, int? assignedTo, LeadDateRange dateRange
 });
 
 
@@ -284,7 +316,7 @@ class __$LeadsFilterStateCopyWithImpl<$Res>
 
 /// Create a copy of LeadsFilterState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? searchQuery = null,Object? filterStatus = freezed,Object? filterSource = freezed,Object? quickFilters = null,Object? showBacklog = null,Object? fromDate = freezed,Object? toDate = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? searchQuery = null,Object? filterStatus = freezed,Object? filterSource = freezed,Object? quickFilters = null,Object? showBacklog = null,Object? fromDate = freezed,Object? toDate = freezed,Object? statusId = freezed,Object? leadSourceId = freezed,Object? leadTypeId = freezed,Object? territoryId = freezed,Object? assignedTo = freezed,Object? dateRange = null,}) {
   return _then(_LeadsFilterState(
 searchQuery: null == searchQuery ? _self.searchQuery : searchQuery // ignore: cast_nullable_to_non_nullable
 as String,filterStatus: freezed == filterStatus ? _self.filterStatus : filterStatus // ignore: cast_nullable_to_non_nullable
@@ -293,7 +325,13 @@ as LeadSource?,quickFilters: null == quickFilters ? _self._quickFilters : quickF
 as Set<String>,showBacklog: null == showBacklog ? _self.showBacklog : showBacklog // ignore: cast_nullable_to_non_nullable
 as bool,fromDate: freezed == fromDate ? _self.fromDate : fromDate // ignore: cast_nullable_to_non_nullable
 as DateTime?,toDate: freezed == toDate ? _self.toDate : toDate // ignore: cast_nullable_to_non_nullable
-as DateTime?,
+as DateTime?,statusId: freezed == statusId ? _self.statusId : statusId // ignore: cast_nullable_to_non_nullable
+as int?,leadSourceId: freezed == leadSourceId ? _self.leadSourceId : leadSourceId // ignore: cast_nullable_to_non_nullable
+as int?,leadTypeId: freezed == leadTypeId ? _self.leadTypeId : leadTypeId // ignore: cast_nullable_to_non_nullable
+as int?,territoryId: freezed == territoryId ? _self.territoryId : territoryId // ignore: cast_nullable_to_non_nullable
+as int?,assignedTo: freezed == assignedTo ? _self.assignedTo : assignedTo // ignore: cast_nullable_to_non_nullable
+as int?,dateRange: null == dateRange ? _self.dateRange : dateRange // ignore: cast_nullable_to_non_nullable
+as LeadDateRange,
   ));
 }
 

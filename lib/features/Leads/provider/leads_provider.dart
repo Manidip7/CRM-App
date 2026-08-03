@@ -8,6 +8,53 @@ import '../model/lead_model.dart';
 part 'leads_provider.freezed.dart';
 part 'leads_provider.g.dart';
 
+/// The presets behind the advanced filter's "All Time" dropdown.
+///
+/// Each one resolves to a concrete `from_date` / `to_date` pair the moment the
+/// user applies it — the resolved dates are what gets stored, so the active
+/// query can't silently change underneath the list when the clock rolls past
+/// midnight. [custom] is the escape hatch: the user picks both bounds by hand.
+enum LeadDateRange {
+  allTime('All Time'),
+  today('Today'),
+  yesterday('Yesterday'),
+  thisWeek('This Week'),
+  thisMonth('This Month'),
+  lastMonth('Last Month'),
+  thisYear('This Year'),
+  custom('Custom Range');
+
+  final String label;
+
+  const LeadDateRange(this.label);
+
+  /// The `(from, to)` bounds for this preset, relative to [now]. Both are
+  /// `null` for [allTime] and [custom] — custom carries its own dates.
+  (DateTime?, DateTime?) resolve(DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    return switch (this) {
+      LeadDateRange.allTime || LeadDateRange.custom => (null, null),
+      LeadDateRange.today => (today, today),
+      LeadDateRange.yesterday => () {
+          final d = today.subtract(const Duration(days: 1));
+          return (d, d);
+        }(),
+      // Dart's weekday is 1=Mon…7=Sun, so this starts the week on Monday.
+      LeadDateRange.thisWeek => (
+          today.subtract(Duration(days: today.weekday - 1)),
+          today,
+        ),
+      LeadDateRange.thisMonth => (DateTime(now.year, now.month, 1), today),
+      LeadDateRange.lastMonth => (
+          DateTime(now.year, now.month - 1, 1),
+          // Day 0 of this month is the last day of the previous one.
+          DateTime(now.year, now.month, 0),
+        ),
+      LeadDateRange.thisYear => (DateTime(now.year, 1, 1), today),
+    };
+  }
+}
+
 @freezed
 abstract class LeadsFilterState with _$LeadsFilterState {
   const factory LeadsFilterState({
@@ -23,12 +70,48 @@ abstract class LeadsFilterState with _$LeadsFilterState {
     /// Server-side date range filter (`from_date` / `to_date`).
     DateTime? fromDate,
     DateTime? toDate,
+
+    // ── Advanced filter (the dropdowns behind the tune button) ──────────────
+    // Each maps to one query param on `GET /leads`. `null` means "All …" and
+    // the param is left off the request entirely.
+
+    /// `status_id` — takes precedence over the [filterStatus] chip.
+    int? statusId,
+
+    /// `lead_source_id`.
+    int? leadSourceId,
+
+    /// `lead_type_id`.
+    int? leadTypeId,
+
+    /// `territory_id`.
+    int? territoryId,
+
+    /// `assigned_to`.
+    int? assignedTo,
+
+    /// Which preset the "All Time" dropdown is showing. The dates it resolved
+    /// to live in [fromDate] / [toDate].
+    @Default(LeadDateRange.allTime) LeadDateRange dateRange,
   }) = _LeadsFilterState;
 
   const LeadsFilterState._();
 
   /// `true` when any server-side date filter is active.
   bool get hasDateFilter => fromDate != null || toDate != null;
+
+  /// How many advanced dropdowns are currently narrowing the list. Drives the
+  /// badge on the filter button.
+  int get advancedFilterCount => [
+        statusId,
+        leadSourceId,
+        leadTypeId,
+        territoryId,
+        assignedTo,
+        dateRange == LeadDateRange.allTime ? null : dateRange,
+      ].where((v) => v != null).length;
+
+  bool get hasAdvancedFilters => advancedFilterCount > 0;
 }
 
 @riverpod
@@ -48,6 +131,9 @@ class LeadsFilter extends _$LeadsFilter {
 
   void toggleStatus(LeadStatus s) => state = state.copyWith(
         filterStatus: state.filterStatus == s ? null : s,
+        // The chips and the advanced dropdown drive the same `status_id`, so
+        // tapping a chip takes over from whatever the dropdown had selected.
+        statusId: null,
       );
 
   void toggleSource(LeadSource s) => state = state.copyWith(
@@ -66,9 +152,59 @@ class LeadsFilter extends _$LeadsFilter {
   void setDateRange({DateTime? from, DateTime? to}) =>
       state = state.copyWith(fromDate: from, toDate: to);
 
-  void clearDateRange() =>
-      state = state.copyWith(fromDate: null, toDate: null);
+  void clearDateRange() => state = state.copyWith(
+        fromDate: null,
+        toDate: null,
+        dateRange: LeadDateRange.allTime,
+      );
 
+  /// Applies every advanced dropdown in one go, so the list refetches once
+  /// rather than once per dropdown as the user works through the sheet.
+  ///
+  /// A `null` argument means "All …" and clears that filter — which is why
+  /// this takes the whole set rather than patching one field at a time.
+  void applyAdvanced({
+    int? statusId,
+    int? leadSourceId,
+    int? leadTypeId,
+    int? territoryId,
+    int? assignedTo,
+    required LeadDateRange dateRange,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) {
+    // A preset resolves to concrete bounds now; `custom` keeps what the user
+    // picked by hand.
+    final (presetFrom, presetTo) = dateRange.resolve(DateTime.now());
+    final from = dateRange == LeadDateRange.custom ? fromDate : presetFrom;
+    final to = dateRange == LeadDateRange.custom ? toDate : presetTo;
+
+    state = state.copyWith(
+      statusId: statusId,
+      leadSourceId: leadSourceId,
+      leadTypeId: leadTypeId,
+      territoryId: territoryId,
+      assignedTo: assignedTo,
+      dateRange: dateRange,
+      fromDate: from,
+      toDate: to,
+      // The chip and the dropdown share `status_id`; the dropdown wins.
+      filterStatus: statusId != null ? null : state.filterStatus,
+    );
+  }
+
+  /// Resets every advanced dropdown back to "All …" — leaves the search box
+  /// and the quick-filter chips alone.
+  void clearAdvanced() => state = state.copyWith(
+        statusId: null,
+        leadSourceId: null,
+        leadTypeId: null,
+        territoryId: null,
+        assignedTo: null,
+        dateRange: LeadDateRange.allTime,
+        fromDate: null,
+        toDate: null,
+      );
 
   void toggleBacklog() =>
       state = LeadsFilterState(showBacklog: !state.showBacklog);
@@ -121,15 +257,25 @@ class LeadsPaginationState extends _$LeadsPaginationState {
   String quickFilters,
   DateTime? fromDate,
   DateTime? toDate,
+  int? leadSourceId,
+  int? leadTypeId,
+  int? territoryId,
+  int? assignedTo,
 }) leadsServerQuery(Ref ref) {
   final f = ref.watch(leadsFilterProvider);
   return (
     search: f.searchQuery,
-    statusId: f.filterStatus?.statusId,
+    // The advanced dropdown and the status chip both feed `status_id`; the
+    // dropdown is the explicit choice, so it wins.
+    statusId: f.statusId ?? f.filterStatus?.statusId,
     source: f.filterSource?.apiValue,
     quickFilters: (f.quickFilters.toList()..sort()).join(','),
     fromDate: f.fromDate,
     toDate: f.toDate,
+    leadSourceId: f.leadSourceId,
+    leadTypeId: f.leadTypeId,
+    territoryId: f.territoryId,
+    assignedTo: f.assignedTo,
   );
 }
 
@@ -146,11 +292,15 @@ class LeadsList extends _$LeadsList {
   List<String>? _quickFilters;
   String? _fromDate;
   String? _toDate;
+  int? _leadSourceId;
+  int? _leadTypeId;
+  int? _territoryId;
+  int? _assignedTo;
 
   @override
   Future<List<LeadModel>> build() async {
     // Re-fetch from page 1 whenever any server-side filter changes (search,
-    // status_id, source, quick_filter or date range).
+    // status_id, source, quick_filter, date range or an advanced dropdown).
     final query = ref.watch(leadsServerQueryProvider);
     _search = query.search.trim().isEmpty ? null : query.search.trim();
     _statusId = query.statusId;
@@ -159,6 +309,10 @@ class LeadsList extends _$LeadsList {
         query.quickFilters.isEmpty ? null : query.quickFilters.split(',');
     _fromDate = _fmtDate(query.fromDate);
     _toDate = _fmtDate(query.toDate);
+    _leadSourceId = query.leadSourceId;
+    _leadTypeId = query.leadTypeId;
+    _territoryId = query.territoryId;
+    _assignedTo = query.assignedTo;
 
     final page = await _fetch(1);
     _pagination.setFromPage(page);
@@ -174,6 +328,10 @@ class LeadsList extends _$LeadsList {
           quickFilters: _quickFilters,
           fromDate: _fromDate,
           toDate: _toDate,
+          leadSourceId: _leadSourceId,
+          leadTypeId: _leadTypeId,
+          territoryId: _territoryId,
+          assignedTo: _assignedTo,
         );
     return switch (result) {
       Success(:final data) => data,
