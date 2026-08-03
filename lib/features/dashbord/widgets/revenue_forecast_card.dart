@@ -3,13 +3,26 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../model/dashboard_overview_model.dart';
 
 
 class RevenueForecastCard extends StatelessWidget {
-  const RevenueForecastCard({super.key});
+  final RevenueForecast forecast;
+
+  const RevenueForecastCard({super.key, required this.forecast});
 
   @override
   Widget build(BuildContext context) {
+    final months = forecast.forecastByMonth;
+
+    // Amounts arrive in full units (e.g. 17623.34) but read best as "17.6k",
+    // so the chart is drawn in thousands and the axis follows.
+    final maxAmount = months.fold<double>(0, (m, f) {
+      final biggest = f.pipeline > f.weighted ? f.pipeline : f.weighted;
+      return biggest > m ? biggest : m;
+    });
+    final maxY = maxAmount <= 0 ? 1.0 : (maxAmount / 1000) * 1.2;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -27,26 +40,70 @@ class RevenueForecastCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Revenue Forecast (Next 3m)',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  'Revenue Forecast (Next ${months.length}m)',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _money(forecast.weightedForecast),
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  Text(
+                    'weighted of ${_money(forecast.totalPipeline)}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: 20),
+          if (months.isEmpty)
+            SizedBox(
+              height: 120,
+              child: Center(
+                child: Text(
+                  'No forecast data yet',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            )
+          else ...[
           SizedBox(
             height: 160,
             child: BarChart(
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
-                maxY: 100,
+                maxY: maxY,
                 barTouchData: BarTouchData(
                   touchTooltipData: BarTouchTooltipData(
                     getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      // rodIndex 0 is pipeline, 1 is weighted.
+                      final series = rodIndex == 0 ? 'Pipeline' : 'Weighted';
                       return BarTooltipItem(
-                        '${rod.toY.toStringAsFixed(0)}k',
+                        '$series  ${rod.toY.toStringAsFixed(1)}k',
                         GoogleFonts.poppins(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
@@ -57,20 +114,24 @@ class RevenueForecastCard extends StatelessWidget {
                   ),
                 ),
                 titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
                       getTitlesWidget: (value, _) {
-                        const labels = ['JUL', 'AUG', 'SEP'];
                         final idx = value.toInt();
-                        if (idx < 0 || idx >= labels.length) return const SizedBox.shrink();
+                        if (idx < 0 || idx >= months.length) {
+                          return const SizedBox.shrink();
+                        }
                         return Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(
-                            labels[idx],
+                            months[idx].month.toUpperCase(),
                             style: GoogleFonts.poppins(
                               fontSize: 10,
                               color: AppColors.textSecondary,
@@ -86,29 +147,31 @@ class RevenueForecastCard extends StatelessWidget {
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
-                  horizontalInterval: 25,
-                  getDrawingHorizontalLine: (_) => FlLine(
+                  horizontalInterval: maxY / 4,
+                  getDrawingHorizontalLine: (_) => const FlLine(
                     color: AppColors.divider,
                     strokeWidth: 1,
                   ),
                 ),
                 borderData: FlBorderData(show: false),
                 barGroups: [
-                  // JUL
-                  BarChartGroupData(x: 0, barsSpace: 4, barRods: [
-                    BarChartRodData(toY: 72, color: AppColors.barPipeline, width: 16, borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
-                    BarChartRodData(toY: 45, color: AppColors.barWeighted, width: 16, borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
-                  ]),
-                  // AUG
-                  BarChartGroupData(x: 1, barsSpace: 4, barRods: [
-                    BarChartRodData(toY: 88, color: AppColors.barPipeline, width: 16, borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
-                    BarChartRodData(toY: 55, color: AppColors.barWeighted, width: 16, borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
-                  ]),
-                  // SEP
-                  BarChartGroupData(x: 2, barsSpace: 4, barRods: [
-                    BarChartRodData(toY: 78, color: AppColors.barPipeline, width: 16, borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
-                    BarChartRodData(toY: 62, color: AppColors.barWeighted, width: 16, borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
-                  ]),
+                  for (var i = 0; i < months.length; i++)
+                    BarChartGroupData(x: i, barsSpace: 4, barRods: [
+                      BarChartRodData(
+                        toY: months[i].pipeline / 1000,
+                        color: AppColors.barPipeline,
+                        width: 16,
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(6)),
+                      ),
+                      BarChartRodData(
+                        toY: months[i].weighted / 1000,
+                        color: AppColors.barWeighted,
+                        width: 16,
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(6)),
+                      ),
+                    ]),
                 ],
               ),
             ),
@@ -122,10 +185,16 @@ class RevenueForecastCard extends StatelessWidget {
               _LegendDot(color: AppColors.barWeighted, label: 'Weighted'),
             ],
           ),
+          ],
         ],
       ),
     );
   }
+
+  /// `25176.2` → `25.2k`.
+  static String _money(double value) => value.abs() >= 1000
+      ? '${(value / 1000).toStringAsFixed(1)}k'
+      : value.toStringAsFixed(0);
 }
 
 class _LegendDot extends StatelessWidget {

@@ -21,49 +21,110 @@ import '../../quotations/view/quotations_screen.dart';
 import '../../customers/view/customers_screen.dart';
 import '../../invoices/view/invoices_screen.dart';
 import '../../projects/view/projects_screen.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../core/constants/bottom_nav_bar.dart';
 import '../../../core/permissions/permissions.dart';
+import '../model/dashboard_overview_model.dart';
 import '../model/dashboard_section.dart';
+import '../provider/dashboard_overview_provider.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
-  Widget _buildOverviewBody() {
+  /// The Overview tab. Every card is fed by the single
+  /// `GET /dashboard/overview` request, so the whole tab shares one loading /
+  /// error state and one pull-to-refresh.
+  Widget _buildOverviewBody(WidgetRef ref) {
+    final overviewAsync = ref.watch(dashboardOverviewProvider);
+
     return Column(
       children: [
         const TopBar(),
         Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: RefreshIndicator(
+            color: AppColors.primary,
+            onRefresh: () => ref.refresh(dashboardOverviewProvider.future),
+            child: switch (overviewAsync) {
+              // Only block the screen on the very first load; a refresh keeps
+              // the previous numbers on screen behind the spinner.
+              AsyncValue(:final value?) => _buildOverviewContent(value),
+              AsyncError(:final error) => _buildErrorState(ref, error),
+              _ => const Center(child: CircularProgressIndicator()),
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOverviewContent(DashboardOverview data) {
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics()),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 12),
+          LeadsSummaryCard.fromCounter(data.leadsCounter),
+          const SizedBox(height: 16),
+          StatCardsRow(stats: data.overview),
+          const SizedBox(height: 16),
+          LeadFunnelCard(funnel: data.leadFunnel),
+          const SizedBox(height: 16),
+          SourceDistributionCard.fromDistribution(data.sourceDistribution),
+          const SizedBox(height: 16),
+          ResponseRateCard(rate: data.responseRate),
+          const SizedBox(height: 16),
+          LeadToWonTrendCard(trend: data.leadToWonTrend),
+          const SizedBox(height: 16),
+          TopSalesPerformersCard(performers: data.topSalesPerformers),
+          const SizedBox(height: 16),
+          RevenueForecastCard(forecast: data.revenueForecast),
+          const SizedBox(height: 16),
+          LossReasonsCard(reasons: data.lossReasons),
+          const SizedBox(height: 90),
+        ],
+      ),
+    );
+  }
+
+  /// Scrollable so pull-to-refresh still works when the first load failed.
+  Widget _buildErrorState(WidgetRef ref, Object error) {
+    final message = error is ApiException
+        ? error.message
+        : 'Could not load the dashboard.';
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics()),
+      children: [
+        SizedBox(
+          height: 360,
+          child: Center(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                const Icon(Icons.cloud_off_rounded,
+                    color: AppColors.red, size: 40),
                 const SizedBox(height: 12),
-                const LeadsSummaryCard(
-                  todayCount: 1,
-                  weekCount: 2,
-                  monthCount: 5,
-                  totalCount: 5,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                        fontSize: 14, color: AppColors.textSecondary),
+                  ),
                 ),
-                const SizedBox(height: 16),
-                const StatCardsRow(),
-                const SizedBox(height: 16),
-                const LeadFunnelCard(),
-                const SizedBox(height: 16),
-                const SourceDistributionCard(),
-                const SizedBox(height: 16),
-                const ResponseRateCard(),
-                const SizedBox(height: 16),
-                const LeadToWonTrendCard(),
-                const SizedBox(height: 16),
-                const TopSalesPerformersCard(),
-                const SizedBox(height: 16),
-                const RevenueForecastCard(),
-                const SizedBox(height: 16),
-                const LossReasonsCard(),
-                const SizedBox(height: 90),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: () => ref.invalidate(dashboardOverviewProvider),
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label:
+                      Text('Retry', style: GoogleFonts.poppins(fontSize: 14)),
+                ),
               ],
             ),
           ),
@@ -97,7 +158,7 @@ class DashboardScreen extends ConsumerWidget {
     Widget body;
     switch (selectedNavIndex) {
       case 0:
-        body = _buildOverviewBody();
+        body = _buildOverviewBody(ref);
         break;
       case 1:
         body = LeadsScreen();
@@ -124,7 +185,7 @@ class DashboardScreen extends ConsumerWidget {
         body = const ProjectsScreen();
         break;
       default:
-        body = _buildOverviewBody();
+        body = _buildOverviewBody(ref);
     }
 
     return Scaffold(

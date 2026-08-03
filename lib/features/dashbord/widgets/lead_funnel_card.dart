@@ -2,25 +2,48 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../model/dashboard_overview_model.dart';
 
 class LeadFunnelCard extends StatelessWidget {
-  const LeadFunnelCard({super.key});
+  final LeadFunnel funnel;
 
-  static const List<_Stage> _stages = [
-    _Stage('New Leads', 20, AppColors.leadFunnelNew),
-    _Stage('Contacted', 15, AppColors.leadFunnelContacted),
-    _Stage('Qualified', 2, AppColors.accent),
-    _Stage('Proposal Sent', 5, AppColors.leadFunnelQualified),
-    _Stage('Negotiation', 0, AppColors.green),
-    _Stage('Won', 5, AppColors.leadFunnelWon),
+  const LeadFunnelCard({super.key, required this.funnel});
+
+  /// Used only when the API omits a stage colour.
+  static const List<Color> _fallbackPalette = [
+    AppColors.leadFunnelNew,
+    AppColors.leadFunnelContacted,
+    AppColors.accent,
+    AppColors.leadFunnelQualified,
+    AppColors.green,
+    AppColors.leadFunnelWon,
   ];
 
   @override
   Widget build(BuildContext context) {
-    final stages = _stages;
-    final total = stages.fold<int>(0, (a, b) => a + b.count);
-    final won = stages.last.count;
-    final convRate = total == 0 ? 0 : ((won / total) * 100).round();
+    final stages = [
+      for (var i = 0; i < funnel.stages.length; i++)
+        _Stage(
+          funnel.stages[i].label,
+          funnel.stages[i].count,
+          funnel.stages[i].color ??
+              _fallbackPalette[i % _fallbackPalette.length],
+        ),
+    ];
+
+    if (stages.isEmpty) {
+      return const _DashCard(
+        child: _EmptyState(
+          icon: Icons.filter_alt_outlined,
+          message: 'No funnel data yet',
+        ),
+      );
+    }
+
+    // The API reports both numbers, so use them rather than re-deriving from
+    // the stage counts (which double-count leads sitting in several stages).
+    final total = funnel.totalInPipeline;
+    final convRate = funnel.conversionRatePercentage;
 
     return _DashCard(
       child: Column(
@@ -246,6 +269,37 @@ class _FunnelPainter extends CustomPainter {
   @override
   bool shouldRepaint(_FunnelPainter old) =>
       old.progress != progress || old.stages != stages;
+}
+
+/// Shared "nothing to show" panel for the dashboard cards.
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String message;
+
+  const _EmptyState({required this.icon, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 120,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 36, color: AppColors.textLight),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _DashCard extends StatelessWidget {

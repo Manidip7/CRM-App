@@ -3,12 +3,18 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../model/dashboard_overview_model.dart';
 
 /// A single lead/opportunity source row feeding the distribution chart.
 class SourceDatum {
   final String label;
   final int value;
-  const SourceDatum(this.label, this.value);
+
+  /// Colour the backend assigned to this source (e.g. Facebook blue). `null`
+  /// falls back to the cycling palette below.
+  final Color? color;
+
+  const SourceDatum(this.label, this.value, {this.color});
 }
 
 class SourceDistributionCard extends StatelessWidget {
@@ -23,6 +29,17 @@ class SourceDistributionCard extends StatelessWidget {
     this.sources,
     this.maxSlices = 4,
   });
+
+  /// Builds the card from the API's `source_distribution` block, keeping each
+  /// source's brand colour.
+  SourceDistributionCard.fromDistribution(
+    SourceDistribution distribution, {
+    super.key,
+    this.maxSlices = 4,
+  }) : sources = [
+          for (final s in distribution.sources)
+            SourceDatum(s.name, s.count, color: s.color),
+        ];
 
   // Cycling palette — every slice always gets a color, no matter how many.
   static const List<Color> _palette = [
@@ -96,7 +113,7 @@ class SourceDistributionCard extends StatelessWidget {
             label: data[i].label,
             value: data[i].value,
             percent: total == 0 ? 0 : data[i].value / total * 100,
-            color: _palette[i % _palette.length],
+            color: data[i].color ?? _palette[i % _palette.length],
           ),
       ];
     }
@@ -111,7 +128,7 @@ class SourceDistributionCard extends StatelessWidget {
           label: head[i].label,
           value: head[i].value,
           percent: total == 0 ? 0 : head[i].value / total * 100,
-          color: _palette[i % _palette.length],
+          color: head[i].color ?? _palette[i % _palette.length],
         ),
       _Slice(
         label: 'Others (${tail.length})',

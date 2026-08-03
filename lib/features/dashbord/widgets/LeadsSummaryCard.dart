@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../model/dashboard_overview_model.dart';
+
 
 class LeadsSummaryCard extends StatelessWidget {
   final int todayCount;
@@ -12,9 +14,16 @@ class LeadsSummaryCard extends StatelessWidget {
     super.key,
     this.todayCount = 0,
     this.weekCount = 0,
-    this.monthCount = 5,
-    this.totalCount = 5,
+    this.monthCount = 0,
+    this.totalCount = 0,
   });
+
+  /// Builds the card straight from the API's `leads_counter` block.
+  LeadsSummaryCard.fromCounter(LeadsCounter counter, {super.key})
+      : todayCount = counter.today,
+        weekCount = counter.week,
+        monthCount = counter.month,
+        totalCount = counter.total;
 
   @override
   Widget build(BuildContext context) {

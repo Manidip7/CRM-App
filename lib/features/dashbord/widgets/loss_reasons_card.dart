@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../model/dashboard_overview_model.dart';
 
 class LossReasonsCard extends StatelessWidget {
-  const LossReasonsCard({super.key});
+  final List<LossReason> reasons;
+
+  const LossReasonsCard({super.key, required this.reasons});
 
   @override
   Widget build(BuildContext context) {
@@ -34,11 +37,28 @@ class LossReasonsCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          _LossRow(label: 'Pricing too high', percent: 42, fraction: 0.42),
-          const SizedBox(height: 14),
-          _LossRow(label: 'Competitor Chosen', percent: 28, fraction: 0.28),
-          const SizedBox(height: 14),
-          _LossRow(label: 'Missing Features', percent: 16, fraction: 0.16),
+          if (reasons.isEmpty)
+            SizedBox(
+              height: 60,
+              child: Center(
+                child: Text(
+                  'No lost leads to analyse',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            )
+          else
+            for (var i = 0; i < reasons.length; i++) ...[
+              if (i != 0) const SizedBox(height: 14),
+              _LossRow(
+                label: reasons[i].label,
+                percent: reasons[i].percentage.round(),
+                fraction: (reasons[i].percentage / 100).clamp(0.0, 1.0),
+              ),
+            ],
         ],
       ),
     );

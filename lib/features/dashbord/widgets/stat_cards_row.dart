@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/utils/AppColors.dart';
+import '../model/dashboard_overview_model.dart';
 
 
 class StatCardsRow extends StatelessWidget {
-  const StatCardsRow({super.key});
+  final OverviewStats stats;
+
+  const StatCardsRow({super.key, required this.stats});
 
   @override
   Widget build(BuildContext context) {
@@ -14,23 +17,47 @@ class StatCardsRow extends StatelessWidget {
         Expanded(
           child: _StatCard(
             label: 'TOTAL LEADS',
-            value: '1,284',
-            change: '+12%',
-            isPositive: true,
+            value: _thousands(stats.totalLeads),
+            change: _signed(stats.totalLeadsGrowthPercentage),
+            // 0% is neither a rise nor a fall — treat it as neutral-positive so
+            // it doesn't render in alarm red.
+            isPositive: stats.totalLeadsGrowthPercentage >= 0,
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _StatCard(
             label: 'WIN RATE',
-            value: '24.8%',
-            change: '-3%',
-            isPositive: false,
+            value: '${_trim(stats.winRatePercentage)}%',
+            change: _signed(stats.winRateChangePercentage),
+            isPositive: stats.winRateChangePercentage >= 0,
           ),
         ),
       ],
     );
   }
+
+  /// `1284` → `1,284`.
+  static String _thousands(int value) {
+    final digits = value.abs().toString();
+    final buffer = StringBuffer(value < 0 ? '-' : '');
+    for (var i = 0; i < digits.length; i++) {
+      if (i != 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(digits[i]);
+    }
+    return buffer.toString();
+  }
+
+  /// Drops a pointless `.0` so `25.0` reads as `25` but `24.8` survives.
+  static String _trim(double value) {
+    final rounded = double.parse(value.toStringAsFixed(1));
+    return rounded == rounded.roundToDouble()
+        ? rounded.toStringAsFixed(0)
+        : rounded.toStringAsFixed(1);
+  }
+
+  static String _signed(double value) =>
+      '${value >= 0 ? '+' : ''}${_trim(value)}%';
 }
 
 class _StatCard extends StatelessWidget {

@@ -3,12 +3,19 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:math' as math;
 
 import '../../../core/utils/AppColors.dart';
+import '../model/dashboard_overview_model.dart';
 
 class ResponseRateCard extends StatelessWidget {
-  const ResponseRateCard({super.key});
+  final ResponseRate rate;
+
+  const ResponseRateCard({super.key, required this.rate});
 
   @override
   Widget build(BuildContext context) {
+    // The gauge sweeps a half-circle, so the percentage maps to 0..1. Clamped
+    // because the API can report over 100%.
+    final gauge = (rate.averageSpeedPercentage / 100).clamp(0.0, 1.0);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -41,12 +48,12 @@ class ResponseRateCard extends StatelessWidget {
               width: 180,
               height: 110,
               child: CustomPaint(
-                painter: _SemiDonutPainter(value: 0.82),
+                painter: _SemiDonutPainter(value: gauge),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     Text(
-                      '82%',
+                      '${_pct(rate.averageSpeedPercentage)}%',
                       style: GoogleFonts.poppins(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
@@ -73,14 +80,25 @@ class ResponseRateCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _RateMetric(label: 'UNDER 1H', value: '64%'),
+              _RateMetric(
+                  label: 'UNDER 1H',
+                  value: '${_pct(rate.under1hPercentage)}%'),
               Container(width: 1, height: 36, color: AppColors.divider),
-              _RateMetric(label: 'TARGET', value: '90%'),
+              _RateMetric(
+                  label: 'TARGET', value: '${_pct(rate.targetPercentage)}%'),
             ],
           ),
         ],
       ),
     );
+  }
+
+  /// Drops a pointless `.0` so `90.0` reads as `90` but `87.5` survives.
+  static String _pct(double value) {
+    final rounded = double.parse(value.toStringAsFixed(1));
+    return rounded == rounded.roundToDouble()
+        ? rounded.toStringAsFixed(0)
+        : rounded.toStringAsFixed(1);
   }
 }
 
