@@ -16,7 +16,18 @@ mixin _$OpportunitiesState {
 
  List<OpportunityModel> get items; List<OpportunityModel> get backlogItems; OpportunityStage? get selectedStage; String get searchQuery; String get sortLabel; bool get showBacklog;// Pagination / loading (API-backed pipeline list).
  int get currentPage; int get lastPage; int get total; bool get isLoading; bool get isLoadingMore; Object? get error;// Backlog list (API-backed, `category=backlog`).
- bool get backlogLoading; bool get backlogLoaded; Object? get backlogError;
+ bool get backlogLoading; bool get backlogLoaded; Object? get backlogError;// ── Advanced filter (the dropdowns behind the tune button) ──────────────
+// Each maps to one query param on `GET /opportunities`. `null` / `false`
+// means "All …" and the param is left off the request entirely.
+/// `status_id`.
+ int? get statusId;/// `stage` — a raw stage id from `GET /opportunity-statuses`. Server-side,
+/// unlike [selectedStage], which is the client-side chip row above the list.
+ String? get stageFilter;/// `assigned_to`.
+ int? get assignedTo;/// Which preset the "All Time" dropdown is showing.
+ OpportunityDateRange get dateRange;/// `from_date` / `to_date` — only used by [OpportunityDateRange.custom].
+ DateTime? get fromDate; DateTime? get toDate;/// `category=active`.
+ bool get activeOnly;/// `quick_filter=my_opportunities`.
+ bool get myOpportunitiesOnly;
 /// Create a copy of OpportunitiesState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -27,16 +38,16 @@ $OpportunitiesStateCopyWith<OpportunitiesState> get copyWith => _$OpportunitiesS
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is OpportunitiesState&&const DeepCollectionEquality().equals(other.items, items)&&const DeepCollectionEquality().equals(other.backlogItems, backlogItems)&&(identical(other.selectedStage, selectedStage) || other.selectedStage == selectedStage)&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.sortLabel, sortLabel) || other.sortLabel == sortLabel)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.currentPage, currentPage) || other.currentPage == currentPage)&&(identical(other.lastPage, lastPage) || other.lastPage == lastPage)&&(identical(other.total, total) || other.total == total)&&(identical(other.isLoading, isLoading) || other.isLoading == isLoading)&&(identical(other.isLoadingMore, isLoadingMore) || other.isLoadingMore == isLoadingMore)&&const DeepCollectionEquality().equals(other.error, error)&&(identical(other.backlogLoading, backlogLoading) || other.backlogLoading == backlogLoading)&&(identical(other.backlogLoaded, backlogLoaded) || other.backlogLoaded == backlogLoaded)&&const DeepCollectionEquality().equals(other.backlogError, backlogError));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is OpportunitiesState&&const DeepCollectionEquality().equals(other.items, items)&&const DeepCollectionEquality().equals(other.backlogItems, backlogItems)&&(identical(other.selectedStage, selectedStage) || other.selectedStage == selectedStage)&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.sortLabel, sortLabel) || other.sortLabel == sortLabel)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.currentPage, currentPage) || other.currentPage == currentPage)&&(identical(other.lastPage, lastPage) || other.lastPage == lastPage)&&(identical(other.total, total) || other.total == total)&&(identical(other.isLoading, isLoading) || other.isLoading == isLoading)&&(identical(other.isLoadingMore, isLoadingMore) || other.isLoadingMore == isLoadingMore)&&const DeepCollectionEquality().equals(other.error, error)&&(identical(other.backlogLoading, backlogLoading) || other.backlogLoading == backlogLoading)&&(identical(other.backlogLoaded, backlogLoaded) || other.backlogLoaded == backlogLoaded)&&const DeepCollectionEquality().equals(other.backlogError, backlogError)&&(identical(other.statusId, statusId) || other.statusId == statusId)&&(identical(other.stageFilter, stageFilter) || other.stageFilter == stageFilter)&&(identical(other.assignedTo, assignedTo) || other.assignedTo == assignedTo)&&(identical(other.dateRange, dateRange) || other.dateRange == dateRange)&&(identical(other.fromDate, fromDate) || other.fromDate == fromDate)&&(identical(other.toDate, toDate) || other.toDate == toDate)&&(identical(other.activeOnly, activeOnly) || other.activeOnly == activeOnly)&&(identical(other.myOpportunitiesOnly, myOpportunitiesOnly) || other.myOpportunitiesOnly == myOpportunitiesOnly));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(items),const DeepCollectionEquality().hash(backlogItems),selectedStage,searchQuery,sortLabel,showBacklog,currentPage,lastPage,total,isLoading,isLoadingMore,const DeepCollectionEquality().hash(error),backlogLoading,backlogLoaded,const DeepCollectionEquality().hash(backlogError));
+int get hashCode => Object.hashAll([runtimeType,const DeepCollectionEquality().hash(items),const DeepCollectionEquality().hash(backlogItems),selectedStage,searchQuery,sortLabel,showBacklog,currentPage,lastPage,total,isLoading,isLoadingMore,const DeepCollectionEquality().hash(error),backlogLoading,backlogLoaded,const DeepCollectionEquality().hash(backlogError),statusId,stageFilter,assignedTo,dateRange,fromDate,toDate,activeOnly,myOpportunitiesOnly]);
 
 @override
 String toString() {
-  return 'OpportunitiesState(items: $items, backlogItems: $backlogItems, selectedStage: $selectedStage, searchQuery: $searchQuery, sortLabel: $sortLabel, showBacklog: $showBacklog, currentPage: $currentPage, lastPage: $lastPage, total: $total, isLoading: $isLoading, isLoadingMore: $isLoadingMore, error: $error, backlogLoading: $backlogLoading, backlogLoaded: $backlogLoaded, backlogError: $backlogError)';
+  return 'OpportunitiesState(items: $items, backlogItems: $backlogItems, selectedStage: $selectedStage, searchQuery: $searchQuery, sortLabel: $sortLabel, showBacklog: $showBacklog, currentPage: $currentPage, lastPage: $lastPage, total: $total, isLoading: $isLoading, isLoadingMore: $isLoadingMore, error: $error, backlogLoading: $backlogLoading, backlogLoaded: $backlogLoaded, backlogError: $backlogError, statusId: $statusId, stageFilter: $stageFilter, assignedTo: $assignedTo, dateRange: $dateRange, fromDate: $fromDate, toDate: $toDate, activeOnly: $activeOnly, myOpportunitiesOnly: $myOpportunitiesOnly)';
 }
 
 
@@ -47,7 +58,7 @@ abstract mixin class $OpportunitiesStateCopyWith<$Res>  {
   factory $OpportunitiesStateCopyWith(OpportunitiesState value, $Res Function(OpportunitiesState) _then) = _$OpportunitiesStateCopyWithImpl;
 @useResult
 $Res call({
- List<OpportunityModel> items, List<OpportunityModel> backlogItems, OpportunityStage? selectedStage, String searchQuery, String sortLabel, bool showBacklog, int currentPage, int lastPage, int total, bool isLoading, bool isLoadingMore, Object? error, bool backlogLoading, bool backlogLoaded, Object? backlogError
+ List<OpportunityModel> items, List<OpportunityModel> backlogItems, OpportunityStage? selectedStage, String searchQuery, String sortLabel, bool showBacklog, int currentPage, int lastPage, int total, bool isLoading, bool isLoadingMore, Object? error, bool backlogLoading, bool backlogLoaded, Object? backlogError, int? statusId, String? stageFilter, int? assignedTo, OpportunityDateRange dateRange, DateTime? fromDate, DateTime? toDate, bool activeOnly, bool myOpportunitiesOnly
 });
 
 
@@ -64,7 +75,7 @@ class _$OpportunitiesStateCopyWithImpl<$Res>
 
 /// Create a copy of OpportunitiesState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? items = null,Object? backlogItems = null,Object? selectedStage = freezed,Object? searchQuery = null,Object? sortLabel = null,Object? showBacklog = null,Object? currentPage = null,Object? lastPage = null,Object? total = null,Object? isLoading = null,Object? isLoadingMore = null,Object? error = freezed,Object? backlogLoading = null,Object? backlogLoaded = null,Object? backlogError = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? items = null,Object? backlogItems = null,Object? selectedStage = freezed,Object? searchQuery = null,Object? sortLabel = null,Object? showBacklog = null,Object? currentPage = null,Object? lastPage = null,Object? total = null,Object? isLoading = null,Object? isLoadingMore = null,Object? error = freezed,Object? backlogLoading = null,Object? backlogLoaded = null,Object? backlogError = freezed,Object? statusId = freezed,Object? stageFilter = freezed,Object? assignedTo = freezed,Object? dateRange = null,Object? fromDate = freezed,Object? toDate = freezed,Object? activeOnly = null,Object? myOpportunitiesOnly = null,}) {
   return _then(_self.copyWith(
 items: null == items ? _self.items : items // ignore: cast_nullable_to_non_nullable
 as List<OpportunityModel>,backlogItems: null == backlogItems ? _self.backlogItems : backlogItems // ignore: cast_nullable_to_non_nullable
@@ -79,7 +90,15 @@ as int,isLoading: null == isLoading ? _self.isLoading : isLoading // ignore: cas
 as bool,isLoadingMore: null == isLoadingMore ? _self.isLoadingMore : isLoadingMore // ignore: cast_nullable_to_non_nullable
 as bool,error: freezed == error ? _self.error : error ,backlogLoading: null == backlogLoading ? _self.backlogLoading : backlogLoading // ignore: cast_nullable_to_non_nullable
 as bool,backlogLoaded: null == backlogLoaded ? _self.backlogLoaded : backlogLoaded // ignore: cast_nullable_to_non_nullable
-as bool,backlogError: freezed == backlogError ? _self.backlogError : backlogError ,
+as bool,backlogError: freezed == backlogError ? _self.backlogError : backlogError ,statusId: freezed == statusId ? _self.statusId : statusId // ignore: cast_nullable_to_non_nullable
+as int?,stageFilter: freezed == stageFilter ? _self.stageFilter : stageFilter // ignore: cast_nullable_to_non_nullable
+as String?,assignedTo: freezed == assignedTo ? _self.assignedTo : assignedTo // ignore: cast_nullable_to_non_nullable
+as int?,dateRange: null == dateRange ? _self.dateRange : dateRange // ignore: cast_nullable_to_non_nullable
+as OpportunityDateRange,fromDate: freezed == fromDate ? _self.fromDate : fromDate // ignore: cast_nullable_to_non_nullable
+as DateTime?,toDate: freezed == toDate ? _self.toDate : toDate // ignore: cast_nullable_to_non_nullable
+as DateTime?,activeOnly: null == activeOnly ? _self.activeOnly : activeOnly // ignore: cast_nullable_to_non_nullable
+as bool,myOpportunitiesOnly: null == myOpportunitiesOnly ? _self.myOpportunitiesOnly : myOpportunitiesOnly // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -164,10 +183,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<OpportunityModel> items,  List<OpportunityModel> backlogItems,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel,  bool showBacklog,  int currentPage,  int lastPage,  int total,  bool isLoading,  bool isLoadingMore,  Object? error,  bool backlogLoading,  bool backlogLoaded,  Object? backlogError)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<OpportunityModel> items,  List<OpportunityModel> backlogItems,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel,  bool showBacklog,  int currentPage,  int lastPage,  int total,  bool isLoading,  bool isLoadingMore,  Object? error,  bool backlogLoading,  bool backlogLoaded,  Object? backlogError,  int? statusId,  String? stageFilter,  int? assignedTo,  OpportunityDateRange dateRange,  DateTime? fromDate,  DateTime? toDate,  bool activeOnly,  bool myOpportunitiesOnly)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _OpportunitiesState() when $default != null:
-return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQuery,_that.sortLabel,_that.showBacklog,_that.currentPage,_that.lastPage,_that.total,_that.isLoading,_that.isLoadingMore,_that.error,_that.backlogLoading,_that.backlogLoaded,_that.backlogError);case _:
+return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQuery,_that.sortLabel,_that.showBacklog,_that.currentPage,_that.lastPage,_that.total,_that.isLoading,_that.isLoadingMore,_that.error,_that.backlogLoading,_that.backlogLoaded,_that.backlogError,_that.statusId,_that.stageFilter,_that.assignedTo,_that.dateRange,_that.fromDate,_that.toDate,_that.activeOnly,_that.myOpportunitiesOnly);case _:
   return orElse();
 
 }
@@ -185,10 +204,10 @@ return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQ
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<OpportunityModel> items,  List<OpportunityModel> backlogItems,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel,  bool showBacklog,  int currentPage,  int lastPage,  int total,  bool isLoading,  bool isLoadingMore,  Object? error,  bool backlogLoading,  bool backlogLoaded,  Object? backlogError)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<OpportunityModel> items,  List<OpportunityModel> backlogItems,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel,  bool showBacklog,  int currentPage,  int lastPage,  int total,  bool isLoading,  bool isLoadingMore,  Object? error,  bool backlogLoading,  bool backlogLoaded,  Object? backlogError,  int? statusId,  String? stageFilter,  int? assignedTo,  OpportunityDateRange dateRange,  DateTime? fromDate,  DateTime? toDate,  bool activeOnly,  bool myOpportunitiesOnly)  $default,) {final _that = this;
 switch (_that) {
 case _OpportunitiesState():
-return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQuery,_that.sortLabel,_that.showBacklog,_that.currentPage,_that.lastPage,_that.total,_that.isLoading,_that.isLoadingMore,_that.error,_that.backlogLoading,_that.backlogLoaded,_that.backlogError);case _:
+return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQuery,_that.sortLabel,_that.showBacklog,_that.currentPage,_that.lastPage,_that.total,_that.isLoading,_that.isLoadingMore,_that.error,_that.backlogLoading,_that.backlogLoaded,_that.backlogError,_that.statusId,_that.stageFilter,_that.assignedTo,_that.dateRange,_that.fromDate,_that.toDate,_that.activeOnly,_that.myOpportunitiesOnly);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -205,10 +224,10 @@ return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQ
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<OpportunityModel> items,  List<OpportunityModel> backlogItems,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel,  bool showBacklog,  int currentPage,  int lastPage,  int total,  bool isLoading,  bool isLoadingMore,  Object? error,  bool backlogLoading,  bool backlogLoaded,  Object? backlogError)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<OpportunityModel> items,  List<OpportunityModel> backlogItems,  OpportunityStage? selectedStage,  String searchQuery,  String sortLabel,  bool showBacklog,  int currentPage,  int lastPage,  int total,  bool isLoading,  bool isLoadingMore,  Object? error,  bool backlogLoading,  bool backlogLoaded,  Object? backlogError,  int? statusId,  String? stageFilter,  int? assignedTo,  OpportunityDateRange dateRange,  DateTime? fromDate,  DateTime? toDate,  bool activeOnly,  bool myOpportunitiesOnly)?  $default,) {final _that = this;
 switch (_that) {
 case _OpportunitiesState() when $default != null:
-return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQuery,_that.sortLabel,_that.showBacklog,_that.currentPage,_that.lastPage,_that.total,_that.isLoading,_that.isLoadingMore,_that.error,_that.backlogLoading,_that.backlogLoaded,_that.backlogError);case _:
+return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQuery,_that.sortLabel,_that.showBacklog,_that.currentPage,_that.lastPage,_that.total,_that.isLoading,_that.isLoadingMore,_that.error,_that.backlogLoading,_that.backlogLoaded,_that.backlogError,_that.statusId,_that.stageFilter,_that.assignedTo,_that.dateRange,_that.fromDate,_that.toDate,_that.activeOnly,_that.myOpportunitiesOnly);case _:
   return null;
 
 }
@@ -220,7 +239,7 @@ return $default(_that.items,_that.backlogItems,_that.selectedStage,_that.searchQ
 
 
 class _OpportunitiesState extends OpportunitiesState {
-  const _OpportunitiesState({final  List<OpportunityModel> items = const <OpportunityModel>[], final  List<OpportunityModel> backlogItems = const <OpportunityModel>[], this.selectedStage, this.searchQuery = '', this.sortLabel = 'Newest first', this.showBacklog = false, this.currentPage = 1, this.lastPage = 1, this.total = 0, this.isLoading = true, this.isLoadingMore = false, this.error, this.backlogLoading = false, this.backlogLoaded = false, this.backlogError}): _items = items,_backlogItems = backlogItems,super._();
+  const _OpportunitiesState({final  List<OpportunityModel> items = const <OpportunityModel>[], final  List<OpportunityModel> backlogItems = const <OpportunityModel>[], this.selectedStage, this.searchQuery = '', this.sortLabel = 'Newest first', this.showBacklog = false, this.currentPage = 1, this.lastPage = 1, this.total = 0, this.isLoading = true, this.isLoadingMore = false, this.error, this.backlogLoading = false, this.backlogLoaded = false, this.backlogError, this.statusId, this.stageFilter, this.assignedTo, this.dateRange = OpportunityDateRange.allTime, this.fromDate, this.toDate, this.activeOnly = false, this.myOpportunitiesOnly = false}): _items = items,_backlogItems = backlogItems,super._();
   
 
  final  List<OpportunityModel> _items;
@@ -252,6 +271,25 @@ class _OpportunitiesState extends OpportunitiesState {
 @override@JsonKey() final  bool backlogLoading;
 @override@JsonKey() final  bool backlogLoaded;
 @override final  Object? backlogError;
+// ── Advanced filter (the dropdowns behind the tune button) ──────────────
+// Each maps to one query param on `GET /opportunities`. `null` / `false`
+// means "All …" and the param is left off the request entirely.
+/// `status_id`.
+@override final  int? statusId;
+/// `stage` — a raw stage id from `GET /opportunity-statuses`. Server-side,
+/// unlike [selectedStage], which is the client-side chip row above the list.
+@override final  String? stageFilter;
+/// `assigned_to`.
+@override final  int? assignedTo;
+/// Which preset the "All Time" dropdown is showing.
+@override@JsonKey() final  OpportunityDateRange dateRange;
+/// `from_date` / `to_date` — only used by [OpportunityDateRange.custom].
+@override final  DateTime? fromDate;
+@override final  DateTime? toDate;
+/// `category=active`.
+@override@JsonKey() final  bool activeOnly;
+/// `quick_filter=my_opportunities`.
+@override@JsonKey() final  bool myOpportunitiesOnly;
 
 /// Create a copy of OpportunitiesState
 /// with the given fields replaced by the non-null parameter values.
@@ -263,16 +301,16 @@ _$OpportunitiesStateCopyWith<_OpportunitiesState> get copyWith => __$Opportuniti
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _OpportunitiesState&&const DeepCollectionEquality().equals(other._items, _items)&&const DeepCollectionEquality().equals(other._backlogItems, _backlogItems)&&(identical(other.selectedStage, selectedStage) || other.selectedStage == selectedStage)&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.sortLabel, sortLabel) || other.sortLabel == sortLabel)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.currentPage, currentPage) || other.currentPage == currentPage)&&(identical(other.lastPage, lastPage) || other.lastPage == lastPage)&&(identical(other.total, total) || other.total == total)&&(identical(other.isLoading, isLoading) || other.isLoading == isLoading)&&(identical(other.isLoadingMore, isLoadingMore) || other.isLoadingMore == isLoadingMore)&&const DeepCollectionEquality().equals(other.error, error)&&(identical(other.backlogLoading, backlogLoading) || other.backlogLoading == backlogLoading)&&(identical(other.backlogLoaded, backlogLoaded) || other.backlogLoaded == backlogLoaded)&&const DeepCollectionEquality().equals(other.backlogError, backlogError));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _OpportunitiesState&&const DeepCollectionEquality().equals(other._items, _items)&&const DeepCollectionEquality().equals(other._backlogItems, _backlogItems)&&(identical(other.selectedStage, selectedStage) || other.selectedStage == selectedStage)&&(identical(other.searchQuery, searchQuery) || other.searchQuery == searchQuery)&&(identical(other.sortLabel, sortLabel) || other.sortLabel == sortLabel)&&(identical(other.showBacklog, showBacklog) || other.showBacklog == showBacklog)&&(identical(other.currentPage, currentPage) || other.currentPage == currentPage)&&(identical(other.lastPage, lastPage) || other.lastPage == lastPage)&&(identical(other.total, total) || other.total == total)&&(identical(other.isLoading, isLoading) || other.isLoading == isLoading)&&(identical(other.isLoadingMore, isLoadingMore) || other.isLoadingMore == isLoadingMore)&&const DeepCollectionEquality().equals(other.error, error)&&(identical(other.backlogLoading, backlogLoading) || other.backlogLoading == backlogLoading)&&(identical(other.backlogLoaded, backlogLoaded) || other.backlogLoaded == backlogLoaded)&&const DeepCollectionEquality().equals(other.backlogError, backlogError)&&(identical(other.statusId, statusId) || other.statusId == statusId)&&(identical(other.stageFilter, stageFilter) || other.stageFilter == stageFilter)&&(identical(other.assignedTo, assignedTo) || other.assignedTo == assignedTo)&&(identical(other.dateRange, dateRange) || other.dateRange == dateRange)&&(identical(other.fromDate, fromDate) || other.fromDate == fromDate)&&(identical(other.toDate, toDate) || other.toDate == toDate)&&(identical(other.activeOnly, activeOnly) || other.activeOnly == activeOnly)&&(identical(other.myOpportunitiesOnly, myOpportunitiesOnly) || other.myOpportunitiesOnly == myOpportunitiesOnly));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_items),const DeepCollectionEquality().hash(_backlogItems),selectedStage,searchQuery,sortLabel,showBacklog,currentPage,lastPage,total,isLoading,isLoadingMore,const DeepCollectionEquality().hash(error),backlogLoading,backlogLoaded,const DeepCollectionEquality().hash(backlogError));
+int get hashCode => Object.hashAll([runtimeType,const DeepCollectionEquality().hash(_items),const DeepCollectionEquality().hash(_backlogItems),selectedStage,searchQuery,sortLabel,showBacklog,currentPage,lastPage,total,isLoading,isLoadingMore,const DeepCollectionEquality().hash(error),backlogLoading,backlogLoaded,const DeepCollectionEquality().hash(backlogError),statusId,stageFilter,assignedTo,dateRange,fromDate,toDate,activeOnly,myOpportunitiesOnly]);
 
 @override
 String toString() {
-  return 'OpportunitiesState(items: $items, backlogItems: $backlogItems, selectedStage: $selectedStage, searchQuery: $searchQuery, sortLabel: $sortLabel, showBacklog: $showBacklog, currentPage: $currentPage, lastPage: $lastPage, total: $total, isLoading: $isLoading, isLoadingMore: $isLoadingMore, error: $error, backlogLoading: $backlogLoading, backlogLoaded: $backlogLoaded, backlogError: $backlogError)';
+  return 'OpportunitiesState(items: $items, backlogItems: $backlogItems, selectedStage: $selectedStage, searchQuery: $searchQuery, sortLabel: $sortLabel, showBacklog: $showBacklog, currentPage: $currentPage, lastPage: $lastPage, total: $total, isLoading: $isLoading, isLoadingMore: $isLoadingMore, error: $error, backlogLoading: $backlogLoading, backlogLoaded: $backlogLoaded, backlogError: $backlogError, statusId: $statusId, stageFilter: $stageFilter, assignedTo: $assignedTo, dateRange: $dateRange, fromDate: $fromDate, toDate: $toDate, activeOnly: $activeOnly, myOpportunitiesOnly: $myOpportunitiesOnly)';
 }
 
 
@@ -283,7 +321,7 @@ abstract mixin class _$OpportunitiesStateCopyWith<$Res> implements $Opportunitie
   factory _$OpportunitiesStateCopyWith(_OpportunitiesState value, $Res Function(_OpportunitiesState) _then) = __$OpportunitiesStateCopyWithImpl;
 @override @useResult
 $Res call({
- List<OpportunityModel> items, List<OpportunityModel> backlogItems, OpportunityStage? selectedStage, String searchQuery, String sortLabel, bool showBacklog, int currentPage, int lastPage, int total, bool isLoading, bool isLoadingMore, Object? error, bool backlogLoading, bool backlogLoaded, Object? backlogError
+ List<OpportunityModel> items, List<OpportunityModel> backlogItems, OpportunityStage? selectedStage, String searchQuery, String sortLabel, bool showBacklog, int currentPage, int lastPage, int total, bool isLoading, bool isLoadingMore, Object? error, bool backlogLoading, bool backlogLoaded, Object? backlogError, int? statusId, String? stageFilter, int? assignedTo, OpportunityDateRange dateRange, DateTime? fromDate, DateTime? toDate, bool activeOnly, bool myOpportunitiesOnly
 });
 
 
@@ -300,7 +338,7 @@ class __$OpportunitiesStateCopyWithImpl<$Res>
 
 /// Create a copy of OpportunitiesState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? items = null,Object? backlogItems = null,Object? selectedStage = freezed,Object? searchQuery = null,Object? sortLabel = null,Object? showBacklog = null,Object? currentPage = null,Object? lastPage = null,Object? total = null,Object? isLoading = null,Object? isLoadingMore = null,Object? error = freezed,Object? backlogLoading = null,Object? backlogLoaded = null,Object? backlogError = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? items = null,Object? backlogItems = null,Object? selectedStage = freezed,Object? searchQuery = null,Object? sortLabel = null,Object? showBacklog = null,Object? currentPage = null,Object? lastPage = null,Object? total = null,Object? isLoading = null,Object? isLoadingMore = null,Object? error = freezed,Object? backlogLoading = null,Object? backlogLoaded = null,Object? backlogError = freezed,Object? statusId = freezed,Object? stageFilter = freezed,Object? assignedTo = freezed,Object? dateRange = null,Object? fromDate = freezed,Object? toDate = freezed,Object? activeOnly = null,Object? myOpportunitiesOnly = null,}) {
   return _then(_OpportunitiesState(
 items: null == items ? _self._items : items // ignore: cast_nullable_to_non_nullable
 as List<OpportunityModel>,backlogItems: null == backlogItems ? _self._backlogItems : backlogItems // ignore: cast_nullable_to_non_nullable
@@ -315,7 +353,15 @@ as int,isLoading: null == isLoading ? _self.isLoading : isLoading // ignore: cas
 as bool,isLoadingMore: null == isLoadingMore ? _self.isLoadingMore : isLoadingMore // ignore: cast_nullable_to_non_nullable
 as bool,error: freezed == error ? _self.error : error ,backlogLoading: null == backlogLoading ? _self.backlogLoading : backlogLoading // ignore: cast_nullable_to_non_nullable
 as bool,backlogLoaded: null == backlogLoaded ? _self.backlogLoaded : backlogLoaded // ignore: cast_nullable_to_non_nullable
-as bool,backlogError: freezed == backlogError ? _self.backlogError : backlogError ,
+as bool,backlogError: freezed == backlogError ? _self.backlogError : backlogError ,statusId: freezed == statusId ? _self.statusId : statusId // ignore: cast_nullable_to_non_nullable
+as int?,stageFilter: freezed == stageFilter ? _self.stageFilter : stageFilter // ignore: cast_nullable_to_non_nullable
+as String?,assignedTo: freezed == assignedTo ? _self.assignedTo : assignedTo // ignore: cast_nullable_to_non_nullable
+as int?,dateRange: null == dateRange ? _self.dateRange : dateRange // ignore: cast_nullable_to_non_nullable
+as OpportunityDateRange,fromDate: freezed == fromDate ? _self.fromDate : fromDate // ignore: cast_nullable_to_non_nullable
+as DateTime?,toDate: freezed == toDate ? _self.toDate : toDate // ignore: cast_nullable_to_non_nullable
+as DateTime?,activeOnly: null == activeOnly ? _self.activeOnly : activeOnly // ignore: cast_nullable_to_non_nullable
+as bool,myOpportunitiesOnly: null == myOpportunitiesOnly ? _self.myOpportunitiesOnly : myOpportunitiesOnly // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

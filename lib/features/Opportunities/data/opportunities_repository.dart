@@ -6,6 +6,7 @@ import '../../../core/network/api_constants.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_result.dart';
 import '../../../core/network/network_providers.dart';
+import '../../Leads/model/lead_model.dart' show StatusOption;
 import '../model/opportunity_detail_model.dart';
 import '../model/opportunity_model.dart';
 
@@ -34,13 +35,30 @@ class OpportunitiesRepository {
 
   static const int perPage = 15;
 
-  /// GET /opportunities?page=N&per_page=15&search=...&category=... — one
-  /// paginated page, optionally filtered by a server-side [search] query and/or
-  /// a [category] (e.g. `backlog` for overdue deals needing attention).
+  /// GET /opportunities?page=N&per_page=15&... — one paginated page. Every
+  /// filter is optional; anything left `null` is omitted from the query string
+  /// entirely rather than sent empty, which the backend would read as a real
+  /// filter.
+  ///
+  /// [category] is e.g. `active`, or `backlog` for overdue deals needing
+  /// attention. [stage] is a raw stage id from `GET /opportunity-statuses`
+  /// (e.g. `Proposal`).
+  ///
+  /// Dates work differently here than on the leads endpoint: [dateRange] is a
+  /// *preset keyword* the server resolves itself (`last_month`), so it is sent
+  /// on its own. Only a hand-picked range uses [fromDate] / [toDate]. Sending
+  /// both would risk the server's idea of "last month" fighting ours.
   Future<ApiResult<OpportunitiesPage>> getOpportunities({
     int page = 1,
     String? search,
     String? category,
+    List<String>? quickFilters,
+    int? statusId,
+    String? stage,
+    int? assignedTo,
+    String? dateRange,
+    String? fromDate,
+    String? toDate,
   }) {
     return _api.get<OpportunitiesPage>(
       ApiConstants.opportunities,
@@ -49,8 +67,41 @@ class OpportunitiesRepository {
         'per_page': perPage,
         if (search != null && search.isNotEmpty) 'search': search,
         if (category != null && category.isNotEmpty) 'category': category,
+        if (quickFilters != null && quickFilters.isNotEmpty)
+          'quick_filter': quickFilters,
+        if (statusId != null) 'status_id': statusId,
+        if (stage != null && stage.isNotEmpty) 'stage': stage,
+        if (assignedTo != null) 'assigned_to': assignedTo,
+        if (dateRange != null && dateRange.isNotEmpty) 'date_range': dateRange,
+        if (fromDate != null && fromDate.isNotEmpty) 'from_date': fromDate,
+        if (toDate != null && toDate.isNotEmpty) 'to_date': toDate,
       },
       decoder: _decodePage,
+    );
+  }
+
+  /// GET /statuses, narrowed to the ones that apply to opportunities — the
+  /// options behind the advanced filter's `status_id` dropdown.
+  ///
+  /// The endpoint returns lead *and* opportunity statuses in one list, tagged
+  /// by `type`. If nothing carries the opportunity tag (a backend that labels
+  /// them differently, or doesn't split them at all) the full list is returned
+  /// rather than an inexplicably empty dropdown.
+  Future<ApiResult<List<StatusOption>>> getOpportunityStatuses() {
+    return _api.get<List<StatusOption>>(
+      ApiConstants.statuses,
+      decoder: (json) {
+        final list = (json is Map ? json['data'] : json) as List? ?? const [];
+        final all = list
+            .whereType<Map>()
+            .map((e) => StatusOption.fromJson(e.cast<String, dynamic>()))
+            .toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+        final scoped =
+            all.where((s) => s.type.toLowerCase() == 'opportunity').toList();
+        return scoped.isEmpty ? all : scoped;
+      },
     );
   }
 

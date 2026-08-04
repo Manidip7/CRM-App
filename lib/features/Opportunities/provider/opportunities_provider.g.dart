@@ -44,7 +44,7 @@ final class OpportunitiesProvider
   }
 }
 
-String _$opportunitiesHash() => r'de343d25d29538491debe659c73e4e64b3766fca';
+String _$opportunitiesHash() => r'78f9f6cc3abc0bf39f2cf43cfcf28b5244d48bd1';
 
 /// Kept alive so opportunities converted from leads survive navigation.
 

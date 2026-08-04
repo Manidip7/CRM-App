@@ -3,6 +3,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/network/api_result.dart';
+import '../../Leads/model/lead_model.dart' show StatusOption;
 import '../data/opportunities_repository.dart';
 import '../model/opportunity_detail_model.dart';
 import '../model/opportunity_model.dart';
@@ -28,6 +29,18 @@ final opportunityDetailBundleProvider = FutureProvider.autoDispose
 final opportunityStagesProvider =
     FutureProvider<List<StageOption>>((ref) async {
   final result = await ref.watch(opportunitiesRepositoryProvider).getStages();
+  return switch (result) {
+    Success(:final data) => data,
+    Failure(:final error) => throw error,
+  };
+});
+
+/// GET /statuses, narrowed to opportunity statuses — the options behind the
+/// advanced filter's `status_id` dropdown. Session-cached.
+final opportunityStatusesProvider =
+    FutureProvider<List<StatusOption>>((ref) async {
+  final result =
+      await ref.watch(opportunitiesRepositoryProvider).getOpportunityStatuses();
   return switch (result) {
     Success(:final data) => data,
     Failure(:final error) => throw error,

@@ -7,6 +7,7 @@ import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../model/opportunity_model.dart';
 import '../provider/opportunities_provider.dart';
+import 'opportunities_filter_sheet.dart';
 
 // ─────────────────────────────────────────────
 //  SCREEN
@@ -419,41 +420,113 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
   //  SEARCH BAR
   // ─────────────────────────────────────────────
   Widget _buildSearchBar() {
+    // Badge count for the tune button — how many advanced filters are
+    // narrowing the list right now.
+    final activeFilters = ref
+        .watch(opportunitiesProvider.select((s) => s.advancedFilterCount));
+    final hasFilters = activeFilters > 0;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      child: Container(
-        height: 46,
-        decoration: BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.divider),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 46,
+              decoration: BoxDecoration(
+                color: AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.divider),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (v) =>
+                    ref.read(opportunitiesProvider.notifier).setSearch(v),
+                style: const TextStyle(
+                    fontSize: 14, color: AppColors.textPrimary),
+                decoration: const InputDecoration(
+                  hintText: 'Search title, name, phone, email...',
+                  hintStyle:
+                      TextStyle(color: AppColors.textLight, fontSize: 13.5),
+                  prefixIcon: Icon(Icons.search_rounded,
+                      color: AppColors.textLight, size: 20),
+                  border: InputBorder.none,
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                ),
+              ),
             ),
-          ],
-        ),
-        child: TextField(
-          controller: _searchController,
-          onChanged: (v) =>
-              ref.read(opportunitiesProvider.notifier).setSearch(v),
-          style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
-          decoration: const InputDecoration(
-            hintText: 'Search title, name, phone, email...',
-            hintStyle:
-            TextStyle(color: AppColors.textLight, fontSize: 13.5),
-            prefixIcon: Icon(Icons.search_rounded,
-                color: AppColors.textLight, size: 20),
-            border: InputBorder.none,
-            contentPadding:
-            EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           ),
-        ),
+          const SizedBox(width: 10),
+          // Filter button — opens the advanced filter panel (status, stage,
+          // assignee, date range, category, my-deals). Carries a badge with the
+          // number of active filters, same as the Leads screen.
+          GestureDetector(
+            onTap: _openAdvancedFilterSheet,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  height: 46,
+                  width: 46,
+                  decoration: BoxDecoration(
+                    color: hasFilters ? _accent : AppColors.cardBackground,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: hasFilters ? _accent : AppColors.divider,
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.tune_rounded,
+                    size: 21,
+                    color: hasFilters ? Colors.white : AppColors.textSecondary,
+                  ),
+                ),
+                if (hasFilters)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: Container(
+                      width: 19,
+                      height: 19,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppColors.red,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: AppColors.background, width: 1.5),
+                      ),
+                      child: Text(
+                        '$activeFilters',
+                        style: const TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  /// Opens the advanced filter panel. Every control maps to one
+  /// `GET /opportunities` query param; the sheet applies them all at once so
+  /// the list refetches a single time.
+  Future<void> _openAdvancedFilterSheet() =>
+      showOpportunitiesFilterSheet(context, accent: _accent);
 
   // ─────────────────────────────────────────────
   //  FILTER TABS
@@ -469,19 +542,9 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(
         children: [
-          // Filter icon
-          Container(
-            width: 36,
-            height: 36,
-            margin: const EdgeInsets.only(right: 10),
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.divider),
-            ),
-            child: const Icon(Icons.tune_rounded,
-                size: 18, color: AppColors.textSecondary),
-          ),
+          // The decorative tune icon that used to sit here is gone — the real
+          // filter button now lives beside the search field, and two identical
+          // icons with only one of them tappable reads as a bug.
           ...stages.map((stage) {
             final isSelected = selectedStage == stage;
             final label = stage == null ? 'All' : stage.label;

@@ -9,6 +9,32 @@ import '../model/opportunity_model.dart';
 part 'opportunities_provider.freezed.dart';
 part 'opportunities_provider.g.dart';
 
+/// The presets behind the advanced filter's "All Time" dropdown.
+///
+/// Unlike the leads endpoint — where `date_range` is a literal
+/// `"2024-01-01 to 2024-01-31"` string — this API takes a *keyword* it resolves
+/// server-side (`date_range=last_month`). So each preset carries the keyword to
+/// send, and only [custom] falls back to explicit `from_date` / `to_date`.
+enum OpportunityDateRange {
+  allTime('All Time', null),
+  today('Today', 'today'),
+  yesterday('Yesterday', 'yesterday'),
+  thisWeek('This Week', 'this_week'),
+  lastWeek('Last Week', 'last_week'),
+  thisMonth('This Month', 'this_month'),
+  lastMonth('Last Month', 'last_month'),
+  thisYear('This Year', 'this_year'),
+  custom('Custom Range', null);
+
+  final String label;
+
+  /// The `date_range` keyword, or `null` when nothing should be sent —
+  /// [allTime] filters nothing and [custom] sends dates instead.
+  final String? apiValue;
+
+  const OpportunityDateRange(this.label, this.apiValue);
+}
+
 @freezed
 abstract class OpportunitiesState with _$OpportunitiesState {
   const factory OpportunitiesState({
@@ -31,11 +57,51 @@ abstract class OpportunitiesState with _$OpportunitiesState {
     @Default(false) bool backlogLoading,
     @Default(false) bool backlogLoaded,
     Object? backlogError,
+
+    // ── Advanced filter (the dropdowns behind the tune button) ──────────────
+    // Each maps to one query param on `GET /opportunities`. `null` / `false`
+    // means "All …" and the param is left off the request entirely.
+
+    /// `status_id`.
+    int? statusId,
+
+    /// `stage` — a raw stage id from `GET /opportunity-statuses`. Server-side,
+    /// unlike [selectedStage], which is the client-side chip row above the list.
+    String? stageFilter,
+
+    /// `assigned_to`.
+    int? assignedTo,
+
+    /// Which preset the "All Time" dropdown is showing.
+    @Default(OpportunityDateRange.allTime) OpportunityDateRange dateRange,
+
+    /// `from_date` / `to_date` — only used by [OpportunityDateRange.custom].
+    DateTime? fromDate,
+    DateTime? toDate,
+
+    /// `category=active`.
+    @Default(false) bool activeOnly,
+
+    /// `quick_filter=my_opportunities`.
+    @Default(false) bool myOpportunitiesOnly,
   }) = _OpportunitiesState;
 
   const OpportunitiesState._();
 
   bool get hasMore => currentPage < lastPage;
+
+  /// How many advanced filters are currently narrowing the list. Drives the
+  /// badge on the filter button.
+  int get advancedFilterCount => [
+        statusId,
+        stageFilter,
+        assignedTo,
+        dateRange == OpportunityDateRange.allTime ? null : dateRange,
+        activeOnly ? true : null,
+        myOpportunitiesOnly ? true : null,
+      ].where((v) => v != null).length;
+
+  bool get hasAdvancedFilters => advancedFilterCount > 0;
 }
 
 /// Kept alive so opportunities converted from leads survive navigation.
@@ -53,13 +119,27 @@ class Opportunities extends _$Opportunities {
   }
 
   /// Loads [page]: replaces the list on page 1, appends on later pages. The
-  /// active search query is sent server-side.
+  /// search query and every advanced filter are sent server-side.
   Future<void> _load(int page) async {
     final search = state.searchQuery.trim();
+    final s = state;
+    final isCustom = s.dateRange == OpportunityDateRange.custom;
+
     final result =
         await ref.read(opportunitiesRepositoryProvider).getOpportunities(
               page: page,
               search: search.isEmpty ? null : search,
+              category: s.activeOnly ? 'active' : null,
+              quickFilters:
+                  s.myOpportunitiesOnly ? const ['my_opportunities'] : null,
+              statusId: s.statusId,
+              stage: s.stageFilter,
+              assignedTo: s.assignedTo,
+              // A preset sends its keyword and lets the server resolve the
+              // dates; a custom range sends the dates instead.
+              dateRange: isCustom ? null : s.dateRange.apiValue,
+              fromDate: isCustom ? _fmtDate(s.fromDate) : null,
+              toDate: isCustom ? _fmtDate(s.toDate) : null,
             );
     result.when(
       success: (data) {
@@ -121,8 +201,75 @@ class Opportunities extends _$Opportunities {
     );
   }
 
-  void setStage(OpportunityStage? stage) =>
-      state = state.copyWith(selectedStage: stage);
+  void setStage(OpportunityStage? stage) => state = state.copyWith(
+        selectedStage: stage,
+        // The chip row and the advanced Stage dropdown both narrow by stage —
+        // one server-side, one client-side. Letting both run at once would
+        // silently intersect them, so tapping a chip takes over.
+        stageFilter: null,
+      );
+
+  /// Formats a date as `yyyy-MM-dd` for the API, or null.
+  static String? _fmtDate(DateTime? d) {
+    if (d == null) return null;
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$m-$day';
+  }
+
+  /// Applies every advanced filter in one go and reloads from page 1, so the
+  /// list refetches once rather than once per dropdown.
+  ///
+  /// A `null` argument means "All …" and clears that filter — which is why
+  /// this takes the whole set rather than patching one field at a time.
+  void applyAdvanced({
+    int? statusId,
+    String? stage,
+    int? assignedTo,
+    required OpportunityDateRange dateRange,
+    DateTime? fromDate,
+    DateTime? toDate,
+    required bool activeOnly,
+    required bool myOpportunitiesOnly,
+  }) {
+    final isCustom = dateRange == OpportunityDateRange.custom;
+    state = state.copyWith(
+      statusId: statusId,
+      stageFilter: stage,
+      assignedTo: assignedTo,
+      dateRange: dateRange,
+      // Only a custom range keeps dates; a preset is resolved by the server.
+      fromDate: isCustom ? fromDate : null,
+      toDate: isCustom ? toDate : null,
+      activeOnly: activeOnly,
+      myOpportunitiesOnly: myOpportunitiesOnly,
+      // The server-side stage filter supersedes the chip row.
+      selectedStage: stage != null ? null : state.selectedStage,
+      isLoading: true,
+      items: const [],
+      error: null,
+    );
+    _load(1);
+  }
+
+  /// Resets every advanced filter back to "All …" and reloads. Leaves the
+  /// search box and the stage chips alone.
+  void clearAdvanced() {
+    state = state.copyWith(
+      statusId: null,
+      stageFilter: null,
+      assignedTo: null,
+      dateRange: OpportunityDateRange.allTime,
+      fromDate: null,
+      toDate: null,
+      activeOnly: false,
+      myOpportunitiesOnly: false,
+      isLoading: true,
+      items: const [],
+      error: null,
+    );
+    _load(1);
+  }
 
   /// Updates the search query and, for the API-backed pipeline, debounces a
   /// reload from page 1 with the server-side `search` param.
@@ -150,6 +297,17 @@ class Opportunities extends _$Opportunities {
       showBacklog: showBacklog,
       selectedStage: null,
       searchQuery: '',
+      // The backlog is its own fixed `category=backlog` fetch, so leaving the
+      // pipeline's filters applied would make the badge claim filters that
+      // aren't affecting what's on screen.
+      statusId: null,
+      stageFilter: null,
+      assignedTo: null,
+      dateRange: OpportunityDateRange.allTime,
+      fromDate: null,
+      toDate: null,
+      activeOnly: false,
+      myOpportunitiesOnly: false,
     );
     if (showBacklog && !state.backlogLoaded && !state.backlogLoading) {
       _loadBacklog();
