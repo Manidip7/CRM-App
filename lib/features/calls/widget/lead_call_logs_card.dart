@@ -250,10 +250,20 @@ class CallLogsList extends StatelessWidget {
 
   Widget _buildCallRow(LeadCallLog call) {
     final cfg = _typeConfig(call);
-    final subtitleBits = <String>[
-      if (call.calledAt != null) _timeAgo(call.calledAt!),
+
+    // `called_at` arrives as a UTC ISO string, so it has to be converted before
+    // any of its calendar fields are read — otherwise a call placed at 2:45 PM
+    // IST renders as 9:15 AM, and one made late in the evening shows the wrong
+    // day entirely.
+    final calledAt = call.calledAt?.toLocal();
+
+    // Who logged it, plus how long ago — the supporting line under the
+    // date/time.
+    final trailingBits = <String>[
+      if (calledAt != null) timeAgo(calledAt),
       if (call.userName != null && call.userName!.isNotEmpty) call.userName!,
     ];
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -304,10 +314,49 @@ class CallLogsList extends StatelessWidget {
                     ],
                   ],
                 ),
-                if (subtitleBits.isNotEmpty) ...[
+                // When the call happened — the date and the clock time, shown
+                // outright rather than only as "2h ago", so a log can be
+                // matched against a real diary entry.
+                if (calledAt != null) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.event_rounded,
+                          size: 12, color: AppColors.textSecondary),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          formatCallDate(calledAt),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 9),
+                      const Icon(Icons.access_time_rounded,
+                          size: 12, color: AppColors.textSecondary),
+                      const SizedBox(width: 4),
+                      Text(
+                        formatCallTime(calledAt),
+                        style: GoogleFonts.poppins(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (trailingBits.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
-                    subtitleBits.join(' · '),
+                    trailingBits.join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       color: AppColors.textLight,
@@ -370,18 +419,60 @@ class CallLogsList extends StatelessWidget {
     }
   }
 
-  String _timeAgo(DateTime time) {
-    final diff = DateTime.now().difference(time);
-    if (diff.inMinutes < 1) return 'Just now';
+  static const List<String> _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+
+  /// The calendar date of a call: `Today` / `Yesterday` for the two most recent
+  /// days, `Mon, 3 Aug` within the past week, and `3 Aug 2026` beyond that —
+  /// the year only appears once it stops being obvious.
+  ///
+  /// Pass a **local** [time]; callers convert before formatting.
+  static String formatCallDate(DateTime time, {DateTime? now}) {
+    final today = _dayOf(now ?? DateTime.now());
+    final day = _dayOf(time);
+    final diffDays = today.difference(day).inDays;
+
+    if (diffDays == 0) return 'Today';
+    if (diffDays == 1) return 'Yesterday';
+
+    final label = '${time.day} ${_months[time.month - 1]}';
+    // Within the last week the weekday is the useful part; older calls only
+    // need the date, plus the year when it isn't the current one.
+    if (diffDays > 1 && diffDays < 7) return '${_weekday(time)}, $label';
+    return time.year == today.year ? label : '$label ${time.year}';
+  }
+
+  /// The clock time of a call in 12-hour form, e.g. `2:45 PM`. Midnight and
+  /// noon read as `12:00 AM` / `12:00 PM` rather than `0:00`.
+  ///
+  /// Pass a **local** [time]; callers convert before formatting.
+  static String formatCallTime(DateTime time) {
+    final hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute ${time.hour < 12 ? 'AM' : 'PM'}';
+  }
+
+  /// Relative age, for the supporting line under the date/time.
+  static String timeAgo(DateTime time, {DateTime? now}) {
+    final diff = (now ?? DateTime.now()).difference(time);
+    // A clock skew between device and server can put a call slightly in the
+    // future; "in -3m" would be nonsense, so clamp it.
+    if (diff.isNegative || diff.inMinutes < 1) return 'Just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
-    final months = [
-      'Jan','Feb','Mar','Apr','May','Jun',
-      'Jul','Aug','Sep','Oct','Nov','Dec'
-    ];
-    return '${months[time.month - 1]} ${time.day}, ${time.year}';
+    if (diff.inDays < 30) return '${diff.inDays ~/ 7}w ago';
+    if (diff.inDays < 365) return '${diff.inDays ~/ 30}mo ago';
+    return '${diff.inDays ~/ 365}y ago';
   }
+
+  static DateTime _dayOf(DateTime t) => DateTime(t.year, t.month, t.day);
+
+  static String _weekday(DateTime t) => const [
+        'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
+      ][t.weekday - 1];
 }
 
 /// An icon + muted text line used for the empty / error states inside a
