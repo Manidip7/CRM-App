@@ -7,6 +7,7 @@ class TaskItem {
   final int id;
   final String title;
   final String? description;
+  final DateTime? startDate;
   final DateTime? dueAt;
   final String? priority;
 
@@ -18,10 +19,14 @@ class TaskItem {
   final String? taskableTitle;
   final String? assigneeName;
 
+  /// Id of the assigned user (`assigned_to`), needed to prefill the Edit form.
+  final int? assignedTo;
+
   const TaskItem({
     required this.id,
     required this.title,
     this.description,
+    this.startDate,
     this.dueAt,
     this.priority,
     this.rawStatus,
@@ -29,6 +34,7 @@ class TaskItem {
     this.taskableId,
     this.taskableTitle,
     this.assigneeName,
+    this.assignedTo,
   });
 
   bool get isOpportunity =>
@@ -80,6 +86,7 @@ class TaskItem {
       id: (json['id'] as num?)?.toInt() ?? 0,
       title: json['title'] as String? ?? '',
       description: json['description'] as String?,
+      startDate: DateTime.tryParse(json['start_date'] as String? ?? ''),
       dueAt: DateTime.tryParse(json['due_at'] as String? ?? ''),
       priority: json['priority'] as String?,
       rawStatus: json['status'] as String?,
@@ -87,6 +94,9 @@ class TaskItem {
       taskableId: (json['taskable_id'] as num?)?.toInt(),
       taskableTitle: taskableTitle,
       assigneeName: assignee?['name'] as String?,
+      // Prefer the flat `assigned_to`; fall back to the nested assignee object.
+      assignedTo: (json['assigned_to'] as num?)?.toInt() ??
+          (assignee?['id'] as num?)?.toInt(),
     );
   }
 }

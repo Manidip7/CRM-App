@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/app/app_restart.dart';
 import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
@@ -83,7 +84,7 @@ class AppDrawer extends ConsumerWidget {
               label: 'Logout',
               selected: false,
               danger: true,
-              onTap: () => _comingSoon(context, 'Logout'),
+              onTap: () => _logout(context, ref),
             ),
             const SizedBox(height: 12),
           ],
@@ -95,6 +96,73 @@ class AppDrawer extends ConsumerWidget {
   void _go(BuildContext context, WidgetRef ref, int index) {
     ref.read(dashboardNavProvider.notifier).select(index);
     Navigator.pop(context);
+  }
+
+  /// Confirm → wipe → login. Everything after the confirmation runs against the
+  /// root navigator, because the first thing the flow does is close the drawer
+  /// this callback was fired from.
+  Future<void> _logout(BuildContext context, WidgetRef ref) async {
+    if (await _confirmLogout(context) != true) return;
+    if (!context.mounted) return;
+
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final rootContext = navigator.context;
+
+    Navigator.pop(context); // close the drawer
+
+    // Blocking spinner: the server call plus the storage wipe take a moment,
+    // and a second tap must not be able to start a second logout.
+    showDialog<void>(
+      context: rootContext,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      ),
+    );
+
+    await ref.read(authSessionProvider.notifier).logout();
+
+    if (!rootContext.mounted) return;
+    navigator.pop(); // dismiss the spinner
+
+    // Storage is empty but the providers still hold this user's leads,
+    // opportunities and dashboard figures. Remounting the scope drops all of
+    // it, and the rebuilt router opens on the login screen because the session
+    // is now null.
+    AppRestart.restart(rootContext);
+  }
+
+  Future<bool?> _confirmLogout(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Log out?',
+            style: GoogleFonts.poppins(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary)),
+        content: Text(
+          'You will be signed out and all data saved on this device will be '
+          'cleared. You will need to log in again.',
+          style:
+              GoogleFonts.poppins(fontSize: 13.5, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.poppins(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Logout',
+                style: GoogleFonts.poppins(
+                    color: AppColors.red, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _comingSoon(BuildContext context, String label) {

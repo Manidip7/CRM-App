@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/app/app_restart.dart';
 import 'core/network/network_providers.dart';
 import 'core/network/persistent_token_storage.dart';
 import 'core/permissions/permissions.dart';
@@ -22,13 +23,19 @@ Future<void> main() async {
   final permissionsStore = await PermissionsStore.load();
 
   runApp(
-    ProviderScope(
-      overrides: [
-        tokenStorageProvider.overrideWithValue(tokenStorage),
-        sessionStoreProvider.overrideWithValue(sessionStore),
-        permissionsStoreProvider.overrideWithValue(permissionsStore),
-      ],
-      child: const MyApp(),
+    // [AppRestart] sits above the scope so logout can recreate it, dropping
+    // every provider that still holds the signed-out user's data. The store
+    // instances are reused across a restart — they read from disk, which the
+    // logout has already emptied.
+    AppRestart(
+      child: ProviderScope(
+        overrides: [
+          tokenStorageProvider.overrideWithValue(tokenStorage),
+          sessionStoreProvider.overrideWithValue(sessionStore),
+          permissionsStoreProvider.overrideWithValue(permissionsStore),
+        ],
+        child: const MyApp(),
+      ),
     ),
   );
 }

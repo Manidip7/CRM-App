@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/network/api_exception.dart';
-import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../model/TaskStatus.dart';
@@ -20,10 +19,6 @@ class TaskScreen extends ConsumerStatefulWidget {
 }
 
 class _TaskScreenState extends ConsumerState<TaskScreen> {
-  void _openCreateTask() {
-    // Create-task flow not wired yet.
-  }
-
   @override
   Widget build(BuildContext context) {
     final view = ref.watch(agendaViewProvider);
@@ -64,17 +59,6 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
               ),
             ),
           ],
-        ),
-      ),
-      floatingActionButton: Can(
-        permission: AppPermissions.tasksAdd,
-        child: FloatingActionButton(
-          onPressed: _openCreateTask,
-          backgroundColor: AppColors.primary,
-          elevation: 4,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: const Icon(Icons.add, color: Colors.white, size: 28),
         ),
       ),
     );

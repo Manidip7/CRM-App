@@ -6,15 +6,20 @@ import '../../../core/utils/AppColors.dart';
 import '../../Leads/model/lead_model.dart';
 import '../../Leads/provider/assign_providers.dart';
 import '../model/TaskStatus.dart';
+import '../model/task_item_model.dart';
 import '../provider/create_task_provider.dart';
 import '../provider/task_list_api_provider.dart';
 
-/// Form to create a task. Submits `{ title, description, assigned_to, status,
-/// priority, start_date, due_date }` to `POST /tasks` via [taskListApiProvider],
-/// then refreshes the list. Dropdown / date state lives in Riverpod (no
-/// [setState]) via [createTaskDraftProvider].
+/// Form to create *or* edit a task. Submits `{ title, description, assigned_to,
+/// status, priority, start_date, due_at }` to `POST /tasks` — or to
+/// `PUT /tasks/{id}` when [task] is given — via [taskListApiProvider], then
+/// refreshes the list. Dropdown / date state lives in Riverpod (no [setState])
+/// via [createTaskDraftProvider].
 class CreateTaskScreen extends ConsumerStatefulWidget {
-  const CreateTaskScreen({super.key});
+  /// The task being edited. Null means "create a new task".
+  final TaskItem? task;
+
+  const CreateTaskScreen({super.key, this.task});
 
   @override
   ConsumerState<CreateTaskScreen> createState() => _CreateTaskScreenState();
@@ -24,14 +29,50 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   final _title = TextEditingController();
   final _description = TextEditingController();
 
+  bool get _isEdit => widget.task != null;
+
   @override
   void initState() {
     super.initState();
-    // Fresh form each time the screen opens.
+    final task = widget.task;
+    if (task != null) {
+      _title.text = task.title;
+      _description.text = task.description ?? '';
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(createTaskDraftProvider.notifier).reset();
+      final notifier = ref.read(createTaskDraftProvider.notifier);
+      if (task == null) {
+        // Fresh form each time the screen opens.
+        notifier.reset();
+      } else {
+        notifier.prefill(
+          status: NewTaskStatus.fromApi(task.rawStatus),
+          priority: task.priorityEnum,
+          startDate: task.startDate?.toLocal(),
+          dueDate: task.dueAt?.toLocal(),
+        );
+        _resolveAssignee(task.assignedTo);
+      }
       ref.read(createTaskSubmittingProvider.notifier).set(false);
     });
+  }
+
+  /// Selects the task's current assignee once `GET /users` has loaded. The
+  /// dropdown compares by instance, so the value must come from that same list.
+  Future<void> _resolveAssignee(int? assignedTo) async {
+    if (assignedTo == null) return;
+    try {
+      final users = await ref.read(assignableUsersProvider.future);
+      if (!mounted) return;
+      for (final u in users) {
+        if (u.id == assignedTo) {
+          ref.read(createTaskDraftProvider.notifier).setAssignee(u);
+          return;
+        }
+      }
+    } catch (_) {
+      // Users failed to load; the dropdown shows its own error state.
+    }
   }
 
   @override
@@ -155,7 +196,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
             ),
           ),
           Text(
-            'Add Task',
+            _isEdit ? 'Edit Task' : 'Add Task',
             style: GoogleFonts.poppins(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -480,7 +521,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                     strokeWidth: 2.2, color: Colors.white),
               )
             : Text(
-                'Create Task',
+                _isEdit ? 'Update Task' : 'Create Task',
                 style: GoogleFonts.poppins(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -522,15 +563,28 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     final submitting = ref.read(createTaskSubmittingProvider.notifier);
     submitting.set(true);
 
-    final error = await ref.read(taskListApiProvider.notifier).createTask(
-          title: title,
-          description: _description.text.trim(),
-          assignedTo: draft.assignee?.id,
-          status: draft.status.apiValue,
-          priority: draft.priority.label.toLowerCase(),
-          startDate: _apiDate(draft.startDate),
-          dueDate: _apiDate(draft.dueDate),
-        );
+    final api = ref.read(taskListApiProvider.notifier);
+    final task = widget.task;
+    final error = task == null
+        ? await api.createTask(
+            title: title,
+            description: _description.text.trim(),
+            assignedTo: draft.assignee?.id,
+            status: draft.status.apiValue,
+            priority: draft.priority.label.toLowerCase(),
+            startDate: _apiDate(draft.startDate),
+            dueDate: _apiDate(draft.dueDate),
+          )
+        : await api.updateTask(
+            id: task.id,
+            title: title,
+            description: _description.text.trim(),
+            assignedTo: draft.assignee?.id,
+            status: draft.status.apiValue,
+            priority: draft.priority.label.toLowerCase(),
+            startDate: _apiDate(draft.startDate),
+            dueDate: _apiDate(draft.dueDate),
+          );
 
     if (!mounted) return;
     submitting.set(false);
@@ -541,7 +595,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     }
 
     Navigator.maybePop(context);
-    _toast('Task created');
+    _toast(_isEdit ? 'Task updated' : 'Task created');
   }
 
   void _toast(String message, {bool isError = false}) {

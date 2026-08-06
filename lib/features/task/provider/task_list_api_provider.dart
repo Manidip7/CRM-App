@@ -124,6 +124,34 @@ class TaskListApi extends Notifier<TaskListApiState> {
     return null;
   }
 
+  /// Updates a task via `PUT /tasks/{id}`, then reloads the list so the edited
+  /// row reflects the change. Returns null on success, or the error message.
+  Future<String?> updateTask({
+    required int id,
+    required String title,
+    String? description,
+    int? assignedTo,
+    required String status,
+    required String priority,
+    String? startDate,
+    String? dueDate,
+  }) async {
+    final result = await ref.read(taskRepositoryProvider).updateTask(
+          id: id,
+          title: title,
+          description: description,
+          assignedTo: assignedTo,
+          status: status,
+          priority: priority,
+          startDate: startDate,
+          dueDate: dueDate,
+        );
+    final error = result.errorOrNull;
+    if (error != null) return error.message;
+    await refresh();
+    return null;
+  }
+
   /// Debounced server-side search. Updates `?search=` and reloads from page 1.
   void setSearch(String query) {
     final next = query.trim();

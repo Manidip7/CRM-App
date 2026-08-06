@@ -69,6 +69,45 @@ class TaskRepository {
     );
   }
 
+  /// PUT /tasks/{id} — updates an existing task. Sends the same field set as
+  /// [createTask]; dates must already be formatted `yyyy-MM-dd`.
+  Future<ApiResult<void>> updateTask({
+    required int id,
+    required String title,
+    String? description,
+    int? assignedTo,
+    required String status,
+    required String priority,
+    String? startDate,
+    String? dueDate,
+  }) {
+    return _api.put<void>(
+      ApiConstants.taskDetail('$id'),
+      options: Options(contentType: Headers.jsonContentType),
+      data: {
+        'title': title,
+        // Unlike create, always send `description` — omitting it would make a
+        // cleared field silently keep its old value.
+        'description': description ?? '',
+        if (assignedTo != null) 'assigned_to': assignedTo,
+        'status': status,
+        'priority': priority,
+        if (startDate != null && startDate.isNotEmpty) 'start_date': startDate,
+        if (dueDate != null && dueDate.isNotEmpty) 'due_at': dueDate,
+      },
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not update task.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
   /// Unwraps `{ success, data: { current_page, data: [...], last_page, total } }`.
   static TasksPage _decodeTasksPage(dynamic json) {
     final map = (json as Map).cast<String, dynamic>();

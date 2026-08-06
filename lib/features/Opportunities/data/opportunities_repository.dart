@@ -157,7 +157,7 @@ class OpportunitiesRepository {
     return _api.post<void>(
       ApiConstants.opportunityStage(id),
       options: Options(contentType: Headers.formUrlEncodedContentType),
-      data: {'stage': stage},
+      data: {'status_id': stage},
       decoder: (json) {
         if (json is Map && json['success'] == false) {
           throw ApiException(

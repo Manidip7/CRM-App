@@ -90,7 +90,10 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 
   return GoRouter(
-    initialLocation: AppRoutes.splash,
+    // Normally the splash: it requests the runtime permissions before anything
+    // else. After a logout the router is rebuilt inside a fresh scope, and the
+    // splash has already done its job — start straight at login instead.
+    initialLocation: appBootstrapped ? AppRoutes.login : AppRoutes.splash,
     refreshListenable: refresh,
     redirect: (context, state) {
       final loggedIn = ref.read(authSessionProvider) != null;

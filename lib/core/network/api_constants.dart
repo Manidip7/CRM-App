@@ -69,6 +69,7 @@ class ApiConstants {
 
   // Tasks
   static const String tasks = '/tasks';
+  static String taskDetail(String id) => '/tasks/$id';
   static const String agenda = '/agenda';
 
   // Follow-ups

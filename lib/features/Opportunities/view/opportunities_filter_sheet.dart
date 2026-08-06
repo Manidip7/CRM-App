@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../Leads/model/lead_model.dart' show StatusOption, AssignableUser;
 import '../../Leads/provider/assign_providers.dart';
-import '../model/opportunity_model.dart';
 import '../provider/opportunities_provider.dart';
 import '../provider/opportunity_detail_provider.dart';
 
@@ -15,7 +14,6 @@ import '../provider/opportunity_detail_provider.dart';
 /// | Control        | Param                    | Source of options          |
 /// |----------------|--------------------------|----------------------------|
 /// | All Statuses   | `status_id`              | `GET /statuses`            |
-/// | All Stages     | `stage`                  | `GET /opportunity-statuses`|
 /// | All Assignees  | `assigned_to`            | `GET /users`               |
 /// | All Time       | `date_range`, or `from_date`/`to_date` when custom | presets |
 /// | Active only    | `category=active`        | switch                     |
@@ -41,7 +39,6 @@ class _OpportunitiesFilterSheetState
     extends ConsumerState<OpportunitiesFilterSheet> {
   // Staged selections, seeded from whatever is currently applied.
   int? _statusId;
-  String? _stage;
   int? _assignedTo;
   late OpportunityDateRange _dateRange;
   DateTime? _fromDate;
@@ -54,7 +51,6 @@ class _OpportunitiesFilterSheetState
     super.initState();
     final s = ref.read(opportunitiesProvider);
     _statusId = s.statusId;
-    _stage = s.stageFilter;
     _assignedTo = s.assignedTo;
     _dateRange = s.dateRange;
     _fromDate = s.fromDate;
@@ -65,7 +61,6 @@ class _OpportunitiesFilterSheetState
 
   bool get _anySelected =>
       _statusId != null ||
-      _stage != null ||
       _assignedTo != null ||
       _dateRange != OpportunityDateRange.allTime ||
       _activeOnly ||
@@ -99,8 +94,6 @@ class _OpportunitiesFilterSheetState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildStatusDropdown(),
-                    const SizedBox(height: 14),
-                    _buildStageDropdown(),
                     const SizedBox(height: 14),
                     _buildAssigneeDropdown(),
                     const SizedBox(height: 14),
@@ -201,20 +194,6 @@ class _OpportunitiesFilterSheetState
       valueOf: (s) => s.id,
       labelOf: (s) => s.name,
       onChanged: (id) => setState(() => _statusId = id),
-    );
-  }
-
-  Widget _buildStageDropdown() {
-    return _AsyncDropdown<StageOption, String>(
-      label: 'Stage',
-      allLabel: 'All Stages',
-      icon: Icons.timeline_rounded,
-      accent: widget.accent,
-      options: ref.watch(opportunityStagesProvider),
-      selected: _stage,
-      valueOf: (s) => s.id,
-      labelOf: (s) => s.name,
-      onChanged: (id) => setState(() => _stage = id),
     );
   }
 
@@ -448,7 +427,6 @@ class _OpportunitiesFilterSheetState
   void _apply() {
     ref.read(opportunitiesProvider.notifier).applyAdvanced(
           statusId: _statusId,
-          stage: _stage,
           assignedTo: _assignedTo,
           dateRange: _dateRange,
           fromDate: _fromDate,

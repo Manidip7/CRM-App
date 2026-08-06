@@ -8,7 +8,28 @@ import '../model/TaskStatus.dart';
 /// Status options offered by the Create-Task form. Distinct from the list's
 /// [TaskStatus] (which is a *derived* due-date bucket) — these are the raw
 /// workflow states the backend stores against a task.
-enum NewTaskStatus { open, inProgress, backlog, done }
+enum NewTaskStatus {
+  open,
+  inProgress,
+  backlog,
+  done;
+
+  /// Maps a backend `status` string back to a form option, for the Edit form.
+  /// Unknown / missing values fall back to [NewTaskStatus.open].
+  static NewTaskStatus fromApi(String? raw) {
+    switch ((raw ?? '').toLowerCase()) {
+      case 'in_progress':
+        return NewTaskStatus.inProgress;
+      case 'backlog':
+        return NewTaskStatus.backlog;
+      case 'done':
+        return NewTaskStatus.done;
+      case 'open':
+      default:
+        return NewTaskStatus.open;
+    }
+  }
+}
 
 extension NewTaskStatusX on NewTaskStatus {
   String get label {
@@ -101,6 +122,24 @@ class CreateTaskDraftNotifier extends Notifier<CreateTaskDraft> {
 
   /// Clears the form back to defaults; call when the screen opens.
   void reset() => state = const CreateTaskDraft();
+
+  /// Seeds the form from an existing task (Edit mode). Replaces the whole
+  /// draft — unlike [copyWith] this can also clear a date back to null.
+  void prefill({
+    required NewTaskStatus status,
+    required TaskPriority priority,
+    AssignableUser? assignee,
+    DateTime? startDate,
+    DateTime? dueDate,
+  }) {
+    state = CreateTaskDraft(
+      status: status,
+      priority: priority,
+      assignee: assignee,
+      startDate: startDate,
+      dueDate: dueDate,
+    );
+  }
 
   void setStatus(NewTaskStatus s) => state = state.copyWith(status: s);
   void setPriority(TaskPriority p) => state = state.copyWith(priority: p);

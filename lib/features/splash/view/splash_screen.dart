@@ -7,6 +7,13 @@ import '../../../routes/app_routes.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../calls/data/call_log_service.dart';
 
+/// Whether the splash has already run this process. It is a top-level variable
+/// rather than provider state on purpose: it has to survive `AppRestart`, which
+/// throws away the whole `ProviderScope`. Without it, logging out would replay
+/// the splash — two seconds of branding plus a repeat of the permission prompt
+/// the user already answered.
+bool appBootstrapped = false;
+
 /// First screen shown on launch. It requests the app's runtime permissions
 /// (the call-log permission) up front, then routes the user onward — to the
 /// dashboard if a session was restored, otherwise to the login screen.
@@ -33,6 +40,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       Future<void>.delayed(const Duration(seconds: 2)),
     ]);
 
+    appBootstrapped = true;
     if (!mounted) return;
 
     // Route based on the restored session: straight to the dashboard if the

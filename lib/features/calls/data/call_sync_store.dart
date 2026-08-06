@@ -225,6 +225,19 @@ class CallSyncStore {
       trimmed.map((w) => jsonEncode(w.toJson())).toList(),
     );
   }
+
+  // --- Wipe -----------------------------------------------------------------
+
+  /// Drops every key this store owns. Called on logout: the de-dup set, the
+  /// pending intents and the watched numbers all describe the signed-out
+  /// user's activity, and leaving them behind would make the next account's
+  /// first sync skip calls it has never uploaded.
+  Future<void> clear() async {
+    await _prefs.remove(_lastSyncKey);
+    await _prefs.remove(_uploadedKey);
+    await _prefs.remove(_pendingKey);
+    await _prefs.remove(_watchedKey);
+  }
 }
 
 /// Async provider for the store; depends on [SharedPreferences].

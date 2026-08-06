@@ -634,7 +634,7 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Divider(color: AppColors.divider, height: 1),
             ),
-            // Due date
+            // Due date + row actions
             Row(
               children: [
                 Icon(
@@ -645,19 +645,58 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
                       : AppColors.textSecondary,
                 ),
                 const SizedBox(width: 5),
-                Text(
-                  task.dueAt != null
-                      ? 'Due ${_formatDate(task.dueAt!)}'
-                      : 'No due date',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: status == TaskStatus.overdue
-                        ? AppColors.red
-                        : AppColors.textSecondary,
+                Expanded(
+                  child: Text(
+                    task.dueAt != null
+                        ? 'Due ${_formatDate(task.dueAt!)}'
+                        : 'No due date',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: status == TaskStatus.overdue
+                          ? AppColors.red
+                          : AppColors.textSecondary,
+                    ),
                   ),
                 ),
+                Can(
+                  permission: AppPermissions.tasksEdit,
+                  child: _editButton(task),
+                ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Compact "Edit" pill on a task card; opens the form in edit mode.
+  Widget _editButton(TaskItem task) {
+    return GestureDetector(
+      onTap: () => _openEditTask(task),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.edit_outlined, size: 13, color: AppColors.primary),
+            const SizedBox(width: 4),
+            Text(
+              'Edit',
+              style: GoogleFonts.poppins(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
             ),
           ],
         ),
@@ -744,6 +783,14 @@ class _TaskListScreenState extends ConsumerState<TaskListScreen> {
   Future<void> _openCreateTask() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const CreateTaskScreen()),
+    );
+  }
+
+  /// Opens the same form seeded with [task]; saving sends `PUT /tasks/{id}` and
+  /// refreshes the list, so nothing to do on return.
+  Future<void> _openEditTask(TaskItem task) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => CreateTaskScreen(task: task)),
     );
   }
 

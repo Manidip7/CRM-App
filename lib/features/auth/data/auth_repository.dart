@@ -10,6 +10,7 @@ import '../../../core/network/api_result.dart';
 import '../../../core/network/network_providers.dart';
 import '../../../core/network/token_storage.dart';
 import '../../../core/permissions/permissions_store.dart';
+import '../../calls/data/call_sync_store.dart';
 import '../model/auth_session.dart';
 import 'session_store.dart';
 
@@ -53,9 +54,17 @@ class AuthRepository {
   }
 
   /// Clears the local token. Best-effort hits the backend too, but local state
-  /// is wiped regardless so the user is always logged out on the device.
+  /// is wiped regardless so the user is always logged out on the device — a
+  /// dead network or a rejected token must never trap someone in the app.
   Future<void> logout() async {
-    await _api.post<void>(ApiConstants.logout, decoder: (_) {});
+    try {
+      await _api.post<void>(ApiConstants.logout, decoder: (_) {});
+    } catch (e) {
+      if (kDebugMode) {
+        developer.log('Server logout failed (clearing locally): $e',
+            name: 'AUTH');
+      }
+    }
     await _tokenStorage.clear();
   }
 
@@ -118,11 +127,35 @@ class AuthSessionNotifier extends Notifier<AuthSession?> {
     state = session;
   }
 
+  /// Signs the user out and erases everything this device holds about them:
+  /// the bearer token, the stored session, the cached permission map and the
+  /// call-sync bookkeeping.
+  ///
+  /// In-memory provider caches (leads, opportunities, dashboard figures…) are
+  /// *not* cleared here — the caller finishes the job by remounting the
+  /// `ProviderScope` via `AppRestart.restart`.
+  ///
+  /// Every step is guarded so one failure can't abort the wipe half-way and
+  /// leave the next account looking at the previous user's data.
   Future<void> logout() async {
-    await ref.read(authRepositoryProvider).logout();
-    await ref.read(sessionStoreProvider).clear();
-    await ref.read(permissionsStoreProvider).clear();
+    await _wipe(() => ref.read(authRepositoryProvider).logout());
+    await _wipe(() => ref.read(sessionStoreProvider).clear());
+    await _wipe(() => ref.read(permissionsStoreProvider).clear());
+    await _wipe(() async {
+      final callStore = await ref.read(callSyncStoreProvider.future);
+      await callStore.clear();
+    });
     state = null;
+  }
+
+  static Future<void> _wipe(Future<void> Function() step) async {
+    try {
+      await step();
+    } catch (e) {
+      if (kDebugMode) {
+        developer.log('Logout cleanup step failed: $e', name: 'AUTH');
+      }
+    }
   }
 }
 
