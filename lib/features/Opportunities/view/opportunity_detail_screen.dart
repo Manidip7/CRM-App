@@ -16,6 +16,8 @@ import '../../../core/utils/AppColors.dart';
 import '../../quotations/data/quotations_repository.dart';
 import '../../quotations/model/quotation_model.dart';
 import 'create_quotation_screen.dart';
+import '../../Leads/view/add_note_sheet.dart';
+import '../../Leads/view/add_task_sheet.dart';
 import '../../Leads/view/schedule_follow_up_sheet.dart';
 import '../data/opportunities_repository.dart';
 import '../model/opportunity_detail_model.dart';
@@ -2126,6 +2128,25 @@ class _OpportunityDetailScreenState
   }
 
   // ── Notes Tab ─────────────────────────────────────────────────────────────────
+
+  /// Opens the add-note sheet (`POST /opportunities/{id}/notes`). The provider
+  /// refreshes the detail bundle on success, so the new note shows up here.
+  Future<void> _showAddNoteSheet() async {
+    final added = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AddNoteSheet(
+        watchSaving: (r) => r.watch(addOpportunityNoteProvider(_opp.id)),
+        onSubmit: (content) => ref
+            .read(addOpportunityNoteProvider(_opp.id).notifier)
+            .submit(content),
+        hint: 'Write a note about this opportunity…',
+      ),
+    );
+    if (added == true && mounted) _showSnack('Note added');
+  }
+
   Widget _buildNotesTab() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -2139,7 +2160,7 @@ class _OpportunityDetailScreenState
             children: [
               _tabSectionHeader(
                   Icons.sticky_note_2_outlined, 'Notes', notes.length,
-                  addLabel: 'Add Note', onAdd: () => _showSnack('Add note')),
+                  addLabel: 'Add Note', onAdd: _showAddNoteSheet),
               const SizedBox(height: 12),
               if (notes.isEmpty)
                 _emptyTabState(Icons.notes_rounded,
@@ -2154,6 +2175,8 @@ class _OpportunityDetailScreenState
   }
 
   Widget _buildNoteCard(OpportunityNote note) {
+    final deleting =
+        ref.watch(deleteOpportunityNoteProvider(_opp.id)) == note.id;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 10),
@@ -2191,6 +2214,24 @@ class _OpportunityDetailScreenState
                   style: GoogleFonts.poppins(
                       fontSize: 11, color: AppColors.textLight),
                 ),
+              const SizedBox(width: 6),
+              if (deleting)
+                const Padding(
+                  padding: EdgeInsets.all(7),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.red),
+                  ),
+                )
+              else
+                _CardActionIcon(
+                  icon: Icons.delete_outline_rounded,
+                  color: AppColors.red,
+                  tooltip: 'Delete note',
+                  onTap: () => _deleteNote(note),
+                ),
             ],
           ),
         ],
@@ -2198,7 +2239,114 @@ class _OpportunityDetailScreenState
     );
   }
 
+  /// Confirms, then deletes the note via `DELETE /opportunities/{id}/notes/{noteId}`.
+  /// The provider refreshes the detail bundle, so the card disappears on success.
+  Future<void> _deleteNote(OpportunityNote note) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Delete note?',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete this note?',
+          style: GoogleFonts.poppins(
+              fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.poppins(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete',
+                style: GoogleFonts.poppins(
+                    color: AppColors.red, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final error = await ref
+        .read(deleteOpportunityNoteProvider(_opp.id).notifier)
+        .delete(note.id);
+    if (!mounted) return;
+    _showSnack(error ?? 'Deleted note');
+  }
+
   // ── Tasks Tab ─────────────────────────────────────────────────────────────────
+
+  /// Opens the add-task sheet (`POST /opportunities/{id}/tasks`). The provider
+  /// refreshes the detail bundle on success, so the new task shows up here.
+  Future<void> _showAddTaskSheet() async {
+    final added = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _taskSheet(),
+    );
+    if (added == true && mounted) _showSnack('Task added');
+  }
+
+  /// Opens the same sheet seeded with [task]; saving sends
+  /// `PUT /opportunities/{id}/tasks/{taskId}` and the Tasks tab refreshes.
+  Future<void> _editTask(OpportunityTask task) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _taskSheet(task),
+    );
+    if (saved == true && mounted) _showSnack('Task updated');
+  }
+
+  /// Builds the shared task sheet against [opportunityTaskFormProvider]. With no
+  /// [task] it adds (`POST /opportunities/{id}/tasks`); with one it edits
+  /// (`PUT /opportunities/{id}/tasks/{taskId}`) and shows the status field,
+  /// which only the update endpoint accepts.
+  Widget _taskSheet([OpportunityTask? task]) {
+    // The family arguments must stay identical across rebuilds so the key does.
+    final provider = opportunityTaskFormProvider(
+      _opp.id,
+      taskId: task?.id,
+      initialDueAt: task?.dueAt,
+      initialPriority:
+          kTaskPriorities.contains(task?.priority) ? task!.priority! : 'medium',
+      initialStatus:
+          kTaskStatuses.any((s) => s.$1 == task?.status?.toLowerCase())
+              ? task!.status!.toLowerCase()
+              : 'open',
+    );
+    return AddTaskSheet(
+      initialTitle: task?.title,
+      watchValues: (r) {
+        final s = r.watch(provider);
+        return TaskSheetValues(
+          dueAt: s.dueAt,
+          priority: s.priority,
+          status: s.status,
+          saving: s.saving,
+        );
+      },
+      setDueAt: (d) => ref.read(provider.notifier).setDueAt(d),
+      setPriority: (p) => ref.read(provider.notifier).setPriority(p),
+      // Status is only sent by the update endpoint, so only offer it on edit.
+      setStatus:
+          task == null ? null : (s) => ref.read(provider.notifier).setStatus(s),
+      onSubmit: (title) => ref.read(provider.notifier).submit(title),
+    );
+  }
+
   Widget _buildTasksTab() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -2211,7 +2359,7 @@ class _OpportunityDetailScreenState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _tabSectionHeader(Icons.task_alt_rounded, 'Tasks', tasks.length,
-                  addLabel: 'Add Task', onAdd: () => _showSnack('Add task')),
+                  addLabel: 'Add Task', onAdd: _showAddTaskSheet),
               const SizedBox(height: 12),
               if (tasks.isEmpty)
                 _emptyTabState(Icons.assignment_outlined,
@@ -2227,6 +2375,8 @@ class _OpportunityDetailScreenState
 
   Widget _buildTaskCard(OpportunityTask task) {
     final cfg = _taskStatusConfig(task.status);
+    final deleting =
+        ref.watch(deleteOpportunityTaskProvider(_opp.id)) == task.id;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 10),
@@ -2326,9 +2476,86 @@ class _OpportunityDetailScreenState
               ],
             ),
           ],
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: AppColors.divider),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              _CardActionIcon(
+                icon: Icons.edit_outlined,
+                color: AppColors.primary,
+                tooltip: 'Edit task',
+                onTap: () => _editTask(task),
+              ),
+              const SizedBox(width: 4),
+              if (deleting)
+                const Padding(
+                  padding: EdgeInsets.all(7),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.red),
+                  ),
+                )
+              else
+                _CardActionIcon(
+                  icon: Icons.delete_outline_rounded,
+                  color: AppColors.red,
+                  tooltip: 'Delete task',
+                  onTap: () => _deleteTask(task),
+                ),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  /// Confirms, then deletes the task via `DELETE /opportunities/{id}/tasks/{taskId}`.
+  /// The provider refreshes the detail bundle, so the card disappears on success.
+  Future<void> _deleteTask(OpportunityTask task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Delete task?',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete "${task.title}"?',
+          style: GoogleFonts.poppins(
+              fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.poppins(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete',
+                style: GoogleFonts.poppins(
+                    color: AppColors.red, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final error = await ref
+        .read(deleteOpportunityTaskProvider(_opp.id).notifier)
+        .delete(task.id);
+    if (!mounted) return;
+    _showSnack(error ?? 'Deleted "${task.title}"');
   }
 
   /// (Color, label) for a task status code.
@@ -2601,6 +2828,40 @@ class _Chip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Small circular icon button used for per-card actions (note delete, task edit).
+class _CardActionIcon extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _CardActionIcon({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
       ),
     );
   }

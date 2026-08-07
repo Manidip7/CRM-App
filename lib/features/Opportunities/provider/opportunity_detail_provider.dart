@@ -125,3 +125,199 @@ class OpportunityDetailController extends _$OpportunityDetailController {
         ],
       );
 }
+
+/// Handles adding a note to an opportunity (`POST /opportunities/{id}/notes`),
+/// keyed by opportunity id. The state is the in-flight `saving` flag. On success
+/// it refreshes the opportunity's detail bundle so the new note appears.
+@riverpod
+class AddOpportunityNote extends _$AddOpportunityNote {
+  late String _opportunityId;
+
+  @override
+  bool build(String opportunityId) {
+    _opportunityId = opportunityId;
+    return false;
+  }
+
+  /// Submits [content]. Returns `null` on success, or an error message to show.
+  Future<String?> submit(String content) async {
+    final text = content.trim();
+    if (text.isEmpty) return 'Write a note first';
+    if (state) return null; // already saving
+
+    state = true;
+    final result = await ref
+        .read(opportunitiesRepositoryProvider)
+        .addOpportunityNote(_opportunityId, text);
+    state = false;
+
+    return result.when(
+      success: (_) {
+        ref.invalidate(opportunityDetailBundleProvider(_opportunityId));
+        return null;
+      },
+      failure: (error) => error.message,
+    );
+  }
+}
+
+/// Deletes a note from an opportunity (`DELETE /opportunities/{id}/notes/{noteId}`),
+/// keyed by opportunity id. The state is the id of the note currently being
+/// deleted (`null` when idle), so the notes tab can show a spinner on just that
+/// card. On success it refreshes the detail bundle so the note disappears.
+@riverpod
+class DeleteOpportunityNote extends _$DeleteOpportunityNote {
+  late String _opportunityId;
+
+  @override
+  int? build(String opportunityId) {
+    _opportunityId = opportunityId;
+    return null;
+  }
+
+  /// Deletes [noteId]. Returns `null` on success, or an error message to show.
+  Future<String?> delete(int noteId) async {
+    if (state != null) return null; // a delete is already in flight
+
+    state = noteId;
+    final result = await ref
+        .read(opportunitiesRepositoryProvider)
+        .deleteOpportunityNote(_opportunityId, noteId);
+    state = null;
+
+    return result.when(
+      success: (_) {
+        ref.invalidate(opportunityDetailBundleProvider(_opportunityId));
+        return null;
+      },
+      failure: (error) => error.message,
+    );
+  }
+}
+
+/// Form state for the opportunity's Add / Edit Task bottom sheet.
+@freezed
+abstract class OpportunityTaskFormState with _$OpportunityTaskFormState {
+  const factory OpportunityTaskFormState({
+    DateTime? dueAt,
+    @Default('medium') String priority,
+
+    /// Backend status (`open` / `in_progress` / `backlog` / `done`). Only sent
+    /// when editing — the create endpoint doesn't take it.
+    @Default('open') String status,
+    @Default(false) bool saving,
+  }) = _OpportunityTaskFormState;
+}
+
+/// Backs the opportunity's Add / Edit Task sheet, keyed by opportunity id and —
+/// when editing — the task id, so each sheet keeps its own form. Auto-disposed,
+/// so the form resets every time the sheet opens. [taskId] `null` means
+/// "create": submitting posts to `/opportunities/{id}/tasks`; otherwise it puts
+/// to `/opportunities/{id}/tasks/{taskId}`. The initial values seed the form
+/// from the task being edited. On success it refreshes the detail bundle so the
+/// Tasks tab reflects the change.
+@riverpod
+class OpportunityTaskForm extends _$OpportunityTaskForm {
+  late String _opportunityId;
+  int? _taskId;
+
+  @override
+  OpportunityTaskFormState build(
+    String opportunityId, {
+    int? taskId,
+    DateTime? initialDueAt,
+    String initialPriority = 'medium',
+    String initialStatus = 'open',
+  }) {
+    _opportunityId = opportunityId;
+    _taskId = taskId;
+    return OpportunityTaskFormState(
+      dueAt: initialDueAt,
+      priority: initialPriority,
+      status: initialStatus,
+    );
+  }
+
+  void setDueAt(DateTime d) => state = state.copyWith(dueAt: d);
+  void setPriority(String p) => state = state.copyWith(priority: p);
+  void setStatus(String s) => state = state.copyWith(status: s);
+
+  /// `due_at` in the API's `yyyy-MM-dd HH:mm:ss` format.
+  static String _fmtDue(DateTime d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)} '
+        '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
+  }
+
+  /// Creates or updates the task, depending on whether this form was built with
+  /// a `taskId`. Returns `null` on success, or an error message to show.
+  Future<String?> submit(String title) async {
+    final text = title.trim();
+    final due = state.dueAt;
+    if (text.isEmpty) return 'Enter a task title';
+    if (due == null) return 'Pick a due date & time';
+    if (state.saving) return null;
+
+    final id = _taskId;
+    state = state.copyWith(saving: true);
+    final repo = ref.read(opportunitiesRepositoryProvider);
+    final result = id == null
+        ? await repo.addOpportunityTask(
+            _opportunityId,
+            title: text,
+            dueAt: _fmtDue(due),
+            priority: state.priority,
+          )
+        : await repo.updateOpportunityTask(
+            _opportunityId,
+            id,
+            title: text,
+            dueAt: _fmtDue(due),
+            priority: state.priority,
+            status: state.status,
+          );
+    state = state.copyWith(saving: false);
+
+    return result.when(
+      success: (_) {
+        ref.invalidate(opportunityDetailBundleProvider(_opportunityId));
+        return null;
+      },
+      failure: (error) => error.message,
+    );
+  }
+}
+
+/// Deletes a task from an opportunity (`DELETE /opportunities/{id}/tasks/{taskId}`),
+/// keyed by opportunity id. The state is the id of the task currently being
+/// deleted (`null` when idle), so the Tasks tab can show a spinner on just that
+/// card. On success it refreshes the detail bundle so the task disappears.
+@riverpod
+class DeleteOpportunityTask extends _$DeleteOpportunityTask {
+  late String _opportunityId;
+
+  @override
+  int? build(String opportunityId) {
+    _opportunityId = opportunityId;
+    return null;
+  }
+
+  /// Deletes [taskId]. Returns `null` on success, or an error message to show.
+  Future<String?> delete(int taskId) async {
+    if (state != null) return null; // a delete is already in flight
+
+    state = taskId;
+    final result = await ref
+        .read(opportunitiesRepositoryProvider)
+        .deleteOpportunityTask(_opportunityId, taskId);
+    state = null;
+
+    return result.when(
+      success: (_) {
+        ref.invalidate(opportunityDetailBundleProvider(_opportunityId));
+        return null;
+      },
+      failure: (error) => error.message,
+    );
+  }
+}

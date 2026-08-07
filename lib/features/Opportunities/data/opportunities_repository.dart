@@ -171,6 +171,127 @@ class OpportunitiesRepository {
     );
   }
 
+  /// POST /opportunities/{id}/notes — adds a note to an opportunity. Sent as an
+  /// `x-www-form-urlencoded` body (`content`).
+  Future<ApiResult<void>> addOpportunityNote(String id, String content) {
+    return _api.post<void>(
+      ApiConstants.opportunityNotes(id),
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+      data: {'content': content},
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not add note.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  /// POST /opportunities/{id}/tasks — adds a task to an opportunity. Sent as an
+  /// `x-www-form-urlencoded` body. [dueAt] must already be formatted as
+  /// `yyyy-MM-dd HH:mm:ss`; [priority] is `high` / `medium` / `low`.
+  Future<ApiResult<void>> addOpportunityTask(
+    String id, {
+    required String title,
+    String? dueAt,
+    required String priority,
+  }) {
+    return _api.post<void>(
+      ApiConstants.opportunityTasks(id),
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+      data: {
+        'title': title,
+        if (dueAt != null && dueAt.isNotEmpty) 'due_at': dueAt,
+        'priority': priority,
+      },
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not add task.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  /// PUT /opportunities/{id}/tasks/{taskId} — updates an opportunity's task.
+  /// Sent as an `x-www-form-urlencoded` body (`title`, `due_at`, `priority`,
+  /// `status`). [dueAt] must already be formatted as `yyyy-MM-dd HH:mm:ss`;
+  /// [priority] is `high` / `medium` / `low`; [status] is `open` /
+  /// `in_progress` / `backlog` / `done`.
+  Future<ApiResult<void>> updateOpportunityTask(
+    String id,
+    int taskId, {
+    required String title,
+    String? dueAt,
+    required String priority,
+    required String status,
+  }) {
+    return _api.put<void>(
+      ApiConstants.opportunityTaskDetail(id, '$taskId'),
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+      data: {
+        'title': title,
+        if (dueAt != null && dueAt.isNotEmpty) 'due_at': dueAt,
+        'priority': priority,
+        'status': status,
+      },
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not update task.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  /// DELETE /opportunities/{id}/tasks/{taskId} — removes a task from an
+  /// opportunity.
+  Future<ApiResult<void>> deleteOpportunityTask(String id, int taskId) {
+    return _api.delete<void>(
+      ApiConstants.opportunityTaskDetail(id, '$taskId'),
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not delete task.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  /// DELETE /opportunities/{id}/notes/{noteId} — removes a note from an
+  /// opportunity.
+  Future<ApiResult<void>> deleteOpportunityNote(String id, int noteId) {
+    return _api.delete<void>(
+      ApiConstants.opportunityNoteDetail(id, '$noteId'),
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not delete note.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
   /// POST /opportunities/{id}/followup — schedules the next follow-up for an
   /// opportunity. Sent as an `x-www-form-urlencoded` body. [nextFollowUpAt] must
   /// already be formatted as `yyyy-MM-dd HH:mm:ss`.

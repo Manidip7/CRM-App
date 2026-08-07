@@ -531,7 +531,7 @@ final class AddNoteProvider extends $NotifierProvider<AddNote, bool> {
   }
 }
 
-String _$addNoteHash() => r'd90cbf11d40c34d957f72c688a33fc35b90dcbc2';
+String _$addNoteHash() => r'6782ad370637ae2846c81276b40e4f6a2014033e';
 
 /// Handles adding a note to a lead (`POST /leads/{id}/notes`), keyed by lead id.
 /// The state is the in-flight `saving` flag. On success it refreshes the lead's

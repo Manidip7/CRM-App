@@ -69,6 +69,12 @@ class ApiConstants {
   static String opportunityDetail(String id) => '/opportunities/$id';
   static String opportunityFollowup(String id) => '/opportunities/$id/followup';
   static String opportunityStage(String id) => '/opportunities/$id/stage';
+  static String opportunityNotes(String id) => '/opportunities/$id/notes';
+  static String opportunityNoteDetail(String id, String noteId) =>
+      '/opportunities/$id/notes/$noteId';
+  static String opportunityTasks(String id) => '/opportunities/$id/tasks';
+  static String opportunityTaskDetail(String id, String taskId) =>
+      '/opportunities/$id/tasks/$taskId';
   static const String opportunityStages = '/opportunity-statuses';
 
   // Tasks

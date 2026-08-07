@@ -187,11 +187,11 @@ class AddNote extends _$AddNote {
     return false;
   }
 
-  /// Submits [content]. Returns `true` on success, `false` on empty input or
-  /// API failure.
-  Future<bool> submit(String content) async {
+  /// Submits [content]. Returns `null` on success, or an error message to show.
+  Future<String?> submit(String content) async {
     final text = content.trim();
-    if (text.isEmpty || state) return false;
+    if (text.isEmpty) return 'Write a note first';
+    if (state) return null; // already saving
 
     state = true;
     final result =
@@ -201,9 +201,9 @@ class AddNote extends _$AddNote {
     return result.when(
       success: (_) {
         ref.invalidate(leadDetailProvider(_leadId));
-        return true;
+        return null;
       },
-      failure: (_) => false,
+      failure: (error) => error.message,
     );
   }
 }

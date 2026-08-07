@@ -13,6 +13,8 @@ import '../model/lead_model.dart';
 import '../provider/lead_detail_provider.dart';
 import '../provider/leads_provider.dart';
 import '../provider/assign_providers.dart';
+import 'add_note_sheet.dart';
+import 'add_task_sheet.dart';
 import '../../Opportunities/model/opportunity_model.dart';
 import '../../Opportunities/provider/opportunities_provider.dart';
 import '../../calls/provider/call_providers.dart';
@@ -1676,7 +1678,12 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AddNoteSheet(leadId: _lead.id),
+      builder: (_) => AddNoteSheet(
+        watchSaving: (r) => r.watch(addNoteProvider(_lead.id)),
+        onSubmit: (content) =>
+            ref.read(addNoteProvider(_lead.id).notifier).submit(content),
+        hint: 'Write a note about this lead…',
+      ),
     );
     if (added == true && mounted) _showSnack('Note added');
   }
@@ -1828,9 +1835,46 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AddTaskSheet(leadId: _lead.id),
+      builder: (_) => _leadTaskSheet(),
     );
     if (added == true && mounted) _showSnack('Task added');
+  }
+
+  /// Builds the shared task sheet against [leadTaskFormProvider]. With no [task]
+  /// it adds (`POST /leads/{id}/tasks`); with one it edits
+  /// (`PUT /leads/{id}/tasks/{taskId}`) and shows the status field, which only
+  /// the update endpoint accepts.
+  Widget _leadTaskSheet([LeadTask? task]) {
+    // The family arguments must stay identical across rebuilds so the key does.
+    final provider = leadTaskFormProvider(
+      widget.lead.id,
+      taskId: task?.id,
+      initialDueAt: task?.dueAt,
+      initialPriority:
+          kTaskPriorities.contains(task?.priority) ? task!.priority! : 'medium',
+      initialStatus:
+          kTaskStatuses.any((s) => s.$1 == task?.status?.toLowerCase())
+              ? task!.status!.toLowerCase()
+              : 'open',
+    );
+    return AddTaskSheet(
+      initialTitle: task?.title,
+      watchValues: (r) {
+        final s = r.watch(provider);
+        return TaskSheetValues(
+          dueAt: s.dueAt,
+          priority: s.priority,
+          status: s.status,
+          saving: s.saving,
+        );
+      },
+      setDueAt: (d) => ref.read(provider.notifier).setDueAt(d),
+      setPriority: (p) => ref.read(provider.notifier).setPriority(p),
+      // Status is only sent by the update endpoint, so only offer it on edit.
+      setStatus:
+          task == null ? null : (s) => ref.read(provider.notifier).setStatus(s),
+      onSubmit: (title) => ref.read(provider.notifier).submit(title),
+    );
   }
 
   Widget _buildTasksTab() {
@@ -2004,7 +2048,7 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AddTaskSheet(leadId: widget.lead.id, task: task),
+      builder: (_) => _leadTaskSheet(task),
     );
     if (saved == true && mounted) _showSnack('Task updated');
   }
@@ -3391,514 +3435,6 @@ class _SheetTextField extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           borderSide:
               const BorderSide(color: AppColors.primary, width: 1.2),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Add Note Sheet ────────────────────────────────────────────────────────────
-
-/// Bottom sheet to add a note to a lead (`POST /leads/{id}/notes`). The saving
-/// state is Riverpod-managed ([addNoteProvider]); the text field uses a local
-/// controller. Pops `true` when the note is saved.
-class _AddNoteSheet extends ConsumerStatefulWidget {
-  final String leadId;
-  const _AddNoteSheet({required this.leadId});
-
-  @override
-  ConsumerState<_AddNoteSheet> createState() => _AddNoteSheetState();
-}
-
-class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
-  late final TextEditingController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final ok =
-        await ref.read(addNoteProvider(widget.leadId).notifier).submit(_ctrl.text);
-    if (!mounted) return;
-    if (ok) {
-      Navigator.pop(context, true);
-    } else if (_ctrl.text.trim().isNotEmpty) {
-      // Non-empty content but the request failed.
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not add note',
-            style: GoogleFonts.poppins(fontSize: 13, color: Colors.white),
-          ),
-          backgroundColor: AppColors.red,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final saving = ref.watch(addNoteProvider(widget.leadId));
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.divider,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Header
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.sticky_note_2_outlined,
-                      color: AppColors.green, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Add Note',
-                    style: GoogleFonts.poppins(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: AppColors.background,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.close_rounded,
-                        size: 18, color: AppColors.textSecondary),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            const _FieldLabel('Note', Icons.notes_rounded),
-            const SizedBox(height: 8),
-            _SheetTextField(
-              controller: _ctrl,
-              hint: 'Write a note about this lead…',
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: saving ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
-                  foregroundColor: Colors.white,
-                  disabledForegroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: saving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : const Icon(Icons.check_rounded, size: 19),
-                label: Text(
-                  saving ? 'Saving…' : 'Add Note',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Add / Edit Task Sheet ─────────────────────────────────────────────────────
-
-/// Bottom sheet to add a task to a lead (`POST /leads/{id}/tasks`) or edit one
-/// (`PUT /leads/{id}/tasks/{taskId}` when [task] is given): a title, a due
-/// date+time picker, a priority dropdown and — in edit mode — a status
-/// dropdown. Form state (due date, priority, status, saving) is Riverpod-managed
-/// ([leadTaskFormProvider]); the title uses a local controller. Pops `true` when
-/// the task is saved.
-class _AddTaskSheet extends ConsumerStatefulWidget {
-  final String leadId;
-
-  /// The task being edited; `null` opens the sheet in "add" mode.
-  final LeadTask? task;
-
-  const _AddTaskSheet({required this.leadId, this.task});
-
-  @override
-  ConsumerState<_AddTaskSheet> createState() => _AddTaskSheetState();
-}
-
-class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
-  static const List<String> _months = [
-    'Jan','Feb','Mar','Apr','May','Jun',
-    'Jul','Aug','Sep','Oct','Nov','Dec'
-  ];
-  static const List<String> _priorities = ['high', 'medium', 'low'];
-
-  /// Backend status values accepted by the update endpoint, with their labels.
-  static const List<(String, String)> _statuses = [
-    ('open', 'Open'),
-    ('in_progress', 'In Progress'),
-    ('backlog', 'Backlog'),
-    ('done', 'Done'),
-  ];
-
-  late final TextEditingController _ctrl;
-
-  bool get _isEdit => widget.task != null;
-
-  /// The form provider for this sheet — seeded from [widget.task] when editing.
-  /// The arguments must stay identical across rebuilds so the family key does.
-  LeadTaskFormProvider get _provider => leadTaskFormProvider(
-        widget.leadId,
-        taskId: widget.task?.id,
-        initialDueAt: widget.task?.dueAt,
-        initialPriority: _priorities.contains(widget.task?.priority)
-            ? widget.task!.priority!
-            : 'medium',
-        initialStatus:
-            _statuses.any((s) => s.$1 == widget.task?.status?.toLowerCase())
-                ? widget.task!.status!.toLowerCase()
-                : 'open',
-      );
-
-  LeadTaskForm get _form => ref.read(_provider.notifier);
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.task?.title ?? '');
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  String _dateLabel(DateTime d) {
-    final h = d.hour > 12
-        ? d.hour - 12
-        : d.hour == 0
-            ? 12
-            : d.hour;
-    final ampm = d.hour >= 12 ? 'PM' : 'AM';
-    final min = d.minute.toString().padLeft(2, '0');
-    return '${_months[d.month - 1]} ${d.day}, ${d.year} · $h:$min $ampm';
-  }
-
-  Widget _pickerTheme(BuildContext ctx, Widget? child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(
-            primary: AppColors.primary,
-            onPrimary: Colors.white,
-            onSurface: AppColors.textPrimary,
-          ),
-        ),
-        child: child!,
-      );
-
-  Future<void> _pickDue() async {
-    final current = ref.read(_provider).dueAt ?? DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: current,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      builder: _pickerTheme,
-    );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(current),
-      builder: _pickerTheme,
-    );
-    _form.setDueAt(DateTime(
-      date.year,
-      date.month,
-      date.day,
-      time?.hour ?? current.hour,
-      time?.minute ?? current.minute,
-    ));
-  }
-
-  void _error(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg,
-            style: GoogleFonts.poppins(fontSize: 13, color: Colors.white)),
-        backgroundColor: AppColors.red,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
-
-  Future<void> _submit() async {
-    final error = await _form.submit(_ctrl.text);
-    if (!mounted) return;
-    if (error == null) {
-      Navigator.pop(context, true);
-    } else {
-      _error(error);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final state = ref.watch(_provider);
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.cardBackground,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.divider,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.task_alt_rounded,
-                        color: AppColors.primary, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _isEdit ? 'Edit Task' : 'Add Task',
-                      style: GoogleFonts.poppins(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: AppColors.background,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.close_rounded,
-                          size: 18, color: AppColors.textSecondary),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            Flexible(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Title
-                    const _FieldLabel('Title', Icons.title_rounded),
-                    const SizedBox(height: 8),
-                    _SheetTextField(
-                      controller: _ctrl,
-                      hint: 'e.g. Send Quotation',
-                    ),
-                    const SizedBox(height: 18),
-                    // Due date + time
-                    const _FieldLabel(
-                        'Due Date & Time', Icons.event_rounded),
-                    const SizedBox(height: 8),
-                    GestureDetector(
-                      onTap: _pickDue,
-                      child: Container(
-                        height: 52,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        decoration: BoxDecoration(
-                          color: AppColors.background,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: AppColors.divider, width: 0.8),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_month_rounded,
-                                size: 18, color: AppColors.primary),
-                            const SizedBox(width: 10),
-                            Text(
-                              state.dueAt == null
-                                  ? 'Select due date & time'
-                                  : _dateLabel(state.dueAt!),
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: state.dueAt == null
-                                    ? AppColors.textLight
-                                    : AppColors.textPrimary,
-                              ),
-                            ),
-                            const Spacer(),
-                            const Icon(Icons.keyboard_arrow_down_rounded,
-                                color: AppColors.textSecondary),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    // Priority
-                    const _FieldLabel('Priority', Icons.flag_rounded),
-                    const SizedBox(height: 8),
-                    _SheetDropdown<String>(
-                      hint: 'Select priority',
-                      value: state.priority,
-                      options: _priorities,
-                      labelOf: (p) =>
-                          '${p[0].toUpperCase()}${p.substring(1)}',
-                      onChanged: (v) {
-                        if (v != null) _form.setPriority(v);
-                      },
-                    ),
-                    // Status — only the update endpoint accepts it.
-                    if (_isEdit) ...[
-                      const SizedBox(height: 18),
-                      const _FieldLabel(
-                          'Status', Icons.donut_large_rounded),
-                      const SizedBox(height: 8),
-                      _SheetDropdown<String>(
-                        hint: 'Select status',
-                        value: state.status,
-                        options: _statuses.map((s) => s.$1).toList(),
-                        labelOf: (s) =>
-                            _statuses.firstWhere((e) => e.$1 == s).$2,
-                        onChanged: (v) {
-                          if (v != null) _form.setStatus(v);
-                        },
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            // Save button
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              child: SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: state.saving ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
-                    foregroundColor: Colors.white,
-                    disabledForegroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: state.saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Icon(Icons.check_rounded, size: 19),
-                  label: Text(
-                    state.saving
-                        ? 'Saving…'
-                        : (_isEdit ? 'Save Changes' : 'Add Task'),
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );
