@@ -11,6 +11,7 @@ import '../../../routes/app_routes.dart';
 import '../data/leads_repository.dart';
 import '../model/lead_model.dart';
 import '../provider/leads_provider.dart';
+import 'bulk_action_screen.dart';
 import 'leads_filter_sheet.dart';
 
 class LeadsScreen extends ConsumerStatefulWidget {
@@ -238,50 +239,69 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
       color: AppColors.background,
       child: Row(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    showBacklog ? 'Backlog Leads' : 'Leads',
-                    style: GoogleFonts.poppins(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 9, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: _accent.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '$totalLeads',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: _accent,
+          // Expanded so the title yields space to the action buttons rather
+          // than overflowing once Bulk sits next to Backlog.
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        showBacklog ? 'Backlog Leads' : 'Leads',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              Text(
-                showBacklog
-                    ? 'Overdue leads needing follow-up'
-                    : 'Track and manage your pipeline',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 9, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _accent.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '$totalLeads',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _accent,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
+                Text(
+                  showBacklog
+                      ? 'Overdue leads needing follow-up'
+                      : 'Track and manage your pipeline',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: 8),
+          // Bulk editing is its own permission — being able to see leads
+          // doesn't imply being allowed to rewrite a field across many at once.
+          Can(
+            permission: AppPermissions.leadsBulkAction,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _buildBulkActionButton(),
+            ),
+          ),
           // Backlog is a separate module with its own permission — a role that
           // can see leads doesn't automatically get the overdue list.
           Can(
@@ -289,6 +309,40 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
             child: _buildBacklogButton(showBacklog),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Opens the Bulk Action screen, where leads are filtered, multi-selected and
+  /// then updated one field at a time.
+  Widget _buildBulkActionButton() {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const BulkActionScreen()),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.primary, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.checklist_rounded,
+                size: 16, color: AppColors.primary),
+            const SizedBox(width: 5),
+            Text(
+              'Bulk',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
