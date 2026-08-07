@@ -2,6 +2,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/network/api_result.dart';
+import '../../task/data/task_repository.dart';
 import '../data/leads_repository.dart';
 import '../model/lead_model.dart';
 import 'leads_provider.dart';
@@ -276,6 +277,39 @@ class ConvertLead extends _$ConvertLead {
         );
     state = state.copyWith(saving: false);
     return result.when(success: (_) => true, failure: (_) => false);
+  }
+}
+
+/// Marks a lead's task complete (`PUT /tasks/{id}/mark-done` — tasks are the
+/// same records the Tasks feature lists, so it is the shared endpoint), keyed by
+/// lead id. The state is the id of the task currently being marked (`null` when
+/// idle), so the tasks tab can show a spinner on just that card. On success it
+/// refreshes the lead's detail bundle so the status badge updates.
+@riverpod
+class MarkLeadTaskDone extends _$MarkLeadTaskDone {
+  late String _leadId;
+
+  @override
+  int? build(String leadId) {
+    _leadId = leadId;
+    return null;
+  }
+
+  /// Marks [taskId] done. Returns `null` on success, or an error message.
+  Future<String?> markDone(int taskId) async {
+    if (state != null) return null; // already marking one
+
+    state = taskId;
+    final result = await ref.read(taskRepositoryProvider).markTaskDone(taskId);
+    state = null;
+
+    return result.when(
+      success: (_) {
+        ref.invalidate(leadDetailProvider(_leadId));
+        return null;
+      },
+      failure: (error) => error.message,
+    );
   }
 }
 

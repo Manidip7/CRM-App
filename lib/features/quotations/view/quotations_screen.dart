@@ -680,12 +680,23 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
                   const SizedBox(width: 6),
                 ],
                 if (perms.can(AppPermissions.quotationsDelete))
-                  _actionIcon(
-                    icon: Icons.delete_outline_rounded,
-                    color: AppColors.red,
-                    tooltip: 'Delete',
-                    onTap: () => _onDelete(item),
-                  ),
+                  if (ref.watch(quotationsProvider).deletingId == item.id)
+                    const Padding(
+                      padding: EdgeInsets.all(6),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.red),
+                      ),
+                    )
+                  else
+                    _actionIcon(
+                      icon: Icons.delete_outline_rounded,
+                      color: AppColors.red,
+                      tooltip: 'Delete',
+                      onTap: () => _onDelete(item),
+                    ),
               ],
             ),
           ],
@@ -921,17 +932,18 @@ class _QuotationsScreenState extends ConsumerState<QuotationsScreen> {
         ],
       ),
     );
-    if (confirmed != true) return;
-    ref.read(quotationsProvider.notifier).delete(item.id);
-    _toast('${item.number} deleted');
+    if (confirmed != true || !mounted) return;
+    final error = await ref.read(quotationsProvider.notifier).delete(item);
+    if (!mounted) return;
+    _toast(error ?? '${item.number} deleted', isError: error != null);
   }
 
-  void _toast(String message) {
+  void _toast(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message,
             style: const TextStyle(fontSize: 13, color: Colors.white)),
-        backgroundColor: AppColors.primary,
+        backgroundColor: isError ? AppColors.red : AppColors.primary,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10)),

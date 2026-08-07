@@ -80,6 +80,7 @@ class ApiConstants {
   // Tasks
   static const String tasks = '/tasks';
   static String taskDetail(String id) => '/tasks/$id';
+  static String taskMarkDone(String id) => '/tasks/$id/mark-done';
   static const String agenda = '/agenda';
 
   // Follow-ups
@@ -96,6 +97,10 @@ class ApiConstants {
   static const String quotations = '/quotations';
   static String quotation(String id) => '/quotations/$id';
   static String quotationDownload(String id) => '/quotations/$id/download';
+
+  /// Quotations are deleted through their opportunity, not the flat route.
+  static String opportunityQuotation(String opportunityId, String id) =>
+      '/opportunities/$opportunityId/quotations/$id';
 
   // Projects
   static const String projects = '/projects';

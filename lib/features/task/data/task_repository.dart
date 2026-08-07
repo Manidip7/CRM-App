@@ -108,6 +108,41 @@ class TaskRepository {
     );
   }
 
+  /// PUT /tasks/{id}/mark-done — marks a task complete. Takes no body; the
+  /// backend sets the status itself.
+  Future<ApiResult<void>> markTaskDone(int id) {
+    return _api.put<void>(
+      ApiConstants.taskMarkDone('$id'),
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not mark task done.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  /// DELETE /tasks/{id} — removes a task.
+  Future<ApiResult<void>> deleteTask(int id) {
+    return _api.delete<void>(
+      ApiConstants.taskDetail('$id'),
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not delete task.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
   /// Unwraps `{ success, data: { current_page, data: [...], last_page, total } }`.
   static TasksPage _decodeTasksPage(dynamic json) {
     final map = (json as Map).cast<String, dynamic>();

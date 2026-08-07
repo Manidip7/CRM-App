@@ -1912,6 +1912,8 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     final cfg = _taskStatusConfig(task.status);
     final deleting =
         ref.watch(deleteLeadTaskProvider(widget.lead.id)) == task.id;
+    final markingDone =
+        ref.watch(markLeadTaskDoneProvider(widget.lead.id)) == task.id;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 10),
@@ -1999,12 +2001,23 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              _TaskActionIcon(
-                icon: Icons.check_circle_outline_rounded,
-                color: AppColors.green,
-                tooltip: 'Mark as done',
-                onTap: () => _markTaskDone(task),
-              ),
+              if (markingDone)
+                const Padding(
+                  padding: EdgeInsets.all(7),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.green),
+                  ),
+                )
+              else
+                _TaskActionIcon(
+                  icon: Icons.check_circle_outline_rounded,
+                  color: AppColors.green,
+                  tooltip: 'Mark as done',
+                  onTap: () => _markTaskDone(task),
+                ),
               const SizedBox(width: 4),
               _TaskActionIcon(
                 icon: Icons.edit_outlined,
@@ -2037,8 +2050,14 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     );
   }
 
-  void _markTaskDone(LeadTask task) {
-    _showSnack('Marked "${task.title}" as done');
+  /// Marks the task complete via `PUT /tasks/{id}/mark-done`; the provider
+  /// refreshes the detail bundle so the status badge updates.
+  Future<void> _markTaskDone(LeadTask task) async {
+    final error = await ref
+        .read(markLeadTaskDoneProvider(widget.lead.id).notifier)
+        .markDone(task.id);
+    if (!mounted) return;
+    _showSnack(error ?? 'Marked "${task.title}" as done');
   }
 
   /// Opens the same sheet seeded with [task]; saving sends

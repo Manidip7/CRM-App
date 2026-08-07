@@ -415,6 +415,8 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
   Widget _buildTaskCard(AgendaTask task) {
     final isOverdue = task.group == TaskStatus.overdue;
     final isCompleted = task.group == TaskStatus.completed;
+    final deleting = ref.watch(deleteTaskProvider) == task.id;
+    final markingDone = ref.watch(markTaskDoneProvider) == task.id;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -561,8 +563,120 @@ class _TaskScreenState extends ConsumerState<TaskScreen> {
                 ],
               ),
             ],
+            const SizedBox(height: 8),
+            const Divider(height: 1, color: AppColors.divider),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                // Already-completed tasks have nothing left to mark.
+                if (!isCompleted) ...[
+                  if (markingDone)
+                    const Padding(
+                      padding: EdgeInsets.all(7),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.green),
+                      ),
+                    )
+                  else
+                    _TaskActionIcon(
+                      icon: Icons.check_circle_outline_rounded,
+                      color: AppColors.green,
+                      tooltip: 'Mark as done',
+                      onTap: () => _markTaskDone(task),
+                    ),
+                  const SizedBox(width: 4),
+                ],
+                if (deleting)
+                  const Padding(
+                    padding: EdgeInsets.all(7),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.red),
+                    ),
+                  )
+                else
+                  _TaskActionIcon(
+                    icon: Icons.delete_outline_rounded,
+                    color: AppColors.red,
+                    tooltip: 'Delete task',
+                    onTap: () => _deleteTask(task),
+                  ),
+              ],
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Marks the task complete via `PUT /tasks/{id}/mark-done`. The provider
+  /// refreshes both agenda views, so the card moves to Completed on success.
+  Future<void> _markTaskDone(AgendaTask task) async {
+    final error =
+        await ref.read(markTaskDoneProvider.notifier).markDone(task.id);
+    if (!mounted) return;
+    _showSnack(error ?? 'Marked "${task.title}" as done',
+        isError: error != null);
+  }
+
+  /// Confirms, then deletes the task via `DELETE /tasks/{id}`. The provider
+  /// refreshes both agenda views, so the card disappears on success.
+  Future<void> _deleteTask(AgendaTask task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Delete task?',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete "${task.title}"?',
+          style: GoogleFonts.poppins(
+              fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel',
+                style: GoogleFonts.poppins(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete',
+                style: GoogleFonts.poppins(
+                    color: AppColors.red, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final error = await ref.read(deleteTaskProvider.notifier).delete(task.id);
+    if (!mounted) return;
+    _showSnack(error ?? 'Deleted "${task.title}"', isError: error != null);
+  }
+
+  void _showSnack(String msg, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg,
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.white)),
+        backgroundColor: isError ? AppColors.red : AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -806,6 +920,40 @@ class _LegendItem extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Small circular icon button used for per-task actions on the agenda cards.
+class _TaskActionIcon extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _TaskActionIcon({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+      ),
     );
   }
 }

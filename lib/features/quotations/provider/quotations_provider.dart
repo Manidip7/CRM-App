@@ -103,6 +103,10 @@ class QuotationsState {
   final bool isLoadingMore;
   final Object? error;
 
+  /// Id of the quotation currently being deleted, so its card can show a
+  /// spinner. Null when no delete is in flight.
+  final String? deletingId;
+
   const QuotationsState({
     this.items = const [],
     this.currentPage = 1,
@@ -111,6 +115,7 @@ class QuotationsState {
     this.isLoading = true,
     this.isLoadingMore = false,
     this.error,
+    this.deletingId,
   });
 
   bool get hasMore => currentPage < lastPage;
@@ -124,6 +129,8 @@ class QuotationsState {
     bool? isLoadingMore,
     Object? error,
     bool clearError = false,
+    String? deletingId,
+    bool clearDeleting = false,
   }) {
     return QuotationsState(
       items: items ?? this.items,
@@ -133,6 +140,7 @@ class QuotationsState {
       isLoading: isLoading ?? this.isLoading,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       error: clearError ? null : (error ?? this.error),
+      deletingId: clearDeleting ? null : (deletingId ?? this.deletingId),
     );
   }
 }
@@ -181,10 +189,34 @@ class QuotationsNotifier extends Notifier<QuotationsState> {
     await _load(1);
   }
 
-  void delete(String id) => state = state.copyWith(
-        items: state.items.where((q) => q.id != id).toList(),
-        total: state.total > 0 ? state.total - 1 : 0,
-      );
+  /// Deletes [item] via `DELETE /opportunities/{opportunityId}/quotations/{id}`,
+  /// then drops it from the loaded list. Returns `null` on success, or an error
+  /// message to show. The endpoint is opportunity-scoped, so a quotation with no
+  /// `opportunity_id` cannot be deleted from here.
+  Future<String?> delete(QuotationModel item) async {
+    final opportunityId = item.opportunityId;
+    if (opportunityId == null || opportunityId.isEmpty) {
+      return 'This quotation has no linked opportunity to delete it from.';
+    }
+    if (state.deletingId != null) return null; // one delete at a time
+
+    state = state.copyWith(deletingId: item.id);
+    final result = await ref
+        .read(quotationsRepositoryProvider)
+        .deleteQuotation(opportunityId, item.id);
+    state = state.copyWith(clearDeleting: true);
+
+    return result.when(
+      success: (_) {
+        state = state.copyWith(
+          items: state.items.where((q) => q.id != item.id).toList(),
+          total: state.total > 0 ? state.total - 1 : 0,
+        );
+        return null;
+      },
+      failure: (error) => error.message,
+    );
+  }
 
   /// Upserts [updated]: replaces the quotation sharing its id, or prepends it to
   /// the list when no match exists (a newly created quote). Note: this is a

@@ -131,6 +131,26 @@ class QuotationsRepository {
     );
   }
 
+  /// DELETE /opportunities/{opportunityId}/quotations/{id} — removes a
+  /// quotation. Deletion is scoped to the owning opportunity, so [opportunityId]
+  /// is required even though the quotation id alone identifies the record.
+  Future<ApiResult<void>> deleteQuotation(String opportunityId, String id) {
+    return _api.delete<void>(
+      ApiConstants.opportunityQuotation(opportunityId, id),
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message:
+                json['message'] as String? ?? 'Could not delete quotation.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
   /// Unwraps the `{ success, data: { ...quotation } }` reply shared by create
   /// and update. Returns null when the reply carries no quotation object.
   static QuotationModel? _decodeSaved(dynamic json, String fallbackMessage) {

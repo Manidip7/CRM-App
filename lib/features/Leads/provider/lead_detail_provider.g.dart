@@ -815,6 +815,130 @@ abstract class _$ConvertLead extends $Notifier<ConvertLeadState> {
   }
 }
 
+/// Marks a lead's task complete (`POST /tasks/{id}/mark-done` — tasks are the
+/// same records the Tasks feature lists, so it is the shared endpoint), keyed by
+/// lead id. The state is the id of the task currently being marked (`null` when
+/// idle), so the tasks tab can show a spinner on just that card. On success it
+/// refreshes the lead's detail bundle so the status badge updates.
+
+@ProviderFor(MarkLeadTaskDone)
+final markLeadTaskDoneProvider = MarkLeadTaskDoneFamily._();
+
+/// Marks a lead's task complete (`POST /tasks/{id}/mark-done` — tasks are the
+/// same records the Tasks feature lists, so it is the shared endpoint), keyed by
+/// lead id. The state is the id of the task currently being marked (`null` when
+/// idle), so the tasks tab can show a spinner on just that card. On success it
+/// refreshes the lead's detail bundle so the status badge updates.
+final class MarkLeadTaskDoneProvider
+    extends $NotifierProvider<MarkLeadTaskDone, int?> {
+  /// Marks a lead's task complete (`POST /tasks/{id}/mark-done` — tasks are the
+  /// same records the Tasks feature lists, so it is the shared endpoint), keyed by
+  /// lead id. The state is the id of the task currently being marked (`null` when
+  /// idle), so the tasks tab can show a spinner on just that card. On success it
+  /// refreshes the lead's detail bundle so the status badge updates.
+  MarkLeadTaskDoneProvider._({
+    required MarkLeadTaskDoneFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'markLeadTaskDoneProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
+
+  @override
+  String debugGetCreateSourceHash() => _$markLeadTaskDoneHash();
+
+  @override
+  String toString() {
+    return r'markLeadTaskDoneProvider'
+        ''
+        '($argument)';
+  }
+
+  @$internal
+  @override
+  MarkLeadTaskDone create() => MarkLeadTaskDone();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(int? value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<int?>(value),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is MarkLeadTaskDoneProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
+}
+
+String _$markLeadTaskDoneHash() => r'12376e5fc8870cc047db1ff2cf837c2041ad6eab';
+
+/// Marks a lead's task complete (`POST /tasks/{id}/mark-done` — tasks are the
+/// same records the Tasks feature lists, so it is the shared endpoint), keyed by
+/// lead id. The state is the id of the task currently being marked (`null` when
+/// idle), so the tasks tab can show a spinner on just that card. On success it
+/// refreshes the lead's detail bundle so the status badge updates.
+
+final class MarkLeadTaskDoneFamily extends $Family
+    with $ClassFamilyOverride<MarkLeadTaskDone, int?, int?, int?, String> {
+  MarkLeadTaskDoneFamily._()
+    : super(
+        retry: null,
+        name: r'markLeadTaskDoneProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  /// Marks a lead's task complete (`POST /tasks/{id}/mark-done` — tasks are the
+  /// same records the Tasks feature lists, so it is the shared endpoint), keyed by
+  /// lead id. The state is the id of the task currently being marked (`null` when
+  /// idle), so the tasks tab can show a spinner on just that card. On success it
+  /// refreshes the lead's detail bundle so the status badge updates.
+
+  MarkLeadTaskDoneProvider call(String leadId) =>
+      MarkLeadTaskDoneProvider._(argument: leadId, from: this);
+
+  @override
+  String toString() => r'markLeadTaskDoneProvider';
+}
+
+/// Marks a lead's task complete (`POST /tasks/{id}/mark-done` — tasks are the
+/// same records the Tasks feature lists, so it is the shared endpoint), keyed by
+/// lead id. The state is the id of the task currently being marked (`null` when
+/// idle), so the tasks tab can show a spinner on just that card. On success it
+/// refreshes the lead's detail bundle so the status badge updates.
+
+abstract class _$MarkLeadTaskDone extends $Notifier<int?> {
+  late final _$args = ref.$arg as String;
+  String get leadId => _$args;
+
+  int? build(String leadId);
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final ref = this.ref as $Ref<int?, int?>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<int?, int?>,
+              int?,
+              Object?,
+              Object?
+            >;
+    element.handleCreate(ref, () => build(_$args));
+  }
+}
+
 /// Backs the lead's Add / Edit Task sheet, keyed by lead id and — when editing —
 /// the task id, so each sheet keeps its own form. Auto-disposed, so the form
 /// resets every time the sheet opens. [taskId] `null` means "create": submitting
