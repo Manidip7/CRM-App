@@ -540,40 +540,42 @@ as bool,
 }
 
 /// @nodoc
-mixin _$AddTaskState {
+mixin _$LeadTaskFormState {
 
- DateTime? get dueAt; String get priority; bool get saving;
-/// Create a copy of AddTaskState
+ DateTime? get dueAt; String get priority;/// Backend status (`open` / `in_progress` / `backlog` / `done`). Only sent
+/// when editing — the create endpoint doesn't take it.
+ String get status; bool get saving;
+/// Create a copy of LeadTaskFormState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
 @pragma('vm:prefer-inline')
-$AddTaskStateCopyWith<AddTaskState> get copyWith => _$AddTaskStateCopyWithImpl<AddTaskState>(this as AddTaskState, _$identity);
+$LeadTaskFormStateCopyWith<LeadTaskFormState> get copyWith => _$LeadTaskFormStateCopyWithImpl<LeadTaskFormState>(this as LeadTaskFormState, _$identity);
 
 
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AddTaskState&&(identical(other.dueAt, dueAt) || other.dueAt == dueAt)&&(identical(other.priority, priority) || other.priority == priority)&&(identical(other.saving, saving) || other.saving == saving));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LeadTaskFormState&&(identical(other.dueAt, dueAt) || other.dueAt == dueAt)&&(identical(other.priority, priority) || other.priority == priority)&&(identical(other.status, status) || other.status == status)&&(identical(other.saving, saving) || other.saving == saving));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,dueAt,priority,saving);
+int get hashCode => Object.hash(runtimeType,dueAt,priority,status,saving);
 
 @override
 String toString() {
-  return 'AddTaskState(dueAt: $dueAt, priority: $priority, saving: $saving)';
+  return 'LeadTaskFormState(dueAt: $dueAt, priority: $priority, status: $status, saving: $saving)';
 }
 
 
 }
 
 /// @nodoc
-abstract mixin class $AddTaskStateCopyWith<$Res>  {
-  factory $AddTaskStateCopyWith(AddTaskState value, $Res Function(AddTaskState) _then) = _$AddTaskStateCopyWithImpl;
+abstract mixin class $LeadTaskFormStateCopyWith<$Res>  {
+  factory $LeadTaskFormStateCopyWith(LeadTaskFormState value, $Res Function(LeadTaskFormState) _then) = _$LeadTaskFormStateCopyWithImpl;
 @useResult
 $Res call({
- DateTime? dueAt, String priority, bool saving
+ DateTime? dueAt, String priority, String status, bool saving
 });
 
 
@@ -581,19 +583,20 @@ $Res call({
 
 }
 /// @nodoc
-class _$AddTaskStateCopyWithImpl<$Res>
-    implements $AddTaskStateCopyWith<$Res> {
-  _$AddTaskStateCopyWithImpl(this._self, this._then);
+class _$LeadTaskFormStateCopyWithImpl<$Res>
+    implements $LeadTaskFormStateCopyWith<$Res> {
+  _$LeadTaskFormStateCopyWithImpl(this._self, this._then);
 
-  final AddTaskState _self;
-  final $Res Function(AddTaskState) _then;
+  final LeadTaskFormState _self;
+  final $Res Function(LeadTaskFormState) _then;
 
-/// Create a copy of AddTaskState
+/// Create a copy of LeadTaskFormState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? dueAt = freezed,Object? priority = null,Object? saving = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? dueAt = freezed,Object? priority = null,Object? status = null,Object? saving = null,}) {
   return _then(_self.copyWith(
 dueAt: freezed == dueAt ? _self.dueAt : dueAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,priority: null == priority ? _self.priority : priority // ignore: cast_nullable_to_non_nullable
+as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as String,saving: null == saving ? _self.saving : saving // ignore: cast_nullable_to_non_nullable
 as bool,
   ));
@@ -602,8 +605,8 @@ as bool,
 }
 
 
-/// Adds pattern-matching-related methods to [AddTaskState].
-extension AddTaskStatePatterns on AddTaskState {
+/// Adds pattern-matching-related methods to [LeadTaskFormState].
+extension LeadTaskFormStatePatterns on LeadTaskFormState {
 /// A variant of `map` that fallback to returning `orElse`.
 ///
 /// It is equivalent to doing:
@@ -616,10 +619,10 @@ extension AddTaskStatePatterns on AddTaskState {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _AddTaskState value)?  $default,{required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _LeadTaskFormState value)?  $default,{required TResult orElse(),}){
 final _that = this;
 switch (_that) {
-case _AddTaskState() when $default != null:
+case _LeadTaskFormState() when $default != null:
 return $default(_that);case _:
   return orElse();
 
@@ -638,10 +641,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _AddTaskState value)  $default,){
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _LeadTaskFormState value)  $default,){
 final _that = this;
 switch (_that) {
-case _AddTaskState():
+case _LeadTaskFormState():
 return $default(_that);case _:
   throw StateError('Unexpected subclass');
 
@@ -659,10 +662,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _AddTaskState value)?  $default,){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _LeadTaskFormState value)?  $default,){
 final _that = this;
 switch (_that) {
-case _AddTaskState() when $default != null:
+case _LeadTaskFormState() when $default != null:
 return $default(_that);case _:
   return null;
 
@@ -680,10 +683,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( DateTime? dueAt,  String priority,  bool saving)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( DateTime? dueAt,  String priority,  String status,  bool saving)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
-case _AddTaskState() when $default != null:
-return $default(_that.dueAt,_that.priority,_that.saving);case _:
+case _LeadTaskFormState() when $default != null:
+return $default(_that.dueAt,_that.priority,_that.status,_that.saving);case _:
   return orElse();
 
 }
@@ -701,10 +704,10 @@ return $default(_that.dueAt,_that.priority,_that.saving);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( DateTime? dueAt,  String priority,  bool saving)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( DateTime? dueAt,  String priority,  String status,  bool saving)  $default,) {final _that = this;
 switch (_that) {
-case _AddTaskState():
-return $default(_that.dueAt,_that.priority,_that.saving);case _:
+case _LeadTaskFormState():
+return $default(_that.dueAt,_that.priority,_that.status,_that.saving);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -721,10 +724,10 @@ return $default(_that.dueAt,_that.priority,_that.saving);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( DateTime? dueAt,  String priority,  bool saving)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( DateTime? dueAt,  String priority,  String status,  bool saving)?  $default,) {final _that = this;
 switch (_that) {
-case _AddTaskState() when $default != null:
-return $default(_that.dueAt,_that.priority,_that.saving);case _:
+case _LeadTaskFormState() when $default != null:
+return $default(_that.dueAt,_that.priority,_that.status,_that.saving);case _:
   return null;
 
 }
@@ -735,45 +738,48 @@ return $default(_that.dueAt,_that.priority,_that.saving);case _:
 /// @nodoc
 
 
-class _AddTaskState implements AddTaskState {
-  const _AddTaskState({this.dueAt, this.priority = 'medium', this.saving = false});
+class _LeadTaskFormState implements LeadTaskFormState {
+  const _LeadTaskFormState({this.dueAt, this.priority = 'medium', this.status = 'open', this.saving = false});
   
 
 @override final  DateTime? dueAt;
 @override@JsonKey() final  String priority;
+/// Backend status (`open` / `in_progress` / `backlog` / `done`). Only sent
+/// when editing — the create endpoint doesn't take it.
+@override@JsonKey() final  String status;
 @override@JsonKey() final  bool saving;
 
-/// Create a copy of AddTaskState
+/// Create a copy of LeadTaskFormState
 /// with the given fields replaced by the non-null parameter values.
 @override @JsonKey(includeFromJson: false, includeToJson: false)
 @pragma('vm:prefer-inline')
-_$AddTaskStateCopyWith<_AddTaskState> get copyWith => __$AddTaskStateCopyWithImpl<_AddTaskState>(this, _$identity);
+_$LeadTaskFormStateCopyWith<_LeadTaskFormState> get copyWith => __$LeadTaskFormStateCopyWithImpl<_LeadTaskFormState>(this, _$identity);
 
 
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _AddTaskState&&(identical(other.dueAt, dueAt) || other.dueAt == dueAt)&&(identical(other.priority, priority) || other.priority == priority)&&(identical(other.saving, saving) || other.saving == saving));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LeadTaskFormState&&(identical(other.dueAt, dueAt) || other.dueAt == dueAt)&&(identical(other.priority, priority) || other.priority == priority)&&(identical(other.status, status) || other.status == status)&&(identical(other.saving, saving) || other.saving == saving));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,dueAt,priority,saving);
+int get hashCode => Object.hash(runtimeType,dueAt,priority,status,saving);
 
 @override
 String toString() {
-  return 'AddTaskState(dueAt: $dueAt, priority: $priority, saving: $saving)';
+  return 'LeadTaskFormState(dueAt: $dueAt, priority: $priority, status: $status, saving: $saving)';
 }
 
 
 }
 
 /// @nodoc
-abstract mixin class _$AddTaskStateCopyWith<$Res> implements $AddTaskStateCopyWith<$Res> {
-  factory _$AddTaskStateCopyWith(_AddTaskState value, $Res Function(_AddTaskState) _then) = __$AddTaskStateCopyWithImpl;
+abstract mixin class _$LeadTaskFormStateCopyWith<$Res> implements $LeadTaskFormStateCopyWith<$Res> {
+  factory _$LeadTaskFormStateCopyWith(_LeadTaskFormState value, $Res Function(_LeadTaskFormState) _then) = __$LeadTaskFormStateCopyWithImpl;
 @override @useResult
 $Res call({
- DateTime? dueAt, String priority, bool saving
+ DateTime? dueAt, String priority, String status, bool saving
 });
 
 
@@ -781,19 +787,20 @@ $Res call({
 
 }
 /// @nodoc
-class __$AddTaskStateCopyWithImpl<$Res>
-    implements _$AddTaskStateCopyWith<$Res> {
-  __$AddTaskStateCopyWithImpl(this._self, this._then);
+class __$LeadTaskFormStateCopyWithImpl<$Res>
+    implements _$LeadTaskFormStateCopyWith<$Res> {
+  __$LeadTaskFormStateCopyWithImpl(this._self, this._then);
 
-  final _AddTaskState _self;
-  final $Res Function(_AddTaskState) _then;
+  final _LeadTaskFormState _self;
+  final $Res Function(_LeadTaskFormState) _then;
 
-/// Create a copy of AddTaskState
+/// Create a copy of LeadTaskFormState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? dueAt = freezed,Object? priority = null,Object? saving = null,}) {
-  return _then(_AddTaskState(
+@override @pragma('vm:prefer-inline') $Res call({Object? dueAt = freezed,Object? priority = null,Object? status = null,Object? saving = null,}) {
+  return _then(_LeadTaskFormState(
 dueAt: freezed == dueAt ? _self.dueAt : dueAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,priority: null == priority ? _self.priority : priority // ignore: cast_nullable_to_non_nullable
+as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
 as String,saving: null == saving ? _self.saving : saving // ignore: cast_nullable_to_non_nullable
 as bool,
   ));

@@ -1713,6 +1713,8 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
   }
 
   Widget _buildNoteCard(LeadNote note) {
+    final deleting =
+        ref.watch(deleteLeadNoteProvider(widget.lead.id)) == note.id;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 10),
@@ -1751,12 +1753,23 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                       fontSize: 11, color: AppColors.textLight),
                 ),
               const SizedBox(width: 6),
-              _TaskActionIcon(
-                icon: Icons.delete_outline_rounded,
-                color: AppColors.red,
-                tooltip: 'Delete note',
-                onTap: () => _deleteNote(note),
-              ),
+              if (deleting)
+                const Padding(
+                  padding: EdgeInsets.all(7),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.red),
+                  ),
+                )
+              else
+                _TaskActionIcon(
+                  icon: Icons.delete_outline_rounded,
+                  color: AppColors.red,
+                  tooltip: 'Delete note',
+                  onTap: () => _deleteNote(note),
+                ),
             ],
           ),
         ],
@@ -1799,9 +1812,13 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
         ],
       ),
     );
-    if (confirmed == true) {
-      _showSnack('Deleted note');
-    }
+    if (confirmed != true || !mounted) return;
+
+    final error = await ref
+        .read(deleteLeadNoteProvider(widget.lead.id).notifier)
+        .delete(note.id);
+    if (!mounted) return;
+    _showSnack(error ?? 'Deleted note');
   }
 
   /// Opens the add-task sheet; shows a confirmation once a task is added (the
@@ -1849,6 +1866,8 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
 
   Widget _buildTaskCard(LeadTask task) {
     final cfg = _taskStatusConfig(task.status);
+    final deleting =
+        ref.watch(deleteLeadTaskProvider(widget.lead.id)) == task.id;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 10),
@@ -1950,12 +1969,23 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
                 onTap: () => _editTask(task),
               ),
               const SizedBox(width: 4),
-              _TaskActionIcon(
-                icon: Icons.delete_outline_rounded,
-                color: AppColors.red,
-                tooltip: 'Delete task',
-                onTap: () => _deleteTask(task),
-              ),
+              if (deleting)
+                const Padding(
+                  padding: EdgeInsets.all(7),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.red),
+                  ),
+                )
+              else
+                _TaskActionIcon(
+                  icon: Icons.delete_outline_rounded,
+                  color: AppColors.red,
+                  tooltip: 'Delete task',
+                  onTap: () => _deleteTask(task),
+                ),
             ],
           ),
         ],
@@ -1967,8 +1997,16 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     _showSnack('Marked "${task.title}" as done');
   }
 
-  void _editTask(LeadTask task) {
-    _showSnack('Edit "${task.title}"');
+  /// Opens the same sheet seeded with [task]; saving sends
+  /// `PUT /leads/{id}/tasks/{taskId}` and the tasks list refreshes itself.
+  Future<void> _editTask(LeadTask task) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AddTaskSheet(leadId: widget.lead.id, task: task),
+    );
+    if (saved == true && mounted) _showSnack('Task updated');
   }
 
   Future<void> _deleteTask(LeadTask task) async {
@@ -2006,9 +2044,13 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
         ],
       ),
     );
-    if (confirmed == true) {
-      _showSnack('Deleted "${task.title}"');
-    }
+    if (confirmed != true || !mounted) return;
+
+    final error = await ref
+        .read(deleteLeadTaskProvider(widget.lead.id).notifier)
+        .delete(task.id);
+    if (!mounted) return;
+    _showSnack(error ?? 'Deleted "${task.title}"');
   }
 
   /// Header row used by the Notes/Tasks tabs (title + count + add button).
@@ -3521,15 +3563,21 @@ class _AddNoteSheetState extends ConsumerState<_AddNoteSheet> {
   }
 }
 
-// ── Add Task Sheet ────────────────────────────────────────────────────────────
+// ── Add / Edit Task Sheet ─────────────────────────────────────────────────────
 
-/// Bottom sheet to add a task to a lead (`POST /leads/{id}/tasks`): a title, a
-/// due date+time picker, and a priority dropdown. Form state (due date,
-/// priority, saving) is Riverpod-managed ([addTaskProvider]); the title uses a
-/// local controller. Pops `true` when the task is saved.
+/// Bottom sheet to add a task to a lead (`POST /leads/{id}/tasks`) or edit one
+/// (`PUT /leads/{id}/tasks/{taskId}` when [task] is given): a title, a due
+/// date+time picker, a priority dropdown and — in edit mode — a status
+/// dropdown. Form state (due date, priority, status, saving) is Riverpod-managed
+/// ([leadTaskFormProvider]); the title uses a local controller. Pops `true` when
+/// the task is saved.
 class _AddTaskSheet extends ConsumerStatefulWidget {
   final String leadId;
-  const _AddTaskSheet({required this.leadId});
+
+  /// The task being edited; `null` opens the sheet in "add" mode.
+  final LeadTask? task;
+
+  const _AddTaskSheet({required this.leadId, this.task});
 
   @override
   ConsumerState<_AddTaskSheet> createState() => _AddTaskSheetState();
@@ -3542,14 +3590,39 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
   ];
   static const List<String> _priorities = ['high', 'medium', 'low'];
 
+  /// Backend status values accepted by the update endpoint, with their labels.
+  static const List<(String, String)> _statuses = [
+    ('open', 'Open'),
+    ('in_progress', 'In Progress'),
+    ('backlog', 'Backlog'),
+    ('done', 'Done'),
+  ];
+
   late final TextEditingController _ctrl;
 
-  AddTask get _form => ref.read(addTaskProvider(widget.leadId).notifier);
+  bool get _isEdit => widget.task != null;
+
+  /// The form provider for this sheet — seeded from [widget.task] when editing.
+  /// The arguments must stay identical across rebuilds so the family key does.
+  LeadTaskFormProvider get _provider => leadTaskFormProvider(
+        widget.leadId,
+        taskId: widget.task?.id,
+        initialDueAt: widget.task?.dueAt,
+        initialPriority: _priorities.contains(widget.task?.priority)
+            ? widget.task!.priority!
+            : 'medium',
+        initialStatus:
+            _statuses.any((s) => s.$1 == widget.task?.status?.toLowerCase())
+                ? widget.task!.status!.toLowerCase()
+                : 'open',
+      );
+
+  LeadTaskForm get _form => ref.read(_provider.notifier);
 
   @override
   void initState() {
     super.initState();
-    _ctrl = TextEditingController();
+    _ctrl = TextEditingController(text: widget.task?.title ?? '');
   }
 
   @override
@@ -3581,7 +3654,7 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
       );
 
   Future<void> _pickDue() async {
-    final current = ref.read(addTaskProvider(widget.leadId)).dueAt ?? DateTime.now();
+    final current = ref.read(_provider).dueAt ?? DateTime.now();
     final date = await showDatePicker(
       context: context,
       initialDate: current,
@@ -3617,22 +3690,18 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
   }
 
   Future<void> _submit() async {
-    final state = ref.read(addTaskProvider(widget.leadId));
-    if (_ctrl.text.trim().isEmpty) return _error('Enter a task title');
-    if (state.dueAt == null) return _error('Pick a due date & time');
-
-    final ok = await _form.submit(_ctrl.text);
+    final error = await _form.submit(_ctrl.text);
     if (!mounted) return;
-    if (ok) {
+    if (error == null) {
       Navigator.pop(context, true);
     } else {
-      _error('Could not add task');
+      _error(error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(addTaskProvider(widget.leadId));
+    final state = ref.watch(_provider);
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
@@ -3675,7 +3744,7 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Add Task',
+                      _isEdit ? 'Edit Task' : 'Add Task',
                       style: GoogleFonts.poppins(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
@@ -3768,6 +3837,23 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
                         if (v != null) _form.setPriority(v);
                       },
                     ),
+                    // Status — only the update endpoint accepts it.
+                    if (_isEdit) ...[
+                      const SizedBox(height: 18),
+                      const _FieldLabel(
+                          'Status', Icons.donut_large_rounded),
+                      const SizedBox(height: 8),
+                      _SheetDropdown<String>(
+                        hint: 'Select status',
+                        value: state.status,
+                        options: _statuses.map((s) => s.$1).toList(),
+                        labelOf: (s) =>
+                            _statuses.firstWhere((e) => e.$1 == s).$2,
+                        onChanged: (v) {
+                          if (v != null) _form.setStatus(v);
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -3801,7 +3887,9 @@ class _AddTaskSheetState extends ConsumerState<_AddTaskSheet> {
                         )
                       : const Icon(Icons.check_rounded, size: 19),
                   label: Text(
-                    state.saving ? 'Saving…' : 'Add Task',
+                    state.saving
+                        ? 'Saving…'
+                        : (_isEdit ? 'Save Changes' : 'Add Task'),
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,

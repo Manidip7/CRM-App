@@ -46,7 +46,11 @@ class ApiConstants {
   static String leadFollowup(String id) => '/leads/$id/followup';
   static String leadStatus(String id) => '/leads/$id/status';
   static String leadNotes(String id) => '/leads/$id/notes';
+  static String leadNoteDetail(String id, String noteId) =>
+      '/leads/$id/notes/$noteId';
   static String leadTasks(String id) => '/leads/$id/tasks';
+  static String leadTaskDetail(String id, String taskId) =>
+      '/leads/$id/tasks/$taskId';
   static String leadConvert(String id) => '/leads/$id/convert';
   static String leadAssign(String id) => '/leads/$id/assign';
   static const String leadSources = '/lead-sources';

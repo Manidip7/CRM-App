@@ -208,6 +208,39 @@ class AddNote extends _$AddNote {
   }
 }
 
+/// Deletes a note from a lead (`DELETE /leads/{id}/notes/{noteId}`), keyed by
+/// lead id. The state is the id of the note currently being deleted (`null`
+/// when idle), so the notes tab can show a spinner on just that card. On
+/// success it refreshes the lead's detail bundle so the note disappears.
+@riverpod
+class DeleteLeadNote extends _$DeleteLeadNote {
+  late String _leadId;
+
+  @override
+  int? build(String leadId) {
+    _leadId = leadId;
+    return null;
+  }
+
+  /// Deletes [noteId]. Returns `null` on success, or an error message to show.
+  Future<String?> delete(int noteId) async {
+    if (state != null) return null; // a delete is already in flight
+
+    state = noteId;
+    final result =
+        await ref.read(leadsRepositoryProvider).deleteLeadNote(_leadId, noteId);
+    state = null;
+
+    return result.when(
+      success: (_) {
+        ref.invalidate(leadDetailProvider(_leadId));
+        return null;
+      },
+      failure: (error) => error.message,
+    );
+  }
+}
+
 /// Form state for the "Convert to Opportunity" bottom sheet.
 @freezed
 abstract class ConvertLeadState with _$ConvertLeadState {
@@ -246,31 +279,51 @@ class ConvertLead extends _$ConvertLead {
   }
 }
 
-/// Form state for the "Add Task" bottom sheet.
+/// Form state for the Add / Edit Task bottom sheet.
 @freezed
-abstract class AddTaskState with _$AddTaskState {
-  const factory AddTaskState({
+abstract class LeadTaskFormState with _$LeadTaskFormState {
+  const factory LeadTaskFormState({
     DateTime? dueAt,
     @Default('medium') String priority,
+
+    /// Backend status (`open` / `in_progress` / `backlog` / `done`). Only sent
+    /// when editing — the create endpoint doesn't take it.
+    @Default('open') String status,
     @Default(false) bool saving,
-  }) = _AddTaskState;
+  }) = _LeadTaskFormState;
 }
 
-/// Handles adding a task to a lead (`POST /leads/{id}/tasks`), keyed by lead id
-/// and auto-disposed so the form resets each time the sheet opens. On success it
-/// refreshes the lead's detail bundle so the new task appears.
+/// Backs the lead's Add / Edit Task sheet, keyed by lead id and — when editing —
+/// the task id, so each sheet keeps its own form. Auto-disposed, so the form
+/// resets every time the sheet opens. [taskId] `null` means "create": submitting
+/// posts to `/leads/{id}/tasks`; otherwise it puts to `/leads/{id}/tasks/{taskId}`.
+/// The initial values seed the form from the task being edited. On success it
+/// refreshes the lead's detail bundle so the tasks tab reflects the change.
 @riverpod
-class AddTask extends _$AddTask {
+class LeadTaskForm extends _$LeadTaskForm {
   late String _leadId;
+  int? _taskId;
 
   @override
-  AddTaskState build(String leadId) {
+  LeadTaskFormState build(
+    String leadId, {
+    int? taskId,
+    DateTime? initialDueAt,
+    String initialPriority = 'medium',
+    String initialStatus = 'open',
+  }) {
     _leadId = leadId;
-    return const AddTaskState();
+    _taskId = taskId;
+    return LeadTaskFormState(
+      dueAt: initialDueAt,
+      priority: initialPriority,
+      status: initialStatus,
+    );
   }
 
   void setDueAt(DateTime d) => state = state.copyWith(dueAt: d);
   void setPriority(String p) => state = state.copyWith(priority: p);
+  void setStatus(String s) => state = state.copyWith(status: s);
 
   /// `due_at` in the API's `yyyy-MM-dd HH:mm:ss` format.
   static String _fmtDue(DateTime d) {
@@ -279,28 +332,75 @@ class AddTask extends _$AddTask {
         '${two(d.hour)}:${two(d.minute)}:${two(d.second)}';
   }
 
-  /// Submits the task. Requires a non-empty [title] and a chosen due date.
-  /// Returns `true` on success.
-  Future<bool> submit(String title) async {
+  /// Creates or updates the task, depending on whether this form was built with
+  /// a `taskId`. Requires a non-empty [title] and a chosen due date. Returns
+  /// `null` on success, or an error message to show.
+  Future<String?> submit(String title) async {
     final text = title.trim();
     final due = state.dueAt;
-    if (text.isEmpty || due == null || state.saving) return false;
+    if (text.isEmpty) return 'Enter a task title';
+    if (due == null) return 'Pick a due date & time';
+    if (state.saving) return null;
 
+    final id = _taskId;
     state = state.copyWith(saving: true);
-    final result = await ref.read(leadsRepositoryProvider).addLeadTask(
-          _leadId,
-          title: text,
-          dueAt: _fmtDue(due),
-          priority: state.priority,
-        );
+    final repo = ref.read(leadsRepositoryProvider);
+    final result = id == null
+        ? await repo.addLeadTask(
+            _leadId,
+            title: text,
+            dueAt: _fmtDue(due),
+            priority: state.priority,
+          )
+        : await repo.updateLeadTask(
+            _leadId,
+            id,
+            title: text,
+            dueAt: _fmtDue(due),
+            priority: state.priority,
+            status: state.status,
+          );
     state = state.copyWith(saving: false);
 
     return result.when(
       success: (_) {
         ref.invalidate(leadDetailProvider(_leadId));
-        return true;
+        return null;
       },
-      failure: (_) => false,
+      failure: (error) => error.message,
+    );
+  }
+}
+
+/// Deletes a task from a lead (`DELETE /leads/{id}/tasks/{taskId}`), keyed by
+/// lead id. The state is the id of the task currently being deleted (`null`
+/// when idle), so the tasks tab can show a spinner on just that card. On
+/// success it refreshes the lead's detail bundle so the task disappears.
+@riverpod
+class DeleteLeadTask extends _$DeleteLeadTask {
+  late String _leadId;
+
+  @override
+  int? build(String leadId) {
+    _leadId = leadId;
+    return null;
+  }
+
+  /// Deletes [taskId]. Returns `null` on success, or an error message to show.
+  Future<String?> delete(int taskId) async {
+    if (state != null) return null; // a delete is already in flight
+
+    state = taskId;
+    final result =
+        await ref.read(leadsRepositoryProvider).deleteLeadTask(_leadId, taskId);
+    state = null;
+
+    return result.when(
+      success: (_) {
+        ref.invalidate(leadDetailProvider(_leadId));
+        return null;
+      },
+      failure: (error) => error.message,
     );
   }
 }

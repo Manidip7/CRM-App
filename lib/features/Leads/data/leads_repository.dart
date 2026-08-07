@@ -483,6 +483,23 @@ class LeadsRepository {
     );
   }
 
+  /// DELETE /leads/{id}/notes/{noteId} — removes a note from a lead.
+  Future<ApiResult<void>> deleteLeadNote(String id, int noteId) {
+    return _api.delete<void>(
+      ApiConstants.leadNoteDetail(id, '$noteId'),
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not delete note.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
   /// POST /leads/{id}/convert — converts a lead to an opportunity. Sent as an
   /// `x-www-form-urlencoded` body (`expected_value`, `probability`).
   Future<ApiResult<void>> convertLead(
@@ -533,6 +550,58 @@ class LeadsRepository {
           throw ApiException(
             type: ApiErrorType.validation,
             message: json['message'] as String? ?? 'Could not add task.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  /// PUT /leads/{id}/tasks/{taskId} — updates a lead's task. Sent as an
+  /// `x-www-form-urlencoded` body (`title`, `due_at`, `priority`, `status`).
+  /// [dueAt] must already be formatted as `yyyy-MM-dd HH:mm:ss`; [priority] is
+  /// `high` / `medium` / `low`; [status] is `open` / `in_progress` / `backlog` /
+  /// `done`.
+  Future<ApiResult<void>> updateLeadTask(
+    String id,
+    int taskId, {
+    required String title,
+    String? dueAt,
+    required String priority,
+    required String status,
+  }) {
+    return _api.put<void>(
+      ApiConstants.leadTaskDetail(id, '$taskId'),
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+      data: {
+        'title': title,
+        if (dueAt != null && dueAt.isNotEmpty) 'due_at': dueAt,
+        'priority': priority,
+        'status': status,
+      },
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not update task.',
+            raw: json,
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  /// DELETE /leads/{id}/tasks/{taskId} — removes a task from a lead.
+  Future<ApiResult<void>> deleteLeadTask(String id, int taskId) {
+    return _api.delete<void>(
+      ApiConstants.leadTaskDetail(id, '$taskId'),
+      decoder: (json) {
+        if (json is Map && json['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message: json['message'] as String? ?? 'Could not delete task.',
             raw: json,
           );
         }

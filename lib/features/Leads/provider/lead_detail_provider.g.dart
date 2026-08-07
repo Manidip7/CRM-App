@@ -584,6 +584,124 @@ abstract class _$AddNote extends $Notifier<bool> {
   }
 }
 
+/// Deletes a note from a lead (`DELETE /leads/{id}/notes/{noteId}`), keyed by
+/// lead id. The state is the id of the note currently being deleted (`null`
+/// when idle), so the notes tab can show a spinner on just that card. On
+/// success it refreshes the lead's detail bundle so the note disappears.
+
+@ProviderFor(DeleteLeadNote)
+final deleteLeadNoteProvider = DeleteLeadNoteFamily._();
+
+/// Deletes a note from a lead (`DELETE /leads/{id}/notes/{noteId}`), keyed by
+/// lead id. The state is the id of the note currently being deleted (`null`
+/// when idle), so the notes tab can show a spinner on just that card. On
+/// success it refreshes the lead's detail bundle so the note disappears.
+final class DeleteLeadNoteProvider
+    extends $NotifierProvider<DeleteLeadNote, int?> {
+  /// Deletes a note from a lead (`DELETE /leads/{id}/notes/{noteId}`), keyed by
+  /// lead id. The state is the id of the note currently being deleted (`null`
+  /// when idle), so the notes tab can show a spinner on just that card. On
+  /// success it refreshes the lead's detail bundle so the note disappears.
+  DeleteLeadNoteProvider._({
+    required DeleteLeadNoteFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'deleteLeadNoteProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
+
+  @override
+  String debugGetCreateSourceHash() => _$deleteLeadNoteHash();
+
+  @override
+  String toString() {
+    return r'deleteLeadNoteProvider'
+        ''
+        '($argument)';
+  }
+
+  @$internal
+  @override
+  DeleteLeadNote create() => DeleteLeadNote();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(int? value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<int?>(value),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is DeleteLeadNoteProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
+}
+
+String _$deleteLeadNoteHash() => r'efd61f6e9777e5f814bbf5e6dd0519eb57974e1c';
+
+/// Deletes a note from a lead (`DELETE /leads/{id}/notes/{noteId}`), keyed by
+/// lead id. The state is the id of the note currently being deleted (`null`
+/// when idle), so the notes tab can show a spinner on just that card. On
+/// success it refreshes the lead's detail bundle so the note disappears.
+
+final class DeleteLeadNoteFamily extends $Family
+    with $ClassFamilyOverride<DeleteLeadNote, int?, int?, int?, String> {
+  DeleteLeadNoteFamily._()
+    : super(
+        retry: null,
+        name: r'deleteLeadNoteProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  /// Deletes a note from a lead (`DELETE /leads/{id}/notes/{noteId}`), keyed by
+  /// lead id. The state is the id of the note currently being deleted (`null`
+  /// when idle), so the notes tab can show a spinner on just that card. On
+  /// success it refreshes the lead's detail bundle so the note disappears.
+
+  DeleteLeadNoteProvider call(String leadId) =>
+      DeleteLeadNoteProvider._(argument: leadId, from: this);
+
+  @override
+  String toString() => r'deleteLeadNoteProvider';
+}
+
+/// Deletes a note from a lead (`DELETE /leads/{id}/notes/{noteId}`), keyed by
+/// lead id. The state is the id of the note currently being deleted (`null`
+/// when idle), so the notes tab can show a spinner on just that card. On
+/// success it refreshes the lead's detail bundle so the note disappears.
+
+abstract class _$DeleteLeadNote extends $Notifier<int?> {
+  late final _$args = ref.$arg as String;
+  String get leadId => _$args;
+
+  int? build(String leadId);
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final ref = this.ref as $Ref<int?, int?>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<int?, int?>,
+              int?,
+              Object?,
+              Object?
+            >;
+    element.handleCreate(ref, () => build(_$args));
+  }
+}
+
 /// Converts a lead to an opportunity (`POST /leads/{id}/convert`), keyed by lead
 /// id and auto-disposed so the form resets each time the sheet opens.
 
@@ -697,56 +815,73 @@ abstract class _$ConvertLead extends $Notifier<ConvertLeadState> {
   }
 }
 
-/// Handles adding a task to a lead (`POST /leads/{id}/tasks`), keyed by lead id
-/// and auto-disposed so the form resets each time the sheet opens. On success it
-/// refreshes the lead's detail bundle so the new task appears.
+/// Backs the lead's Add / Edit Task sheet, keyed by lead id and — when editing —
+/// the task id, so each sheet keeps its own form. Auto-disposed, so the form
+/// resets every time the sheet opens. [taskId] `null` means "create": submitting
+/// posts to `/leads/{id}/tasks`; otherwise it puts to `/leads/{id}/tasks/{taskId}`.
+/// The initial values seed the form from the task being edited. On success it
+/// refreshes the lead's detail bundle so the tasks tab reflects the change.
 
-@ProviderFor(AddTask)
-final addTaskProvider = AddTaskFamily._();
+@ProviderFor(LeadTaskForm)
+final leadTaskFormProvider = LeadTaskFormFamily._();
 
-/// Handles adding a task to a lead (`POST /leads/{id}/tasks`), keyed by lead id
-/// and auto-disposed so the form resets each time the sheet opens. On success it
-/// refreshes the lead's detail bundle so the new task appears.
-final class AddTaskProvider extends $NotifierProvider<AddTask, AddTaskState> {
-  /// Handles adding a task to a lead (`POST /leads/{id}/tasks`), keyed by lead id
-  /// and auto-disposed so the form resets each time the sheet opens. On success it
-  /// refreshes the lead's detail bundle so the new task appears.
-  AddTaskProvider._({
-    required AddTaskFamily super.from,
-    required String super.argument,
+/// Backs the lead's Add / Edit Task sheet, keyed by lead id and — when editing —
+/// the task id, so each sheet keeps its own form. Auto-disposed, so the form
+/// resets every time the sheet opens. [taskId] `null` means "create": submitting
+/// posts to `/leads/{id}/tasks`; otherwise it puts to `/leads/{id}/tasks/{taskId}`.
+/// The initial values seed the form from the task being edited. On success it
+/// refreshes the lead's detail bundle so the tasks tab reflects the change.
+final class LeadTaskFormProvider
+    extends $NotifierProvider<LeadTaskForm, LeadTaskFormState> {
+  /// Backs the lead's Add / Edit Task sheet, keyed by lead id and — when editing —
+  /// the task id, so each sheet keeps its own form. Auto-disposed, so the form
+  /// resets every time the sheet opens. [taskId] `null` means "create": submitting
+  /// posts to `/leads/{id}/tasks`; otherwise it puts to `/leads/{id}/tasks/{taskId}`.
+  /// The initial values seed the form from the task being edited. On success it
+  /// refreshes the lead's detail bundle so the tasks tab reflects the change.
+  LeadTaskFormProvider._({
+    required LeadTaskFormFamily super.from,
+    required (
+      String, {
+      int? taskId,
+      DateTime? initialDueAt,
+      String initialPriority,
+      String initialStatus,
+    })
+    super.argument,
   }) : super(
          retry: null,
-         name: r'addTaskProvider',
+         name: r'leadTaskFormProvider',
          isAutoDispose: true,
          dependencies: null,
          $allTransitiveDependencies: null,
        );
 
   @override
-  String debugGetCreateSourceHash() => _$addTaskHash();
+  String debugGetCreateSourceHash() => _$leadTaskFormHash();
 
   @override
   String toString() {
-    return r'addTaskProvider'
+    return r'leadTaskFormProvider'
         ''
-        '($argument)';
+        '$argument';
   }
 
   @$internal
   @override
-  AddTask create() => AddTask();
+  LeadTaskForm create() => LeadTaskForm();
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(AddTaskState value) {
+  Override overrideWithValue(LeadTaskFormState value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<AddTaskState>(value),
+      providerOverride: $SyncValueProvider<LeadTaskFormState>(value),
     );
   }
 
   @override
   bool operator ==(Object other) {
-    return other is AddTaskProvider && other.argument == argument;
+    return other is LeadTaskFormProvider && other.argument == argument;
   }
 
   @override
@@ -755,59 +890,233 @@ final class AddTaskProvider extends $NotifierProvider<AddTask, AddTaskState> {
   }
 }
 
-String _$addTaskHash() => r'4e688a6d7fb78355c4ce404dc1efcab1ab5311b5';
+String _$leadTaskFormHash() => r'78394d301c8e49dbd24140956591807c3578a48e';
 
-/// Handles adding a task to a lead (`POST /leads/{id}/tasks`), keyed by lead id
-/// and auto-disposed so the form resets each time the sheet opens. On success it
-/// refreshes the lead's detail bundle so the new task appears.
+/// Backs the lead's Add / Edit Task sheet, keyed by lead id and — when editing —
+/// the task id, so each sheet keeps its own form. Auto-disposed, so the form
+/// resets every time the sheet opens. [taskId] `null` means "create": submitting
+/// posts to `/leads/{id}/tasks`; otherwise it puts to `/leads/{id}/tasks/{taskId}`.
+/// The initial values seed the form from the task being edited. On success it
+/// refreshes the lead's detail bundle so the tasks tab reflects the change.
 
-final class AddTaskFamily extends $Family
+final class LeadTaskFormFamily extends $Family
     with
         $ClassFamilyOverride<
-          AddTask,
-          AddTaskState,
-          AddTaskState,
-          AddTaskState,
-          String
+          LeadTaskForm,
+          LeadTaskFormState,
+          LeadTaskFormState,
+          LeadTaskFormState,
+          (
+            String, {
+            int? taskId,
+            DateTime? initialDueAt,
+            String initialPriority,
+            String initialStatus,
+          })
         > {
-  AddTaskFamily._()
+  LeadTaskFormFamily._()
     : super(
         retry: null,
-        name: r'addTaskProvider',
+        name: r'leadTaskFormProvider',
         dependencies: null,
         $allTransitiveDependencies: null,
         isAutoDispose: true,
       );
 
-  /// Handles adding a task to a lead (`POST /leads/{id}/tasks`), keyed by lead id
-  /// and auto-disposed so the form resets each time the sheet opens. On success it
-  /// refreshes the lead's detail bundle so the new task appears.
+  /// Backs the lead's Add / Edit Task sheet, keyed by lead id and — when editing —
+  /// the task id, so each sheet keeps its own form. Auto-disposed, so the form
+  /// resets every time the sheet opens. [taskId] `null` means "create": submitting
+  /// posts to `/leads/{id}/tasks`; otherwise it puts to `/leads/{id}/tasks/{taskId}`.
+  /// The initial values seed the form from the task being edited. On success it
+  /// refreshes the lead's detail bundle so the tasks tab reflects the change.
 
-  AddTaskProvider call(String leadId) =>
-      AddTaskProvider._(argument: leadId, from: this);
+  LeadTaskFormProvider call(
+    String leadId, {
+    int? taskId,
+    DateTime? initialDueAt,
+    String initialPriority = 'medium',
+    String initialStatus = 'open',
+  }) => LeadTaskFormProvider._(
+    argument: (
+      leadId,
+      taskId: taskId,
+      initialDueAt: initialDueAt,
+      initialPriority: initialPriority,
+      initialStatus: initialStatus,
+    ),
+    from: this,
+  );
 
   @override
-  String toString() => r'addTaskProvider';
+  String toString() => r'leadTaskFormProvider';
 }
 
-/// Handles adding a task to a lead (`POST /leads/{id}/tasks`), keyed by lead id
-/// and auto-disposed so the form resets each time the sheet opens. On success it
-/// refreshes the lead's detail bundle so the new task appears.
+/// Backs the lead's Add / Edit Task sheet, keyed by lead id and — when editing —
+/// the task id, so each sheet keeps its own form. Auto-disposed, so the form
+/// resets every time the sheet opens. [taskId] `null` means "create": submitting
+/// posts to `/leads/{id}/tasks`; otherwise it puts to `/leads/{id}/tasks/{taskId}`.
+/// The initial values seed the form from the task being edited. On success it
+/// refreshes the lead's detail bundle so the tasks tab reflects the change.
 
-abstract class _$AddTask extends $Notifier<AddTaskState> {
-  late final _$args = ref.$arg as String;
-  String get leadId => _$args;
+abstract class _$LeadTaskForm extends $Notifier<LeadTaskFormState> {
+  late final _$args =
+      ref.$arg
+          as (
+            String, {
+            int? taskId,
+            DateTime? initialDueAt,
+            String initialPriority,
+            String initialStatus,
+          });
+  String get leadId => _$args.$1;
+  int? get taskId => _$args.taskId;
+  DateTime? get initialDueAt => _$args.initialDueAt;
+  String get initialPriority => _$args.initialPriority;
+  String get initialStatus => _$args.initialStatus;
 
-  AddTaskState build(String leadId);
+  LeadTaskFormState build(
+    String leadId, {
+    int? taskId,
+    DateTime? initialDueAt,
+    String initialPriority = 'medium',
+    String initialStatus = 'open',
+  });
   @$mustCallSuper
   @override
   void runBuild() {
-    final ref = this.ref as $Ref<AddTaskState, AddTaskState>;
+    final ref = this.ref as $Ref<LeadTaskFormState, LeadTaskFormState>;
     final element =
         ref.element
             as $ClassProviderElement<
-              AnyNotifier<AddTaskState, AddTaskState>,
-              AddTaskState,
+              AnyNotifier<LeadTaskFormState, LeadTaskFormState>,
+              LeadTaskFormState,
+              Object?,
+              Object?
+            >;
+    element.handleCreate(
+      ref,
+      () => build(
+        _$args.$1,
+        taskId: _$args.taskId,
+        initialDueAt: _$args.initialDueAt,
+        initialPriority: _$args.initialPriority,
+        initialStatus: _$args.initialStatus,
+      ),
+    );
+  }
+}
+
+/// Deletes a task from a lead (`DELETE /leads/{id}/tasks/{taskId}`), keyed by
+/// lead id. The state is the id of the task currently being deleted (`null`
+/// when idle), so the tasks tab can show a spinner on just that card. On
+/// success it refreshes the lead's detail bundle so the task disappears.
+
+@ProviderFor(DeleteLeadTask)
+final deleteLeadTaskProvider = DeleteLeadTaskFamily._();
+
+/// Deletes a task from a lead (`DELETE /leads/{id}/tasks/{taskId}`), keyed by
+/// lead id. The state is the id of the task currently being deleted (`null`
+/// when idle), so the tasks tab can show a spinner on just that card. On
+/// success it refreshes the lead's detail bundle so the task disappears.
+final class DeleteLeadTaskProvider
+    extends $NotifierProvider<DeleteLeadTask, int?> {
+  /// Deletes a task from a lead (`DELETE /leads/{id}/tasks/{taskId}`), keyed by
+  /// lead id. The state is the id of the task currently being deleted (`null`
+  /// when idle), so the tasks tab can show a spinner on just that card. On
+  /// success it refreshes the lead's detail bundle so the task disappears.
+  DeleteLeadTaskProvider._({
+    required DeleteLeadTaskFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'deleteLeadTaskProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
+
+  @override
+  String debugGetCreateSourceHash() => _$deleteLeadTaskHash();
+
+  @override
+  String toString() {
+    return r'deleteLeadTaskProvider'
+        ''
+        '($argument)';
+  }
+
+  @$internal
+  @override
+  DeleteLeadTask create() => DeleteLeadTask();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(int? value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<int?>(value),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is DeleteLeadTaskProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
+}
+
+String _$deleteLeadTaskHash() => r'd483dfb4bb4aeb043241decee99d7803e5eb95ab';
+
+/// Deletes a task from a lead (`DELETE /leads/{id}/tasks/{taskId}`), keyed by
+/// lead id. The state is the id of the task currently being deleted (`null`
+/// when idle), so the tasks tab can show a spinner on just that card. On
+/// success it refreshes the lead's detail bundle so the task disappears.
+
+final class DeleteLeadTaskFamily extends $Family
+    with $ClassFamilyOverride<DeleteLeadTask, int?, int?, int?, String> {
+  DeleteLeadTaskFamily._()
+    : super(
+        retry: null,
+        name: r'deleteLeadTaskProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  /// Deletes a task from a lead (`DELETE /leads/{id}/tasks/{taskId}`), keyed by
+  /// lead id. The state is the id of the task currently being deleted (`null`
+  /// when idle), so the tasks tab can show a spinner on just that card. On
+  /// success it refreshes the lead's detail bundle so the task disappears.
+
+  DeleteLeadTaskProvider call(String leadId) =>
+      DeleteLeadTaskProvider._(argument: leadId, from: this);
+
+  @override
+  String toString() => r'deleteLeadTaskProvider';
+}
+
+/// Deletes a task from a lead (`DELETE /leads/{id}/tasks/{taskId}`), keyed by
+/// lead id. The state is the id of the task currently being deleted (`null`
+/// when idle), so the tasks tab can show a spinner on just that card. On
+/// success it refreshes the lead's detail bundle so the task disappears.
+
+abstract class _$DeleteLeadTask extends $Notifier<int?> {
+  late final _$args = ref.$arg as String;
+  String get leadId => _$args;
+
+  int? build(String leadId);
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final ref = this.ref as $Ref<int?, int?>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<int?, int?>,
+              int?,
               Object?,
               Object?
             >;
