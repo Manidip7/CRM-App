@@ -70,8 +70,14 @@ class _BulkUpdateDialogState extends ConsumerState<BulkUpdateDialog> {
                 _label('Update Field'),
                 _buildFieldDropdown(draft.field, enabled: !progress.running),
                 const SizedBox(height: 14),
-                _label('New Value'),
-                _buildValueDropdown(draft, enabled: !progress.running),
+                // Delete takes no value — it gets a warning panel instead of a
+                // second dropdown.
+                if (draft.field == BulkUpdateField.delete)
+                  _buildDeleteWarning(count)
+                else ...[
+                  _label('New Value'),
+                  _buildValueDropdown(draft, enabled: !progress.running),
+                ],
                 const SizedBox(height: 22),
                 _buildActions(draft, progress),
               ],
@@ -179,7 +185,30 @@ class _BulkUpdateDialogState extends ConsumerState<BulkUpdateDialog> {
               .map(
                 (f) => DropdownMenuItem<BulkUpdateField>(
                   value: f,
-                  child: Text(f.label, overflow: TextOverflow.ellipsis),
+                  child: Row(
+                    children: [
+                      if (f.isDestructive) ...[
+                        const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 16,
+                          color: AppColors.red,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Flexible(
+                        child: Text(
+                          f.label,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: f.isDestructive
+                                ? AppColors.red
+                                : AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               )
               .toList(),
@@ -210,31 +239,110 @@ class _BulkUpdateDialogState extends ConsumerState<BulkUpdateDialog> {
           ),
         );
       case BulkUpdateField.status:
-        return _buildStatusValue(draft.statusId, enabled: enabled);
+        return _buildOptionsValue<StatusOption>(
+          icon: Icons.flag_outlined,
+          options: ref.watch(leadStatusesProvider),
+          selected: draft.statusId,
+          hint: 'Select status',
+          errorMessage: 'Could not load statuses',
+          idOf: (s) => s.id,
+          nameOf: (s) => s.name,
+          onPicked: (id) =>
+              ref.read(bulkUpdateDraftProvider.notifier).setStatus(id),
+          enabled: enabled,
+        );
       case BulkUpdateField.priority:
         return _buildPriorityValue(draft.priority, enabled: enabled);
+      case BulkUpdateField.leadSource:
+        return _buildOptionsValue<LeadSourceOption>(
+          icon: Icons.hub_outlined,
+          options: ref.watch(leadSourcesProvider),
+          selected: draft.leadSourceId,
+          hint: 'Select lead source',
+          errorMessage: 'Could not load lead sources',
+          idOf: (s) => s.id,
+          nameOf: (s) => s.label,
+          onPicked: (id) =>
+              ref.read(bulkUpdateDraftProvider.notifier).setLeadSource(id),
+          enabled: enabled,
+        );
+      case BulkUpdateField.leadType:
+        return _buildOptionsValue<NamedLookup>(
+          icon: Icons.category_outlined,
+          options: ref.watch(leadTypesProvider),
+          selected: draft.leadTypeId,
+          hint: 'Select lead type',
+          errorMessage: 'Could not load lead types',
+          idOf: (t) => t.id,
+          nameOf: (t) => t.name,
+          onPicked: (id) =>
+              ref.read(bulkUpdateDraftProvider.notifier).setLeadType(id),
+          enabled: enabled,
+        );
+      case BulkUpdateField.territory:
+        return _buildOptionsValue<NamedLookup>(
+          icon: Icons.map_outlined,
+          options: ref.watch(territoriesProvider),
+          selected: draft.territoryId,
+          hint: 'Select territory',
+          errorMessage: 'Could not load territories',
+          idOf: (t) => t.id,
+          nameOf: (t) => t.name,
+          onPicked: (id) =>
+              ref.read(bulkUpdateDraftProvider.notifier).setTerritory(id),
+          enabled: enabled,
+        );
+      case BulkUpdateField.branch:
+        // Not scoped to a territory here — the selected leads can sit in
+        // different ones, so every branch has to stay pickable.
+        return _buildOptionsValue<NamedLookup>(
+          icon: Icons.apartment_outlined,
+          options: ref.watch(branchesProvider(null)),
+          selected: draft.branchId,
+          hint: 'Select branch',
+          errorMessage: 'Could not load branches',
+          idOf: (b) => b.id,
+          nameOf: (b) => b.name,
+          onPicked: (id) =>
+              ref.read(bulkUpdateDraftProvider.notifier).setBranch(id),
+          enabled: enabled,
+        );
       case BulkUpdateField.assignee:
         return _buildAssigneeValue(draft.assigneeId, enabled: enabled);
+      case BulkUpdateField.delete:
+        // Handled by the warning panel in build(); no value to pick.
+        return const SizedBox.shrink();
     }
   }
 
-  Widget _buildStatusValue(int? selected, {required bool enabled}) {
-    final statusesAsync = ref.watch(leadStatusesProvider);
-    return statusesAsync.when(
-      loading: () => _loadingShell(Icons.flag_outlined),
-      error: (_, __) =>
-          _errorShell(Icons.flag_outlined, 'Could not load statuses'),
-      data: (statuses) {
-        final value = statuses.any((s) => s.id == selected) ? selected : null;
+  /// One dropdown over an `id → name` option list loaded from the API — used by
+  /// every lookup-backed field (status, lead source, lead type, territory,
+  /// branch), which differ only in icon, wording and where the pick is stored.
+  Widget _buildOptionsValue<T>({
+    required IconData icon,
+    required AsyncValue<List<T>> options,
+    required int? selected,
+    required String hint,
+    required String errorMessage,
+    required int Function(T) idOf,
+    required String Function(T) nameOf,
+    required void Function(int) onPicked,
+    required bool enabled,
+  }) {
+    return options.when(
+      loading: () => _loadingShell(icon),
+      error: (_, __) => _errorShell(icon, errorMessage),
+      data: (items) {
+        final value = items.any((o) => idOf(o) == selected) ? selected : null;
         return _shell(
-          Icons.flag_outlined,
+          icon,
           DropdownButtonHideUnderline(
             child: DropdownButton<int>(
               value: value,
               isExpanded: true,
               isDense: true,
               hint: Text(
-                'Select status',
+                hint,
                 style: GoogleFonts.poppins(
                   fontSize: 13.5,
                   color: AppColors.textLight,
@@ -248,27 +356,70 @@ class _BulkUpdateDialogState extends ConsumerState<BulkUpdateDialog> {
                 fontSize: 13.5,
                 color: AppColors.textPrimary,
               ),
-              items: statuses
+              items: items
                   .map(
-                    (s) => DropdownMenuItem<int>(
-                      value: s.id,
-                      child: Text(s.name, overflow: TextOverflow.ellipsis),
+                    (o) => DropdownMenuItem<int>(
+                      value: idOf(o),
+                      child: Text(nameOf(o), overflow: TextOverflow.ellipsis),
                     ),
                   )
                   .toList(),
               onChanged: !enabled
                   ? null
                   : (id) {
-                      if (id != null) {
-                        ref
-                            .read(bulkUpdateDraftProvider.notifier)
-                            .setStatus(id);
-                      }
+                      if (id != null) onPicked(id);
                     },
             ),
           ),
         );
       },
+    );
+  }
+
+  /// Stands in for the "New Value" dropdown when Delete Leads is picked.
+  Widget _buildDeleteWarning(int count) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.red.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.red.withOpacity(0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            size: 19,
+            color: AppColors.red,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This cannot be undone',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.red,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$count ${count == 1 ? 'lead' : 'leads'} will be permanently '
+                  'deleted, along with their notes and tasks.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -434,6 +585,8 @@ class _BulkUpdateDialogState extends ConsumerState<BulkUpdateDialog> {
   // ── Footer ──
   Widget _buildActions(BulkUpdateDraft draft, BulkUpdateProgress progress) {
     final canApply = draft.isReady && !progress.running;
+    final destructive = draft.field?.isDestructive ?? false;
+    final actionColor = destructive ? AppColors.red : AppColors.primary;
     return Row(
       children: [
         Expanded(
@@ -468,8 +621,8 @@ class _BulkUpdateDialogState extends ConsumerState<BulkUpdateDialog> {
             child: ElevatedButton(
               onPressed: canApply ? _apply : null,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                disabledBackgroundColor: AppColors.primary.withOpacity(0.35),
+                backgroundColor: actionColor,
+                disabledBackgroundColor: actionColor.withOpacity(0.35),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(13),
@@ -489,7 +642,7 @@ class _BulkUpdateDialogState extends ConsumerState<BulkUpdateDialog> {
                         ),
                         const SizedBox(width: 10),
                         Text(
-                          '${progress.done} / ${progress.total}',
+                          destructive ? 'Deleting…' : 'Updating…',
                           style: GoogleFonts.poppins(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w600,
@@ -499,7 +652,7 @@ class _BulkUpdateDialogState extends ConsumerState<BulkUpdateDialog> {
                       ],
                     )
                   : Text(
-                      'Apply Update',
+                      destructive ? 'Delete Leads' : 'Apply Update',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -570,6 +723,11 @@ class _BulkUpdateDialogState extends ConsumerState<BulkUpdateDialog> {
     final field = draft.field;
     if (field == null || !draft.isReady) return;
 
+    // Deleting is the one action the user can't walk back, so it gets a second
+    // tap before anything is sent.
+    if (field.isDestructive && !await _confirmDelete()) return;
+    if (!mounted) return;
+
     final outcome = await ref
         .read(bulkUpdateRunnerProvider.notifier)
         .apply(
@@ -577,10 +735,65 @@ class _BulkUpdateDialogState extends ConsumerState<BulkUpdateDialog> {
           field: field,
           statusId: draft.statusId,
           priority: draft.priority,
+          leadSourceId: draft.leadSourceId,
+          leadTypeId: draft.leadTypeId,
+          territoryId: draft.territoryId,
+          branchId: draft.branchId,
           assigneeId: draft.assigneeId,
         );
 
     if (!mounted) return;
     Navigator.of(context).pop(outcome);
+  }
+
+  Future<bool> _confirmDelete() async {
+    final count = widget.leads.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          'Delete $count ${count == 1 ? 'lead' : 'leads'}?',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: Text(
+          'This permanently removes the selected '
+          '${count == 1 ? 'lead' : 'leads'}. This cannot be undone.',
+          style: GoogleFonts.poppins(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              'Delete',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.red,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 }

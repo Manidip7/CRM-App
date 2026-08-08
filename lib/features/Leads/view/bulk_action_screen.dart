@@ -70,11 +70,23 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
               curve: Curves.easeOut,
               alignment: Alignment.topCenter,
               child: ref.watch(bulkFiltersExpandedProvider)
-                  ? _buildFilters(state)
+                  // Nine filters are a lot of rows: cap the panel and let it
+                  // scroll so the lead list underneath never gets squeezed out.
+                  ? ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(context).size.height * 0.42,
+                      ),
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: _buildFilters(state),
+                      ),
+                    )
                   : const SizedBox(width: double.infinity),
             ),
             if (state.items.isNotEmpty) _buildSelectAllRow(state, selected),
-            Expanded(child: _buildBody(state, selected)),
+            // Resolved here rather than per row: `ref.watch` belongs in build,
+            // not in a ListView.builder callback that runs during layout.
+            Expanded(child: _buildBody(state, selected, _readLookups())),
           ],
         ),
       ),
@@ -236,26 +248,89 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
   }
 
   // ── Filters ──
+  /// The nine filters of `POST /leads/filter`, two to a row.
   Widget _buildFilters(BulkLeadsState state) {
+    final f = state.filters;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(child: _buildStatusFilter(state)),
-              const SizedBox(width: 10),
-              Expanded(child: _buildPriorityFilter(state)),
-            ],
+          _filterRow(
+            _buildDateFilter(f, isFrom: true),
+            _buildDateFilter(f, isFrom: false),
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(child: _buildSourceFilter(state)),
-              const SizedBox(width: 10),
-              Expanded(child: _buildAssigneeFilter(state)),
-            ],
+          _filterRow(
+            _lookupFilter<LeadSourceOption>(
+              icon: Icons.hub_outlined,
+              options: ref.watch(leadSourcesProvider),
+              selected: f.leadSourceId,
+              allLabel: 'All Source',
+              idOf: (s) => s.id,
+              nameOf: (s) => s.label,
+              onPicked: (id) => _apply(f.copyWith(leadSourceId: id)),
+            ),
+            _lookupFilter<StatusOption>(
+              icon: Icons.flag_outlined,
+              options: ref.watch(leadStatusesProvider),
+              selected: f.statusId,
+              allLabel: 'All Status',
+              idOf: (s) => s.id,
+              nameOf: (s) => s.name,
+              onPicked: (id) => _apply(f.copyWith(statusId: id)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _filterRow(
+            _buildPriorityFilter(f),
+            _lookupFilter<AssignableUser>(
+              icon: Icons.person_outline_rounded,
+              options: ref.watch(assignableUsersProvider),
+              selected: f.assigneeId,
+              allLabel: 'All Assignee',
+              idOf: (u) => u.id,
+              nameOf: (u) => u.name,
+              onPicked: (id) => _apply(f.copyWith(assigneeId: id)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _filterRow(
+            _lookupFilter<NamedLookup>(
+              icon: Icons.category_outlined,
+              options: ref.watch(leadTypesProvider),
+              selected: f.leadTypeId,
+              allLabel: 'All Lead Type',
+              idOf: (t) => t.id,
+              nameOf: (t) => t.name,
+              onPicked: (id) => _apply(f.copyWith(leadTypeId: id)),
+            ),
+            _lookupFilter<NamedLookup>(
+              icon: Icons.map_outlined,
+              options: ref.watch(territoriesProvider),
+              selected: f.territoryId,
+              allLabel: 'All Territory',
+              idOf: (t) => t.id,
+              nameOf: (t) => t.name,
+              // A branch belonging to the old territory would keep filtering
+              // everything out, so it goes with it.
+              onPicked: (id) =>
+                  _apply(f.copyWith(territoryId: id, branchId: null)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _filterRow(
+            // Scoped to the chosen territory when there is one.
+            _lookupFilter<NamedLookup>(
+              icon: Icons.apartment_outlined,
+              options: ref.watch(branchesProvider(f.territoryId)),
+              selected: f.branchId,
+              allLabel: 'All Branch',
+              idOf: (b) => b.id,
+              nameOf: (b) => b.name,
+              onPicked: (id) => _apply(f.copyWith(branchId: id)),
+            ),
+            null,
           ),
           if (state.activeFilterCount > 0)
             Align(
@@ -276,14 +351,36 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
     );
   }
 
-  Widget _buildStatusFilter(BulkLeadsState state) {
-    final statusesAsync = ref.watch(leadStatusesProvider);
-    final statuses = statusesAsync.value ?? const <StatusOption>[];
-    final value = statuses.any((s) => s.id == state.statusId)
-        ? state.statusId
-        : null;
+  /// Two filters side by side; [right] may be null to leave a gap on the last,
+  /// odd row.
+  Widget _filterRow(Widget left, Widget? right) {
+    return Row(
+      children: [
+        Expanded(child: left),
+        const SizedBox(width: 10),
+        Expanded(child: right ?? const SizedBox.shrink()),
+      ],
+    );
+  }
+
+  /// One dropdown over an API-loaded option list, with an "All …" entry that
+  /// maps to null. Options still loading (or failed) just show the "All …"
+  /// entry, so one broken lookup can't take the panel down with it.
+  Widget _lookupFilter<T>({
+    required IconData icon,
+    required AsyncValue<List<T>> options,
+    required int? selected,
+    required String allLabel,
+    required int Function(T) idOf,
+    required String Function(T) nameOf,
+    required ValueChanged<int?> onPicked,
+  }) {
+    final items = options.value ?? const [];
+    // A stale id (an option the backend no longer returns) would make
+    // DropdownButton assert — fall back to "All …".
+    final value = items.any((o) => idOf(o) == selected) ? selected : null;
     return _filterShell(
-      icon: Icons.flag_outlined,
+      icon: icon,
       active: value != null,
       child: DropdownButton<int?>(
         value: value,
@@ -295,26 +392,25 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
         ),
         style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
         items: [
-          const DropdownMenuItem<int?>(value: null, child: Text('All Status')),
-          ...statuses.map(
-            (s) => DropdownMenuItem<int?>(
-              value: s.id,
-              child: Text(s.name, overflow: TextOverflow.ellipsis),
+          DropdownMenuItem<int?>(value: null, child: Text(allLabel)),
+          ...items.map(
+            (o) => DropdownMenuItem<int?>(
+              value: idOf(o),
+              child: Text(nameOf(o), overflow: TextOverflow.ellipsis),
             ),
           ),
         ],
-        onChanged: (id) =>
-            _applyFilters(state, statusId: id, clearStatus: id == null),
+        onChanged: onPicked,
       ),
     );
   }
 
-  Widget _buildPriorityFilter(BulkLeadsState state) {
+  Widget _buildPriorityFilter(BulkLeadsFilters f) {
     return _filterShell(
       icon: Icons.local_fire_department_outlined,
-      active: state.priority != null,
+      active: f.priority != null,
       child: DropdownButton<String?>(
-        value: state.priority,
+        value: f.priority,
         isExpanded: true,
         isDense: true,
         icon: const Icon(
@@ -337,103 +433,110 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
             ),
           ),
         ],
-        onChanged: (p) =>
-            _applyFilters(state, priority: p, clearPriority: p == null),
+        onChanged: (p) => _apply(f.copyWith(priority: p)),
       ),
     );
   }
 
-  Widget _buildSourceFilter(BulkLeadsState state) {
-    final sourcesAsync = ref.watch(leadSourcesProvider);
-    final sources = sourcesAsync.value ?? const <LeadSourceOption>[];
-    final value = sources.any((s) => s.id == state.leadSourceId)
-        ? state.leadSourceId
-        : null;
-    return _filterShell(
-      icon: Icons.hub_outlined,
-      active: value != null,
-      child: DropdownButton<int?>(
-        value: value,
-        isExpanded: true,
-        isDense: true,
-        icon: const Icon(
-          Icons.keyboard_arrow_down_rounded,
-          color: AppColors.textSecondary,
-        ),
-        style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
-        items: [
-          const DropdownMenuItem<int?>(value: null, child: Text('All Source')),
-          ...sources.map(
-            (s) => DropdownMenuItem<int?>(
-              value: s.id,
-              child: Text(s.label, overflow: TextOverflow.ellipsis),
-            ),
+  /// The `from_date` / `to_date` pickers. Tapping the × on a set date clears it
+  /// without opening the calendar.
+  Widget _buildDateFilter(BulkLeadsFilters f, {required bool isFrom}) {
+    final value = isFrom ? f.fromDate : f.toDate;
+    final active = value != null;
+    return GestureDetector(
+      onTap: () => _pickDate(f, isFrom: isFrom),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? AppColors.primary : AppColors.divider,
           ),
-        ],
-        onChanged: (id) =>
-            _applyFilters(state, leadSourceId: id, clearSource: id == null),
-      ),
-    );
-  }
-
-  Widget _buildAssigneeFilter(BulkLeadsState state) {
-    final usersAsync = ref.watch(assignableUsersProvider);
-    final users = usersAsync.value ?? const <AssignableUser>[];
-    final value = users.any((u) => u.id == state.assignedTo)
-        ? state.assignedTo
-        : null;
-    return _filterShell(
-      icon: Icons.person_outline_rounded,
-      active: value != null,
-      child: DropdownButton<int?>(
-        value: value,
-        isExpanded: true,
-        isDense: true,
-        icon: const Icon(
-          Icons.keyboard_arrow_down_rounded,
-          color: AppColors.textSecondary,
         ),
-        style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
-        items: [
-          const DropdownMenuItem<int?>(value: null, child: Text('All Owners')),
-          ...users.map(
-            (u) => DropdownMenuItem<int?>(
-              value: u.id,
-              child: Text(u.name, overflow: TextOverflow.ellipsis),
+        child: Row(
+          children: [
+            Icon(
+              Icons.event_rounded,
+              size: 15,
+              color: active ? AppColors.primary : AppColors.textSecondary,
             ),
-          ),
-        ],
-        onChanged: (id) =>
-            _applyFilters(state, assignedTo: id, clearAssignee: id == null),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                value == null
+                    ? (isFrom ? 'From date' : 'To date')
+                    : _fmtDate(value),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: active ? AppColors.textPrimary : AppColors.textLight,
+                ),
+              ),
+            ),
+            if (active)
+              GestureDetector(
+                onTap: () => _apply(
+                  isFrom ? f.copyWith(fromDate: null) : f.copyWith(toDate: null),
+                ),
+                behavior: HitTestBehavior.opaque,
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 15,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  /// Re-applies the whole filter set with one dropdown changed. The notifier
-  /// takes every filter at once (null = "All …"), so the untouched ones have to
-  /// be passed through explicitly.
-  void _applyFilters(
-    BulkLeadsState state, {
-    int? statusId,
-    int? leadSourceId,
-    String? priority,
-    int? assignedTo,
-    bool clearStatus = false,
-    bool clearSource = false,
-    bool clearPriority = false,
-    bool clearAssignee = false,
-  }) {
-    ref
-        .read(bulkLeadsProvider.notifier)
-        .applyFilters(
-          statusId: clearStatus ? null : (statusId ?? state.statusId),
-          leadSourceId: clearSource
-              ? null
-              : (leadSourceId ?? state.leadSourceId),
-          priority: clearPriority ? null : (priority ?? state.priority),
-          assignedTo: clearAssignee ? null : (assignedTo ?? state.assignedTo),
-        );
+  Future<void> _pickDate(
+    BulkLeadsFilters f, {
+    required bool isFrom,
+  }) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: (isFrom ? f.fromDate : f.toDate) ?? now,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year + 2),
+    );
+    if (picked == null || !mounted) return;
+    // Keep the range coherent rather than sending from > to.
+    if (isFrom) {
+      final to = f.toDate;
+      _apply(
+        f.copyWith(
+          fromDate: picked,
+          toDate: to != null && to.isBefore(picked) ? picked : to,
+        ),
+      );
+    } else {
+      final from = f.fromDate;
+      _apply(
+        f.copyWith(
+          toDate: picked,
+          fromDate: from != null && from.isAfter(picked) ? picked : from,
+        ),
+      );
+    }
   }
+
+  static String _fmtDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  /// Pushes an edited filter set to the notifier, which refetches page 1.
+  void _apply(BulkLeadsFilters filters) =>
+      ref.read(bulkLeadsProvider.notifier).applyFilters(filters);
 
   Widget _filterShell({
     required IconData icon,
@@ -511,7 +614,50 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
   }
 
   // ── List ──
-  Widget _buildBody(BulkLeadsState state, Set<String> selected) {
+  /// Snapshots the option lists as `id → name` maps, so a row can name the
+  /// classification a lead only carries the id of. Everything the API already
+  /// resolved (`lead_type_name`, `territory_name`, …) wins over these.
+  _LeadLookups _readLookups() {
+    Map<int, String> asMap<T>(
+      List<T>? items,
+      int Function(T) idOf,
+      String Function(T) nameOf,
+    ) => {for (final item in items ?? <T>[]) idOf(item): nameOf(item)};
+
+    return _LeadLookups(
+      statuses: asMap(
+        ref.watch(leadStatusesProvider).value,
+        (s) => s.id,
+        (s) => s.name,
+      ),
+      sources: asMap(
+        ref.watch(leadSourcesProvider).value,
+        (s) => s.id,
+        (s) => s.label,
+      ),
+      types: asMap(
+        ref.watch(leadTypesProvider).value,
+        (t) => t.id,
+        (t) => t.name,
+      ),
+      territories: asMap(
+        ref.watch(territoriesProvider).value,
+        (t) => t.id,
+        (t) => t.name,
+      ),
+      branches: asMap(
+        ref.watch(branchesProvider(null)).value,
+        (b) => b.id,
+        (b) => b.name,
+      ),
+    );
+  }
+
+  Widget _buildBody(
+    BulkLeadsState state,
+    Set<String> selected,
+    _LeadLookups lookups,
+  ) {
     if (state.isLoading && state.items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -539,13 +685,31 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
             );
           }
           final lead = state.items[i];
-          return _buildLeadRow(lead, selected.contains(lead.id));
+          return _buildLeadRow(lead, selected.contains(lead.id), lookups);
         },
       ),
     );
   }
 
-  Widget _buildLeadRow(LeadModel lead, bool isSelected) {
+  /// One selectable lead, showing everything the bulk update might change:
+  /// lead no, title/name, status, source, type, territory, branch, priority,
+  /// assignee and created date.
+  Widget _buildLeadRow(
+    LeadModel lead,
+    bool isSelected,
+    _LeadLookups lookups,
+  ) {
+    final title = lead.title.trim().isNotEmpty
+        ? lead.title.trim()
+        : lead.contactName.trim();
+    final subtitle = [
+      if (lead.contactName.trim().isNotEmpty &&
+          lead.contactName.trim() != title)
+        lead.contactName.trim(),
+      if (lead.companyName?.trim().isNotEmpty ?? false)
+        lead.companyName!.trim(),
+    ].join(' · ');
+
     return GestureDetector(
       onTap: () => ref.read(bulkSelectionProvider.notifier).toggle(lead.id),
       behavior: HitTestBehavior.opaque,
@@ -562,30 +726,46 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
           ),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _checkbox(isSelected),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: _checkbox(isSelected),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    lead.contactName.trim().isNotEmpty
-                        ? lead.contactName
-                        : lead.title,
+                    lead.leadNo?.trim().isNotEmpty ?? false
+                        ? lead.leadNo!.trim()
+                        : '#${lead.id}',
                     maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    title,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textPrimary,
+                      height: 1.3,
                     ),
                   ),
-                  if (lead.companyName != null &&
-                      lead.companyName!.trim().isNotEmpty) ...[
+                  if (subtitle.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(
-                      lead.companyName!,
+                      subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
@@ -594,25 +774,49 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 7),
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
                     children: [
                       _badge(
-                        _statusLabel(lead.status),
+                        lookups.statuses[lead.statusId] ??
+                            _statusLabel(lead.status),
                         _statusColor(lead.status),
                       ),
-                      if (lead.priority != null &&
-                          lead.priority!.trim().isNotEmpty)
+                      if (lead.priority?.trim().isNotEmpty ?? false)
                         _badge(
                           bulkPriorityLabel(lead.priority!),
                           _priorityColor(lead.priority!),
                         ),
-                      if (lead.assigneeName != null &&
-                          lead.assigneeName!.trim().isNotEmpty)
-                        _badge(lead.assigneeName!, AppColors.textSecondary),
                     ],
+                  ),
+                  const SizedBox(height: 9),
+                  Container(height: 0.8, color: AppColors.divider),
+                  const SizedBox(height: 8),
+                  // Two per line; every field is shown even when empty, so the
+                  // cards stay aligned and a blank one reads as "not set".
+                  _detailRow(
+                    'Source',
+                    lookups.sourceOf(lead),
+                    'Type',
+                    lead.leadTypeName ?? lookups.types[lead.leadTypeId],
+                  ),
+                  const SizedBox(height: 6),
+                  _detailRow(
+                    'Territory',
+                    lead.territoryName ?? lookups.territories[lead.territoryId],
+                    'Branch',
+                    lead.branchName ?? lookups.branches[lead.branchId],
+                  ),
+                  const SizedBox(height: 6),
+                  _detailRow(
+                    'Assignee',
+                    lead.assigneeNames.isNotEmpty
+                        ? lead.assigneeNames.join(', ')
+                        : lead.assigneeName,
+                    'Created',
+                    _fmtDate(lead.createdAt),
                   ),
                 ],
               ),
@@ -620,6 +824,57 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Two `label: value` cells side by side.
+  Widget _detailRow(
+    String leftLabel,
+    String? leftValue,
+    String rightLabel,
+    String? rightValue,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: _detailCell(leftLabel, leftValue)),
+        const SizedBox(width: 10),
+        Expanded(child: _detailCell(rightLabel, rightValue)),
+      ],
+    );
+  }
+
+  Widget _detailCell(String label, String? value) {
+    final text = value?.trim();
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 58,
+          child: Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textLight,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            text?.isNotEmpty ?? false ? text! : '—',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.poppins(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              color: text?.isNotEmpty ?? false
+                  ? AppColors.textPrimary
+                  : AppColors.textLight,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -810,7 +1065,7 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
     if (outcome.allSucceeded) {
       _toast(
         '${outcome.succeeded} '
-        '${outcome.succeeded == 1 ? 'lead' : 'leads'} updated',
+        '${outcome.succeeded == 1 ? 'lead' : 'leads'} ${outcome.verb}',
       );
     } else {
       _showFailures(outcome);
@@ -834,7 +1089,7 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
             ),
             const SizedBox(width: 8),
             Text(
-              'Partly updated',
+              outcome.deleted ? 'Partly deleted' : 'Partly updated',
               style: GoogleFonts.poppins(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -848,7 +1103,8 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '${outcome.succeeded} updated · ${outcome.failures.length} failed',
+                '${outcome.succeeded} ${outcome.verb} · '
+                '${outcome.failures.length} failed',
                 style: GoogleFonts.poppins(
                   fontSize: 13,
                   color: AppColors.textSecondary,
@@ -935,5 +1191,36 @@ class _BulkActionScreenState extends ConsumerState<BulkActionScreen> {
       default:
         return AppColors.primary;
     }
+  }
+}
+
+/// `id → name` snapshots of the option lists, so a lead row can show the name
+/// behind `lead_type_id`, `territory_id`, … when the list response only carried
+/// the id. Built once per build in [_BulkActionScreenState._readLookups].
+class _LeadLookups {
+  final Map<int, String> statuses;
+  final Map<int, String> sources;
+  final Map<int, String> types;
+  final Map<int, String> territories;
+  final Map<int, String> branches;
+
+  const _LeadLookups({
+    required this.statuses,
+    required this.sources,
+    required this.types,
+    required this.territories,
+    required this.branches,
+  });
+
+  /// The lead's source by name: what the API labelled it, else the matching
+  /// `/lead-sources` option, else the recognized enum's own name.
+  String? sourceOf(LeadModel lead) {
+    final raw = lead.sourceName?.trim();
+    if (raw != null && raw.isNotEmpty) return raw;
+    final mapped = sources[lead.leadSourceId];
+    if (mapped != null) return mapped;
+    if (!lead.sourceKnown) return null;
+    final name = lead.source.name;
+    return name[0].toUpperCase() + name.substring(1);
   }
 }

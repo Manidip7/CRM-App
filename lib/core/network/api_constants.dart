@@ -41,6 +41,8 @@ class ApiConstants {
 
   // Leads
   static const String leads = '/leads';
+  static const String leadsBulkAction = '/leads/bulk-action';
+  static const String leadsFilter = '/leads/filter';
   static String leadDetail(String id) => '/leads/$id';
   static String leadPriority(String id) => '/leads/$id/priority';
   static String leadFollowup(String id) => '/leads/$id/followup';

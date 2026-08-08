@@ -26,6 +26,15 @@ class LeadsPage {
   bool get hasMore => currentPage < lastPage;
 }
 
+/// What `POST /leads/bulk-action` reports back: how many leads the run touched,
+/// plus the backend's own message when it sent one.
+class BulkActionResult {
+  final int affected;
+  final String? message;
+
+  const BulkActionResult({required this.affected, this.message});
+}
+
 /// Repository for the Leads feature, decoding through the shared [ApiClient].
 class LeadsRepository {
   final ApiClient _api;
@@ -90,7 +99,59 @@ class LeadsRepository {
     );
   }
 
-  /// Unwraps `{ success, data: { current_page, data: [...], last_page, total } }`.
+  /// POST /leads/filter — the Bulk Action screen's list. Same shape of reply as
+  /// [getLeads], but every filter travels in a raw JSON body instead of the
+  /// query string:
+  ///
+  /// ```json
+  /// { "from_date": "", "to_date": "", "lead_source_id": null, "status_id": null,
+  ///   "priority": "", "assignee_id": null, "lead_type_id": null,
+  ///   "territory_id": null, "branch_id": null }
+  /// ```
+  ///
+  /// Every key is sent on every call — `""` for the unset strings and `null` for
+  /// the unset ids, exactly as the API documents them — so an "All …" choice
+  /// clears the filter server-side instead of being silently kept. Dates are
+  /// `yyyy-MM-dd`.
+  Future<ApiResult<LeadsPage>> filterLeads({
+    int page = 1,
+    String? search,
+    String? fromDate,
+    String? toDate,
+    int? leadSourceId,
+    int? statusId,
+    String? priority,
+    int? assigneeId,
+    int? leadTypeId,
+    int? territoryId,
+    int? branchId,
+  }) {
+    return _api.post<LeadsPage>(
+      ApiConstants.leadsFilter,
+      options: Options(contentType: Headers.jsonContentType),
+      data: {
+        'from_date': fromDate ?? '',
+        'to_date': toDate ?? '',
+        'lead_source_id': leadSourceId,
+        'status_id': statusId,
+        'priority': priority ?? '',
+        'assignee_id': assigneeId,
+        'lead_type_id': leadTypeId,
+        'territory_id': territoryId,
+        'branch_id': branchId,
+        // Not part of the documented body, but the same paging/search the list
+        // endpoint understands. A backend that ignores them just returns
+        // everything on one page, which the paginator handling below copes with.
+        'page': page,
+        'per_page': perPage,
+        if (search != null && search.isNotEmpty) 'search': search,
+      },
+      decoder: _decodePage,
+    );
+  }
+
+  /// Unwraps `{ success, data: { current_page, data: [...], last_page, total } }`,
+  /// and also the un-paginated `{ success, data: [...] }` shape.
   static LeadsPage _decodePage(dynamic json) {
     final map = (json as Map).cast<String, dynamic>();
 
@@ -99,6 +160,20 @@ class LeadsRepository {
         type: ApiErrorType.validation,
         message: map['message'] as String? ?? 'Could not load leads.',
         raw: json,
+      );
+    }
+
+    // A plain array under `data` means the endpoint answered in full — treat it
+    // as a single page so there is nothing more to scroll for.
+    if (map['data'] is List) {
+      final items = (map['data'] as List)
+          .map((e) => LeadModel.fromJson((e as Map).cast<String, dynamic>()))
+          .toList(growable: false);
+      return LeadsPage(
+        leads: items,
+        currentPage: 1,
+        lastPage: 1,
+        total: items.length,
       );
     }
 
@@ -425,6 +500,59 @@ class LeadsRepository {
         return data == null ? null : LeadModel.fromJson(data);
       },
     );
+  }
+
+  /// POST /leads/bulk-action — applies one change to many leads in a single
+  /// request. Sent as a raw JSON body:
+  /// `{ "lead_ids": [40, 41, 42], "update_field": "priority", "new_value": "hot" }`.
+  ///
+  /// [newValue] is omitted for actions that don't take one (delete). The reply's
+  /// affected count is read from whichever key the backend uses; when it sends
+  /// none, every requested lead is assumed to have gone through, since the call
+  /// only reaches here after `success` was not false.
+  Future<ApiResult<BulkActionResult>> bulkAction({
+    required List<int> leadIds,
+    required String updateField,
+    Object? newValue,
+  }) {
+    return _api.post<BulkActionResult>(
+      ApiConstants.leadsBulkAction,
+      options: Options(contentType: Headers.jsonContentType),
+      data: {
+        'lead_ids': leadIds,
+        'update_field': updateField,
+        if (newValue != null) 'new_value': newValue,
+      },
+      decoder: (json) {
+        final map = json is Map ? json.cast<String, dynamic>() : null;
+        if (map != null && map['success'] == false) {
+          throw ApiException(
+            type: ApiErrorType.validation,
+            message:
+                map['message'] as String? ?? 'Could not apply the bulk action.',
+            raw: json,
+          );
+        }
+        return BulkActionResult(
+          affected: _affectedCount(map) ?? leadIds.length,
+          message: map?['message'] as String?,
+        );
+      },
+    );
+  }
+
+  /// Digs the "how many rows changed" number out of a bulk-action reply, which
+  /// may report it at the top level or inside `data`, under any of several
+  /// names. Returns null when the reply carries no count at all.
+  static int? _affectedCount(Map<String, dynamic>? map) {
+    if (map == null) return null;
+    const keys = ['updated_count', 'affected', 'affected_count', 'count'];
+    final data = (map['data'] as Map?)?.cast<String, dynamic>();
+    for (final key in keys) {
+      final value = map[key] ?? data?[key];
+      if (value is num) return value.toInt();
+    }
+    return null;
   }
 
   /// POST /leads/{id}/followup — schedules the next follow-up for a lead.
