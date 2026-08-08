@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/network/network_providers.dart';
 import '../core/permissions/permissions.dart';
 import '../features/auth/data/auth_repository.dart';
 import '../features/auth/model/auth_session.dart';
@@ -23,6 +24,7 @@ import '../features/projects/view/project_detail_screen.dart';
 import '../features/profile/view/edit_profile_screen.dart';
 import '../features/quotations/model/quotation_model.dart';
 import '../features/quotations/view/edit_quotation_screen.dart';
+import '../features/server_setup/view/server_setup_screen.dart';
 import '../features/splash/view/splash_screen.dart';
 import '../features/task/view/task_list_screen.dart';
 
@@ -36,6 +38,9 @@ class AppRoutes {
   AppRoutes._();
 
   static const String splash = '/';
+
+  /// First-launch step: choose the CRM server (typed or scanned).
+  static const String serverSetup = '/server-setup';
   static const String login = '/login';
   static const String dashboard = '/dashboard';
   static const String opportunities = '/opportunities';
@@ -99,10 +104,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       final loggedIn = ref.read(authSessionProvider) != null;
       final atLogin = state.matchedLocation == AppRoutes.login;
       final atSplash = state.matchedLocation == AppRoutes.splash;
+      final atSetup = state.matchedLocation == AppRoutes.serverSetup;
 
       // The splash screen handles its own navigation (after requesting
       // permissions), so leave it alone.
       if (atSplash) return null;
+
+      // No server chosen yet → the setup screen is the only reachable one;
+      // every request would otherwise go nowhere.
+      final hasServer = ref.read(serverConfigProvider) != null;
+      if (!hasServer) return atSetup ? null : AppRoutes.serverSetup;
+      // Server already set up → that screen has nothing left to do.
+      if (atSetup) return loggedIn ? AppRoutes.dashboard : AppRoutes.login;
       // Already logged in but sitting on the login screen → go to dashboard.
       if (loggedIn && atLogin) return AppRoutes.dashboard;
       // Not logged in and trying to reach a protected screen → back to login.
@@ -121,6 +134,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       path: AppRoutes.splash,
       name: 'splash',
       builder: (context, state) => const SplashScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.serverSetup,
+      name: 'serverSetup',
+      builder: (context, state) => const ServerSetupScreen(),
     ),
     GoRoute(
       path: AppRoutes.login,

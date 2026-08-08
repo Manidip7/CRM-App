@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/network/network_providers.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../provider/login_provider.dart';
@@ -153,10 +154,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
                       // ── Card ──
                       _buildCard(),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 22),
 
-                      // ── Sign Up ──
-                      _buildSignUpRow(),
+                      // ── Connected server ──
+                      _buildServerRow(),
                     ],
                   ),
                 ),
@@ -166,6 +167,93 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         ),
       ),
     );
+  }
+
+  /// Which CRM this app is pointed at, with a way back to the setup screen —
+  /// the only place the address can be corrected once it has been saved.
+  Widget _buildServerRow() {
+    final server = ref.watch(serverConfigProvider);
+    if (server == null) return const SizedBox.shrink();
+
+    final name = server.companyName?.trim();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Icon(
+          Icons.dns_outlined,
+          size: 13,
+          color: AppColors.textLight,
+        ),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            name?.isNotEmpty ?? false ? name! : server.displayHost,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11.5, color: AppColors.textLight),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: _changeServer,
+          behavior: HitTestBehavior.opaque,
+          child: const Text(
+            'Change',
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Forgetting the server sends the router straight back to setup.
+  Future<void> _changeServer() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          'Change CRM server?',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        content: const Text(
+          'You will need to enter or scan the new address before signing in.',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Change',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref.read(serverConfigProvider.notifier).clear();
+    if (!mounted) return;
+    context.go(AppRoutes.serverSetup);
   }
 
   Widget _buildLogo() {
@@ -189,14 +277,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.all(0),
-          child: Image.asset(
-            'assets/images/logo1.png',
-            fit: BoxFit.contain,
-          ),
-        ),
+        child: _buildLogoImage(),
       ),
+    );
+  }
+
+  /// The connected company's own logo when the health check supplied one,
+  /// otherwise the bundled app logo. A broken or slow URL falls back to the
+  /// asset rather than leaving a hole in the header.
+  Widget _buildLogoImage() {
+    const asset = Image(
+      image: AssetImage('assets/images/logo1.png'),
+      fit: BoxFit.contain,
+    );
+    final logoUrl = ref.watch(serverConfigProvider)?.logoUrl?.trim();
+    if (logoUrl == null || logoUrl.isEmpty) return asset;
+
+    return Image.network(
+      logoUrl,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => asset,
+      loadingBuilder: (context, child, progress) =>
+          progress == null ? child : asset,
     );
   }
 
@@ -450,33 +552,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     );
   }
 
-  Widget _buildSignUpRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Text(
-          "Don't have an account? ",
-          style: TextStyle(
-            fontSize: 13.5,
-            color: AppColors.textSecondary,
-          ),
-        ),
-        GestureDetector(
-          onTap: () {
-            // Navigate to sign-up screen
-          },
-          child: const Text(
-            'Sign up',
-            style: TextStyle(
-              fontSize: 13.5,
-              color: AppColors.primary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 // ─────────────────────────────────────────────

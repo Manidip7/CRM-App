@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
+import '../../Leads/model/lead_model.dart';
+import '../../Leads/provider/leads_provider.dart';
 import '../model/dashboard_overview_model.dart';
+import '../model/dashboard_section.dart';
+import '../provider/dashboard_provider.dart';
 
-class LeadFunnelCard extends StatelessWidget {
+/// The Overview's funnel. Each band is a lead status and is tappable: it filters
+/// the Leads list to that status and switches the dashboard to it, so the count
+/// the user just read is the list they land on.
+class LeadFunnelCard extends ConsumerWidget {
   final LeadFunnel funnel;
 
   const LeadFunnelCard({super.key, required this.funnel});
@@ -20,7 +29,7 @@ class LeadFunnelCard extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final stages = [
       for (var i = 0; i < funnel.stages.length; i++)
         _Stage(
@@ -30,6 +39,10 @@ class LeadFunnelCard extends StatelessWidget {
               _fallbackPalette[i % _fallbackPalette.length],
         ),
     ];
+
+    // No point offering the jump to a role that can't open the Leads list.
+    final canOpenLeads =
+        ref.watch(permissionsProvider).can(AppPermissions.leadsView);
 
     if (stages.isEmpty) {
       return const _DashCard(
@@ -109,10 +122,62 @@ class LeadFunnelCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          _Funnel(stages: stages),
+          _Funnel(
+            stages: stages,
+            onStageTap: canOpenLeads ? (s) => _openStage(ref, s) : null,
+          ),
+          if (canOpenLeads) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                'Tap a stage to see those leads',
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: AppColors.textLight,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// Filters the Leads list to the tapped stage and switches to it.
+  ///
+  /// The funnel only reports a label, so the matching `status_id` is resolved
+  /// against `GET /statuses`; a stage whose name the CRM doesn't know still
+  /// opens the list, just unfiltered, rather than doing nothing on tap.
+  void _openStage(WidgetRef ref, _Stage stage) {
+    final statusId = _statusIdFor(ref, stage.label);
+    final filter = ref.read(leadsFilterProvider.notifier);
+    if (statusId != null) {
+      filter.showOnlyStatus(statusId);
+    } else {
+      filter.clearFilters();
+      filter.clearAdvanced();
+    }
+    ref.read(dashboardNavProvider.notifier).select(DashboardSection.leadsIndex);
+  }
+
+  static int? _statusIdFor(WidgetRef ref, String label) {
+    final wanted = label.trim().toLowerCase();
+    if (wanted.isEmpty) return null;
+
+    for (final status in ref.read(leadStatusesProvider).value ?? const []) {
+      if (status.name.trim().toLowerCase() == wanted) return status.id;
+    }
+
+    // The statuses may not have loaded (they're fetched lazily), so fall back
+    // to the ids the app already maps its own stages to.
+    return switch (wanted) {
+      'new' || 'new leads' || 'new lead' => LeadStatus.newLead.statusId,
+      'contacted' || 'in progress' => LeadStatus.contacted.statusId,
+      'qualified' || 'interested' => LeadStatus.qualified.statusId,
+      'won' || 'converted' => LeadStatus.won.statusId,
+      'lost' => LeadStatus.lost.statusId,
+      _ => null,
+    };
   }
 }
 
@@ -125,7 +190,12 @@ class _Stage {
 
 class _Funnel extends StatelessWidget {
   final List<_Stage> stages;
-  const _Funnel({required this.stages});
+
+  /// Null when the role can't open the Leads list, which also removes the tap
+  /// targets rather than leaving dead ones behind.
+  final void Function(_Stage stage)? onStageTap;
+
+  const _Funnel({required this.stages, this.onStageTap});
 
   static const double _segHeight = 35;
   static const double _gap = 5;
@@ -174,18 +244,30 @@ class _Funnel extends StatelessWidget {
                           height: _segHeight,
                           width: double.infinity,
                           child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  '${stages[i].label}  •  ${stages[i].count}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
+                            // The tap target is the band's own (tapered) width,
+                            // not the full row — tapping the empty margin
+                            // beside a narrow band shouldn't select it.
+                            child: SizedBox(
+                              width: w * (_fractionAt(i) + _fractionAt(i + 1)) / 2,
+                              height: _segHeight,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: onStageTap == null
+                                    ? null
+                                    : () => onStageTap!(stages[i]),
+                                child: Center(
+                                  child: Text(
+                                    '${stages[i].label}  •  ${stages[i].count}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),

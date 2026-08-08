@@ -140,6 +140,15 @@ class LeadsFilter extends _$LeadsFilter {
         filterSource: state.filterSource == s ? null : s,
       );
 
+  /// Narrows the list to a single backend status, dropping every other filter.
+  ///
+  /// Used when arriving from somewhere that means "show me exactly these" — the
+  /// dashboard's Lead Funnel, where each band is one status. Starting from a
+  /// blank state matters there: a leftover search or date range would make the
+  /// list disagree with the count the user just tapped.
+  void showOnlyStatus(int statusId) =>
+      state = LeadsFilterState(statusId: statusId);
+
   /// Adds/removes a `quick_filter` value (today / upcoming / overdue /
   /// my_leads). Multiple may be active simultaneously.
   void toggleQuickFilter(String value) {

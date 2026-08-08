@@ -17,6 +17,10 @@
         android:name="android.permission.READ_MEDIA_VIDEO"
         tools:node="remove"/>
 
+    <!-- Scanning the CRM server's QR code on the first-launch setup screen. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <uses-permission
         android:name="android.permission.READ_CALL_LOG" />
 

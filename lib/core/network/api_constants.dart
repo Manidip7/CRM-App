@@ -4,15 +4,28 @@
 class ApiConstants {
   ApiConstants._();
 
-  /// Root of the backend API. Change this for staging / production builds.
+  /// Fallback root of the backend API, used only until the user picks a server
+  /// on the setup screen (see `ServerConfig`) — that choice is what the app
+  /// actually talks to from then on.
   // static const String baseUrl = 'https://crm.mindverge.in';
   static const String baseUrl = 'https://demo.peplocrm.in';
   // static const String baseUrl = 'https://mbbsguidance.peplocrm.com';
 
-  /// Common prefix appended to [baseUrl] (e.g. `/api/v1`).
+  /// Common prefix appended to the server origin (e.g. `/api/v1`).
   static const String apiPrefix = '/api/v1';
 
   static String get apiBaseUrl => '$baseUrl$apiPrefix';
+
+  /// The app's own fixed host, which is **not** the tenant's CRM server: it is
+  /// where the setup screen looks a company up. Everything after setup goes to
+  /// the tenant server the lookup returns.
+  static const String appBaseUrl = 'https://peplocrm.in';
+
+  static String get appApiBaseUrl => '$appBaseUrl$apiPrefix';
+
+  /// `POST {appApiBaseUrl}/tenant-info` — resolves an address the user typed or
+  /// scanned into the company's real CRM domain.
+  static const String tenantInfo = '/tenant-info';
 
   // --- Timeouts -------------------------------------------------------------
   static const Duration connectTimeout = Duration(seconds: 20);

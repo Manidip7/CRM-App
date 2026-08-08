@@ -12,13 +12,16 @@ import 'token_storage.dart';
 class DioClient {
   DioClient._();
 
+  /// [baseUrl] is the API root of the server the user set up on first launch;
+  /// it falls back to the compiled-in default until they have chosen one.
   static Dio create({
     required TokenStorage tokenStorage,
+    String? baseUrl,
     void Function()? onUnauthorized,
   }) {
     final dio = Dio(
       BaseOptions(
-        baseUrl: ApiConstants.apiBaseUrl,
+        baseUrl: baseUrl ?? ApiConstants.apiBaseUrl,
         connectTimeout: ApiConstants.connectTimeout,
         receiveTimeout: ApiConstants.receiveTimeout,
         sendTimeout: ApiConstants.sendTimeout,

@@ -10,9 +10,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/network_providers.dart';
 import '../../../core/permissions/permissions.dart';
 import '../../../core/platform/downloads_saver.dart';
 import '../../../core/utils/AppColors.dart';
+import '../../../core/utils/whatsapp_message.dart';
+import '../../auth/data/auth_repository.dart';
 import '../../quotations/data/quotations_repository.dart';
 import '../../quotations/model/quotation_model.dart';
 import 'create_quotation_screen.dart';
@@ -771,12 +774,27 @@ class _OpportunityDetailScreenState
     await _launch(Uri(scheme: 'sms', path: phone), 'messaging app');
   }
 
+  /// Opens WhatsApp with a polite draft already written — the rep edits and
+  /// sends it, nothing goes out on its own.
   Future<void> _whatsapp() async {
     final phone = _digits(_contactPhone);
     if (phone == null) return _showSnack('No phone number for this contact.');
-    // wa.me requires the number without a leading '+' or spaces.
+
+    final message = buildWhatsAppMessage(
+      intent: WhatsAppIntent.opportunity,
+      contactName: _opp.contactName,
+      senderName: ref.read(authSessionProvider)?.user.name,
+      senderCompany: ref.read(serverConfigProvider)?.companyName,
+      topic: _opp.title,
+    );
+
+    // wa.me requires the number without a leading '+' or spaces; `Uri.https`
+    // percent-encodes the message (spaces, newlines, the apostrophes).
     final waNumber = phone.replaceAll('+', '');
-    await _launch(Uri.parse('https://wa.me/$waNumber'), 'WhatsApp');
+    await _launch(
+      Uri.https('wa.me', '/$waNumber', {'text': message}),
+      'WhatsApp',
+    );
   }
 
   Future<void> _email() async {

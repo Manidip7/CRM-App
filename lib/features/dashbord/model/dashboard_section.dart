@@ -32,6 +32,10 @@ class DashboardSection {
 
   bool isVisibleTo(PermissionSet perms) => perms.canAny(permissions);
 
+  /// Index of the Leads section, for the places that switch to it directly
+  /// (e.g. tapping a Lead Funnel band on the Overview).
+  static const int leadsIndex = 1;
+
   /// Every section, in the order the drawer shows them.
   static const List<DashboardSection> all = [
     DashboardSection(

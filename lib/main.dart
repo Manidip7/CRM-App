@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/app/app_restart.dart';
 import 'core/network/network_providers.dart';
 import 'core/network/persistent_token_storage.dart';
+import 'core/network/server_config.dart';
 import 'core/permissions/permissions.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/auth/data/session_store.dart';
@@ -21,6 +22,10 @@ Future<void> main() async {
   final tokenStorage = await PersistentTokenStorage.load();
   final sessionStore = await SessionStore.load();
   final permissionsStore = await PermissionsStore.load();
+  // Which CRM server this device is pointed at, chosen on the setup screen the
+  // first time the app runs. Loaded here so the first frame already knows
+  // whether that step is still pending.
+  final serverConfigStore = await ServerConfigStore.load();
 
   runApp(
     // [AppRestart] sits above the scope so logout can recreate it, dropping
@@ -33,6 +38,7 @@ Future<void> main() async {
           tokenStorageProvider.overrideWithValue(tokenStorage),
           sessionStoreProvider.overrideWithValue(sessionStore),
           permissionsStoreProvider.overrideWithValue(permissionsStore),
+          serverConfigStoreProvider.overrideWithValue(serverConfigStore),
         ],
         child: const MyApp(),
       ),

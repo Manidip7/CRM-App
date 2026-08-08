@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/network/network_providers.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../../auth/data/auth_repository.dart';
@@ -42,6 +43,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     appBootstrapped = true;
     if (!mounted) return;
+
+    // First launch (or after "change server"): the app doesn't know which CRM
+    // to talk to yet, so nothing else can happen until that's chosen.
+    if (ref.read(serverConfigProvider) == null) {
+      context.go(AppRoutes.serverSetup);
+      return;
+    }
 
     // Route based on the restored session: straight to the dashboard if the
     // user is already logged in, otherwise to the login screen.

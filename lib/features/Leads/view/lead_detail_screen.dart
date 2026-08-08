@@ -5,9 +5,12 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/network_providers.dart';
 import '../../../core/permissions/permissions.dart';
 import '../../../core/utils/AppColors.dart';
+import '../../../core/utils/whatsapp_message.dart';
 import '../../../routes/app_routes.dart';
+import '../../auth/data/auth_repository.dart';
 import '../data/leads_repository.dart';
 import '../model/lead_model.dart';
 import '../provider/lead_detail_provider.dart';
@@ -845,13 +848,25 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
     await _launch(Uri(scheme: 'sms', path: phone), 'messaging app');
   }
 
+  /// Opens WhatsApp with a polite draft already written — the rep edits and
+  /// sends it, nothing goes out on its own.
   Future<void> _whatsappLead() async {
     final phone = _phoneDigits;
     if (phone == null) return _showSnack('No phone number for this lead.');
-    // wa.me requires the number without a leading '+' or spaces.
+
+    final message = buildWhatsAppMessage(
+      intent: WhatsAppIntent.lead,
+      contactName: _lead.contactName,
+      senderName: ref.read(authSessionProvider)?.user.name,
+      senderCompany: ref.read(serverConfigProvider)?.companyName,
+      topic: _lead.interestedIn,
+    );
+
+    // wa.me requires the number without a leading '+' or spaces; `Uri.https`
+    // percent-encodes the message (spaces, newlines, the apostrophes).
     final waNumber = phone.replaceAll('+', '');
     await _launch(
-      Uri.parse('https://wa.me/$waNumber'),
+      Uri.https('wa.me', '/$waNumber', {'text': message}),
       'WhatsApp',
     );
   }
