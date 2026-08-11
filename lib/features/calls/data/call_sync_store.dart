@@ -92,6 +92,7 @@ class CallSyncStore {
   static const _uploadedKey = 'calls.uploaded_keys';
   static const _pendingKey = 'calls.pending_intents';
   static const _watchedKey = 'calls.watched_numbers';
+  static const _declinedKey = 'calls.disclosure_declined';
 
   /// Cap on how far back the very first sync looks (no point uploading ancient
   /// history) and how stale a pending intent can get before we drop it.
@@ -226,6 +227,21 @@ class CallSyncStore {
     );
   }
 
+  // --- Prominent-disclosure state -------------------------------------------
+
+  /// Whether the user has already turned down the call-log disclosure (either
+  /// by dismissing our own explanation or by denying the system dialog after
+  /// it).
+  ///
+  /// Google Play's prominent disclosure rules allow asking, but re-prompting on
+  /// every Call tap is nagging. So the automatic gate asks once; after a "no"
+  /// the only way back is the user explicitly tapping *Enable call logging* on
+  /// the Call History card, which forces the disclosure through again.
+  bool get disclosureDeclined => _prefs.getBool(_declinedKey) ?? false;
+
+  Future<void> setDisclosureDeclined(bool declined) =>
+      _prefs.setBool(_declinedKey, declined);
+
   // --- Wipe -----------------------------------------------------------------
 
   /// Drops every key this store owns. Called on logout: the de-dup set, the
@@ -237,6 +253,9 @@ class CallSyncStore {
     await _prefs.remove(_uploadedKey);
     await _prefs.remove(_pendingKey);
     await _prefs.remove(_watchedKey);
+    // The next user on this device is a different person and has to be given
+    // the disclosure themselves.
+    await _prefs.remove(_declinedKey);
   }
 }
 

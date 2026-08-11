@@ -47,8 +47,12 @@ class CallSyncController extends Notifier<CallSyncState> {
   CallsRepository get _repo => ref.read(callsRepositoryProvider);
 
   /// Records that the user is about to call [number] for the given lead /
-  /// opportunity, and (best-effort) makes sure the call-log permission is
-  /// granted so the resume-sync can read the result. Safe to await or not.
+  /// opportunity, so the resume-sync can attribute the resulting call-log entry.
+  ///
+  /// Deliberately does **not** touch the call-log permission: the only place
+  /// allowed to trigger the system dialog is `ensureCallLogAccess`, which shows
+  /// the prominent disclosure first. Recording the intent is free either way —
+  /// if the user grants access later, the call is still waiting to be matched.
   Future<void> recordDirectCall({
     required String number,
     String? leadId,
@@ -74,9 +78,6 @@ class CallSyncController extends Notifier<CallSyncState> {
         seenAt: DateTime.now(),
       ),
     ]);
-    // Ask for permission now (the natural moment) so the result is readable
-    // when the user comes back from the call.
-    await _service.ensurePermission(request: true);
   }
 
   /// Registers [numbers] as belonging to a lead / opportunity, so [syncNow] can
@@ -106,12 +107,15 @@ class CallSyncController extends Notifier<CallSyncState> {
 
   /// For every number the user called from the app, finds the **single latest**
   /// matching call-log entry and uploads just that one object (tagged with its
-  /// lead/opportunity). Returns how many calls were uploaded. No-ops (returns
-  /// 0) when unsupported or the permission isn't granted. When
-  /// [requestPermission] is true it prompts for the permission if needed.
-  Future<int> syncNow({bool requestPermission = false}) async {
+  /// lead/opportunity). Returns how many calls were uploaded.
+  ///
+  /// Never prompts: it silently returns 0 when unsupported or when the
+  /// permission isn't granted. Granting is `ensureCallLogAccess`'s job, and
+  /// keeping the prompt out of here is what guarantees no code path can reach
+  /// the system dialog without the prominent disclosure being shown first.
+  Future<int> syncNow() async {
     if (!_service.isSupported || state.syncing) return 0;
-    if (!await _service.ensurePermission(request: requestPermission)) return 0;
+    if (!await _service.ensurePermission()) return 0;
 
     state = state.copyWith(syncing: true);
     try {
@@ -298,8 +302,9 @@ class CallPermissionState {
 }
 
 /// Holds the call-log permission state for the [CallHistoryCard], replacing the
-/// old `setState`-driven local flags. Checking the permission on [build] and
-/// after [enable] flows through Riverpod so the card just watches this provider.
+/// old `setState`-driven local flags. Checking the permission on [build] flows
+/// through Riverpod so the card just watches this provider; the disclosure gate
+/// invalidates it once access is granted.
 class CallPermissionController extends AsyncNotifier<CallPermissionState> {
   CallLogService get _service => ref.read(callLogServiceProvider);
 
@@ -316,21 +321,69 @@ class CallPermissionController extends AsyncNotifier<CallPermissionState> {
 
   @override
   Future<CallPermissionState> build() => _check();
-
-  /// Requests the permission (if needed), syncs, and refreshes the state.
-  /// Returns how many calls were uploaded by the sync.
-  Future<int> enable() async {
-    final uploaded = await ref
-        .read(callSyncControllerProvider.notifier)
-        .syncNow(requestPermission: true);
-    state = await AsyncValue.guard(_check);
-    return uploaded;
-  }
 }
 
 final callPermissionProvider =
     AsyncNotifierProvider<CallPermissionController, CallPermissionState>(
         CallPermissionController.new);
+
+/// The one place in the app allowed to trigger the `READ_CALL_LOG` system
+/// dialog, and the bookkeeping behind Google Play's *prominent disclosure*
+/// requirement.
+///
+/// Play policy: before the OS permission prompt appears, the app must show its
+/// own in-app screen naming the data, the purpose, and the fact that it leaves
+/// the device — and the user must act on it affirmatively. The UI half of that
+/// lives in `CallLogDisclosureDialog`; this controller owns the decisions
+/// around it so no screen has to keep permission flags in local state.
+///
+/// Drive it through `ensureCallLogAccess(context, ref)` rather than calling
+/// these methods directly.
+class CallDisclosureController extends Notifier<void> {
+  @override
+  void build() {}
+
+  CallLogService get _service => ref.read(callLogServiceProvider);
+
+  /// Whether access is already granted — the disclosure is pointless then.
+  Future<bool> get isGranted => _service.isGranted;
+
+  /// Whether the disclosure should be put in front of the user right now.
+  ///
+  /// `false` on iOS (no call-log API at all), when access is already granted,
+  /// and when the user has previously said no — unless [force] is set, which is
+  /// how the explicit *Enable call logging* button re-opens the conversation.
+  Future<bool> shouldDisclose({bool force = false}) async {
+    if (!_service.isSupported) return false;
+    if (await _service.isGranted) return false;
+    if (force) return true;
+    final store = await ref.read(callSyncStoreProvider.future);
+    return !store.disclosureDeclined;
+  }
+
+  /// Remembers that the user dismissed the disclosure, so the automatic gate
+  /// stops asking.
+  Future<void> markDeclined() async {
+    final store = await ref.read(callSyncStoreProvider.future);
+    await store.setDisclosureDeclined(true);
+  }
+
+  /// Runs the system permission request. Only legal to call *after* the user
+  /// has accepted the disclosure. Denying at the OS level counts as a decline,
+  /// so the gate won't ask again on its own.
+  Future<bool> grantAfterDisclosure() async {
+    final granted = await _service.ensurePermission(request: true);
+    final store = await ref.read(callSyncStoreProvider.future);
+    await store.setDisclosureDeclined(!granted);
+    // Let every CallHistoryCard on screen re-check and back-fill.
+    if (granted) ref.invalidate(callPermissionProvider);
+    return granted;
+  }
+}
+
+final callDisclosureProvider =
+    NotifierProvider<CallDisclosureController, void>(
+        CallDisclosureController.new);
 
 // ─────────────────────────────────────────────
 //  Manual "Log Call" form (POST /leads/{id}/call-logs)

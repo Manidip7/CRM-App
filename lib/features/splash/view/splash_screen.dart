@@ -6,21 +6,22 @@ import '../../../core/network/network_providers.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../../routes/app_routes.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../calls/data/call_log_service.dart';
 
 /// Whether the splash has already run this process. It is a top-level variable
 /// rather than provider state on purpose: it has to survive `AppRestart`, which
 /// throws away the whole `ProviderScope`. Without it, logging out would replay
-/// the splash — two seconds of branding plus a repeat of the permission prompt
-/// the user already answered.
+/// the splash — two seconds of branding the user has already sat through.
 bool appBootstrapped = false;
 
-/// First screen shown on launch. It requests the app's runtime permissions
-/// (the call-log permission) up front, then routes the user onward — to the
-/// dashboard if a session was restored, otherwise to the login screen.
+/// First screen shown on launch: shows the branding briefly, then routes the
+/// user onward — to the dashboard if a session was restored, otherwise to the
+/// login screen.
 ///
-/// Gating navigation behind the permission request guarantees the order the
-/// product wants: permissions first, login screen after.
+/// It asks for **no** permissions. The call-log permission used to be requested
+/// here, which broke Google Play's prominent disclosure rule: the prompt landed
+/// before login, with no explanation of why the app wanted call history. It now
+/// happens at the moment the user taps Call, behind
+/// `ensureCallLogAccess` (lib/features/calls/widget/call_log_disclosure.dart).
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -36,10 +37,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _bootstrap() async {
-    await Future.wait([
-      ref.read(callLogServiceProvider).ensurePermission(request: true),
-      Future<void>.delayed(const Duration(seconds: 2)),
-    ]);
+    await Future<void>.delayed(const Duration(seconds: 2));
 
     appBootstrapped = true;
     if (!mounted) return;

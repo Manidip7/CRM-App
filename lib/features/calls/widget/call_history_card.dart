@@ -6,6 +6,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../model/call_record.dart';
 import '../provider/call_providers.dart';
+import 'call_log_disclosure.dart';
 import 'log_call_sheet.dart';
 
 /// A card that shows the captured call history for a lead or an opportunity,
@@ -41,11 +42,14 @@ class CallHistoryCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _enable(WidgetRef ref) async {
-    // Requests permission, syncs, and refreshes the permission state — all via
-    // Riverpod. syncNow() already invalidates the history list on a successful
-    // upload, so the new calls appear automatically.
-    await ref.read(callPermissionProvider.notifier).enable();
+  /// Explicit opt-in from the card. `force: true` re-shows the prominent
+  /// disclosure even if the user turned it down at a Call button earlier —
+  /// tapping this button *is* them asking for the feature.
+  ///
+  /// On success the gate invalidates [callPermissionProvider], which re-checks
+  /// and back-fills recent calls, so the card fills itself in.
+  Future<void> _enable(BuildContext context, WidgetRef ref) async {
+    await ensureCallLogAccess(context, ref, force: true);
   }
 
   @override
@@ -187,7 +191,7 @@ class CallHistoryCard extends ConsumerWidget {
                 width: double.infinity,
                 height: 44,
                 child: ElevatedButton.icon(
-                  onPressed: () => _enable(ref),
+                  onPressed: () => _enable(context, ref),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,

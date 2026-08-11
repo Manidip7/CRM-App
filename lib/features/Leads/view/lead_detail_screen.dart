@@ -21,6 +21,7 @@ import 'add_task_sheet.dart';
 import '../../Opportunities/model/opportunity_model.dart';
 import '../../Opportunities/provider/opportunities_provider.dart';
 import '../../calls/provider/call_providers.dart';
+import '../../calls/widget/call_log_disclosure.dart';
 import '../../calls/widget/lead_call_logs_card.dart';
 
 /// The detail tabs, each with the permission that reveals it. `null` means the
@@ -837,6 +838,12 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen>
           number: phone,
           leadId: widget.lead.id,
         );
+    // The natural moment to ask for call-log access: the user is about to make
+    // the very call we want to log. Shows the prominent disclosure first, and
+    // asks at most once unless they later opt in from the Call History card.
+    // Whatever they answer, the call itself goes through.
+    if (mounted) await ensureCallLogAccess(context, ref);
+    if (!mounted) return;
     await _launch(Uri(scheme: 'tel', path: phone), 'phone dialer');
   }
 

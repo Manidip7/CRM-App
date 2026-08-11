@@ -21,11 +21,17 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- Reading the device call log so a call placed to a CRM lead/opportunity
+         can be attached to that record (type, duration, time). Read-only: the
+         app never writes to or deletes from the call log, so WRITE_CALL_LOG is
+         deliberately NOT declared — declaring it would fail Google Play's
+         permissions declaration, which only approves it for default diallers.
+
+         The runtime request is gated behind the in-app prominent disclosure in
+         lib/features/calls/widget/call_log_disclosure.dart. -->
     <uses-permission
         android:name="android.permission.READ_CALL_LOG" />
 
-    <uses-permission
-        android:name="android.permission.WRITE_CALL_LOG" />
     <application
         android:label="Peplo CRM"
         android:name="${applicationName}"
