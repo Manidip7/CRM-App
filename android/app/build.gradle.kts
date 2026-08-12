@@ -57,6 +57,11 @@ android {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
             signingConfig = signingConfigs.getByName("release")
+            // ML Kit ships four text recognisers the app never uses; without
+            // these rules R8 fails the release build on the missing classes.
+            // Only this file is added — AGP's optimising default is left out so
+            // the release build's behaviour is otherwise unchanged.
+            proguardFiles("proguard-rules.pro")
         }
     }
 }

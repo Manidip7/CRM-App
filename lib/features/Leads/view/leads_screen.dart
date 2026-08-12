@@ -11,6 +11,7 @@ import '../../../routes/app_routes.dart';
 import '../data/leads_repository.dart';
 import '../model/lead_model.dart';
 import '../provider/leads_provider.dart';
+import 'business_card_scan_screen.dart';
 import 'bulk_action_screen.dart';
 import 'leads_filter_sheet.dart';
 
@@ -213,15 +214,40 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
           ],
         ),
       ),
+      // Both actions create a lead, so both sit behind `leads.add`: typing one
+      // in by hand, or scanning a business card and letting OCR fill the form.
       floatingActionButton: Can(
         permission: AppPermissions.leadsAdd,
-        child: FloatingActionButton(
-          onPressed: _addLead,
-          backgroundColor: _accent,
-          elevation: 4,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: const Icon(Icons.add, color: Colors.white, size: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            FloatingActionButton(
+              heroTag: 'leads-scan-card',
+              onPressed: _scanBusinessCard,
+              backgroundColor: AppColors.cardBackground,
+              foregroundColor: _accent,
+              elevation: 3,
+              tooltip: 'Scan business card',
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: _accent, width: 1.2),
+              ),
+              child: Icon(Icons.document_scanner_outlined,
+                  color: _accent, size: 24),
+            ),
+            const SizedBox(height: 12),
+            FloatingActionButton(
+              heroTag: 'leads-add',
+              onPressed: _addLead,
+              backgroundColor: _accent,
+              elevation: 4,
+              tooltip: 'Add lead',
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: const Icon(Icons.add, color: Colors.white, size: 28),
+            ),
+          ],
         ),
       ),
     );
@@ -798,6 +824,21 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
   }
 
   void _addLead() => _openAddLeadSheet();
+
+  /// Opens the business-card scanner. The screen pops the lead it created, so a
+  /// successful scan simply refreshes the list — its own screen has already
+  /// confirmed the save.
+  Future<void> _scanBusinessCard() async {
+    final created = await Navigator.of(context).push<LeadModel>(
+      MaterialPageRoute(builder: (_) => const BusinessCardScanScreen()),
+    );
+    if (created == null || !mounted) return;
+    if (ref.read(leadsFilterProvider).showBacklog) {
+      await ref.read(leadsBacklogProvider.notifier).refresh();
+    } else {
+      await ref.read(leadsListProvider.notifier).refresh();
+    }
+  }
 
   /// Bottom sheet with the Add-Lead form. First/last name, phone, interest and
   /// priority + source are mandatory; only email is optional.

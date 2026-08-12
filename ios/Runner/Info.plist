@@ -5,9 +5,9 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app needs access to your photos so you can set a profile picture.</string>
+	<string>This app needs access to your photos so you can set a profile picture and scan a business card you have already photographed.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>This app needs access to your camera so you can scan your CRM setup QR code and take a profile picture.</string>
+	<string>This app needs access to your camera so you can scan your CRM setup QR code, scan a business card into a lead, and take a profile picture.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
