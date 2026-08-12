@@ -95,10 +95,12 @@ class OpportunityDetailController extends _$OpportunityDetailController {
         closedWon: s == OpportunityStage.won,
       );
 
-  /// Selects a stage by its raw id from `GET /opportunity-stages`. Keeps the
-  /// [OpportunityStage] enum (used for colors / badges elsewhere) in sync.
-  void setStageId(String id) {
-    final mapped = opportunityStageFromId(id);
+  /// Selects a status by its `status_id` from `GET /opportunity-statuses`.
+  /// Keeps the [OpportunityStage] enum (used for colors / badges elsewhere) in
+  /// sync — mapped from [name] when the caller knows it, because the ids are
+  /// numeric and would all collapse to the enum's fallback value.
+  void setStageId(String id, {String? name}) {
+    final mapped = opportunityStageFromId(name ?? id);
     state = state.copyWith(
       stageId: id,
       stage: mapped,

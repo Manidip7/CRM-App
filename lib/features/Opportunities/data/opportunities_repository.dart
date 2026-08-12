@@ -129,8 +129,12 @@ class OpportunitiesRepository {
       decoder: (json) {
         final list = (json is Map ? json['data'] : json) as List? ?? const [];
         return list
-            .map((e) => StageOption.fromJson((e as Map).cast<String, dynamic>()))
-            .toList(growable: false);
+            .whereType<Map>()
+            .map((e) => StageOption.fromJson(e.cast<String, dynamic>()))
+            .toList()
+          // Pipeline order (Qualification → Proposal → …), as the web CRM shows
+          // it; the endpoint does not guarantee a sorted list.
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
       },
     );
   }

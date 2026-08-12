@@ -80,21 +80,54 @@ OpportunityStage opportunityStageFromId(String id) {
 /// palette so the dropdown matches the rest of the screen.
 Color opportunityStageColor(String id) => opportunityStageFromId(id).color;
 
-/// A selectable pipeline stage from `GET /opportunity-stages`
-/// (`{ id, name }`, e.g. `{ "id": "Prospecting", "name": "Prospecting" }`).
-/// Drives the stage dropdown on the opportunity detail header.
+/// Parses a `color_hex` value from the API (`"#f59e0b"`, with or without the
+/// leading `#`, 6 or 8 digits) into a [Color]. Returns null when the value is
+/// missing or malformed so callers can fall back to their own palette.
+Color? opportunityHexColor(String? hex) {
+  if (hex == null) return null;
+  var h = hex.replaceAll('#', '').trim();
+  if (h.length == 6) h = 'FF$h';
+  if (h.length != 8) return null;
+  final value = int.tryParse(h, radix: 16);
+  return value == null ? null : Color(value);
+}
+
+/// A selectable status from `GET /opportunity-statuses`
+/// (`{ id, name, color_hex, sort_order }`, e.g.
+/// `{ "id": 7, "name": "Qualification", "color_hex": "#8b5cf6" }`).
+/// Drives the status dropdown on the opportunity detail header; [id] is the
+/// `status_id` posted back to `POST /opportunities/{id}/stage`.
 class StageOption {
+  /// The backend `status_id`, kept as a string because it is passed straight
+  /// through to the form-encoded update body.
   final String id;
   final String name;
 
-  const StageOption({required this.id, required this.name});
+  /// The status's own color (`color_hex`). Preferred over the [OpportunityStage]
+  /// palette so the chip matches the statuses configured on the server.
+  final String? colorHex;
+
+  final int sortOrder;
+
+  const StageOption({
+    required this.id,
+    required this.name,
+    this.colorHex,
+    this.sortOrder = 0,
+  });
 
   factory StageOption.fromJson(Map<String, dynamic> json) => StageOption(
         id: json['id']?.toString() ?? '',
         name: json['name'] as String? ?? json['id']?.toString() ?? '',
+        colorHex: json['color_hex'] as String?,
+        sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
       );
 
-  Color get color => opportunityStageColor(id);
+  /// The status color: `color_hex` when the API sends one, otherwise the
+  /// [OpportunityStage] palette keyed by *name* — [id] is a numeric status id
+  /// and would map every option to the same fallback color.
+  Color get color =>
+      opportunityHexColor(colorHex) ?? opportunityStageColor(name);
 }
 
 enum SourceType { manual, facebook, website, referral, email }
@@ -221,6 +254,15 @@ class OpportunityModel {
   /// distinguish (prospecting vs qualification both map to `qualified`).
   final String? stageRaw;
 
+  /// The opportunity's status as the backend defines it (`status_id` + the
+  /// nested `status` object). This is the authoritative label/color for the
+  /// card chip — the [stage] enum is lossy (Prospecting / Qualification both
+  /// collapse to `qualified`) and carries a hard-coded palette that does not
+  /// match the statuses configured on the server.
+  final int? statusId;
+  final String? statusName;
+  final String? statusColorHex;
+
   final SourceType source;
   final String timeAgo;
   final String nextFollowUp;
@@ -242,6 +284,9 @@ class OpportunityModel {
     required this.probability,
     required this.stage,
     this.stageRaw,
+    this.statusId,
+    this.statusName,
+    this.statusColorHex,
     required this.source,
     required this.timeAgo,
     required this.nextFollowUp,
@@ -280,6 +325,19 @@ class OpportunityModel {
         nextRaw is String ? DateTime.tryParse(nextRaw)?.toLocal() : null;
     final idStr = '${json['id']}';
 
+    // Status comes as a nested object (`{ id, name, color_hex, ... }`) with
+    // `status_id` alongside it. Won / Lost are flags rather than statuses, so
+    // they still win over whatever status the record carries.
+    final status = (json['status'] as Map?)?.cast<String, dynamic>();
+    final statusName = json['is_won'] == true
+        ? 'Won'
+        : json['is_lost'] == true
+            ? 'Lost'
+            : status?['name'] as String?;
+    final statusColorHex = (json['is_won'] == true || json['is_lost'] == true)
+        ? null
+        : status?['color_hex'] as String?;
+
     // Every assignee's name (an opportunity can have multiple assignees).
     final assignees = json['assignees'];
     final assigneeNames = (assignees is List)
@@ -308,6 +366,10 @@ class OpportunityModel {
           : json['is_lost'] == true
               ? 'Lost'
               : json['stage'] as String?,
+      statusId: (json['status_id'] as num?)?.toInt() ??
+          (status?['id'] as num?)?.toInt(),
+      statusName: statusName,
+      statusColorHex: statusColorHex,
       source: _sourceFrom(sourceName),
       timeAgo: createdAt != null ? _timeAgo(createdAt) : '',
       nextFollowUp: nextDate != null ? _fmtDate(nextDate) : '—',
@@ -318,6 +380,25 @@ class OpportunityModel {
       assigneeNames: assigneeNames,
     );
   }
+
+  /// The label for the status chip: the backend status name when the API sent
+  /// one, otherwise the [stage] enum's label.
+  String get statusLabel {
+    final name = statusName?.trim();
+    return (name == null || name.isEmpty)
+        ? stage.label
+        : name.toUpperCase();
+  }
+
+  /// The accent color for the status chip: the backend `color_hex` when the API
+  /// sent one, otherwise the [stage] enum's color.
+  Color get statusColor => opportunityHexColor(statusColorHex) ?? stage.color;
+
+  /// The status chip's background — the tint of [statusColor], matching the
+  /// other chips on the card.
+  Color get statusBgColor => opportunityHexColor(statusColorHex)
+          ?.withOpacity(0.12) ??
+      stage.bgColor;
 
   static OpportunityStage _stageFrom(String? s, bool isWon, bool isLost) {
     if (isWon) return OpportunityStage.won;
@@ -397,6 +478,9 @@ class OpportunityModel {
     int? probability,
     OpportunityStage? stage,
     String? stageRaw,
+    int? statusId,
+    String? statusName,
+    String? statusColorHex,
     SourceType? source,
     String? timeAgo,
     String? nextFollowUp,
@@ -414,6 +498,13 @@ class OpportunityModel {
       probability: probability ?? this.probability,
       stage: stage ?? this.stage,
       stageRaw: stageRaw ?? this.stageRaw,
+      statusId: statusId ?? this.statusId,
+      statusName: statusName ?? this.statusName,
+      // A stage change carries a fresh name but not always a color; clearing it
+      // here lets the chip fall back to the stage palette instead of keeping the
+      // previous status's color.
+      statusColorHex:
+          statusName != null ? statusColorHex : this.statusColorHex,
       source: source ?? this.source,
       timeAgo: timeAgo ?? this.timeAgo,
       nextFollowUp: nextFollowUp ?? this.nextFollowUp,

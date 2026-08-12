@@ -222,21 +222,21 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            FloatingActionButton(
-              heroTag: 'leads-scan-card',
-              onPressed: _scanBusinessCard,
-              backgroundColor: AppColors.cardBackground,
-              foregroundColor: _accent,
-              elevation: 3,
-              tooltip: 'Scan business card',
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: _accent, width: 1.2),
-              ),
-              child: Icon(Icons.document_scanner_outlined,
-                  color: _accent, size: 24),
-            ),
-            const SizedBox(height: 12),
+            // FloatingActionButton(
+            //   heroTag: 'leads-scan-card',
+            //   onPressed: _scanBusinessCard,
+            //   backgroundColor: AppColors.cardBackground,
+            //   foregroundColor: _accent,
+            //   elevation: 3,
+            //   tooltip: 'Scan business card',
+            //   shape: RoundedRectangleBorder(
+            //     borderRadius: BorderRadius.circular(16),
+            //     side: BorderSide(color: _accent, width: 1.2),
+            //   ),
+            //   child: Icon(Icons.document_scanner_outlined,
+            //       color: _accent, size: 24),
+            // ),
+            // const SizedBox(height: 12),
             FloatingActionButton(
               heroTag: 'leads-add',
               onPressed: _addLead,
@@ -606,7 +606,6 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen>
       _quickChip('Upcoming', 'upcoming', filter, notifier),
       _quickChip('Overdue', 'overdue', filter, notifier),
       _quickChip('My Leads', 'my_leads', filter, notifier),
-      _quickChip('Lost', 'lost', filter, notifier),
     ];
 
     // Source chips → `source`.

@@ -659,7 +659,7 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
     // not the green pipeline accent.
     final showBacklog =
         ref.watch(opportunitiesProvider.select((s) => s.showBacklog));
-    final cardAccent = showBacklog ? AppColors.red : opp.stage.color;
+    final cardAccent = showBacklog ? AppColors.red : opp.statusColor;
     final avatarColor = showBacklog ? AppColors.red : opp.avatarColor;
     return GestureDetector(
       onTap: () => _openDetail(opp),
@@ -794,8 +794,10 @@ class _OpportunitiesScreenState extends ConsumerState<OpportunitiesScreen>
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        _buildTag(opp.stage.label, opp.stage.color,
-                            opp.stage.bgColor, null),
+                        // Status chip — label and color come from the backend
+                        // `status` object so it matches the web CRM exactly.
+                        _buildTag(opp.statusLabel, opp.statusColor,
+                            opp.statusBgColor, null),
                         const SizedBox(width: 8),
                         _buildProbTag(opp.probability),
                         const SizedBox(width: 8),

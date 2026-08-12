@@ -210,6 +210,14 @@ class OpportunityDetailBundle {
   final double expectedValue;
   final int probability;
   final String? stage;
+
+  /// The record's status (`status_id` + the nested `status` object). This is
+  /// what the header dropdown selects and what `POST /opportunities/{id}/stage`
+  /// writes back, so it — not the free-text [stage] — is the source of truth.
+  final int? statusId;
+  final String? statusName;
+  final String? statusColorHex;
+
   final bool isWon;
   final bool isLost;
   final DateTime? nextFollowupAt;
@@ -244,6 +252,9 @@ class OpportunityDetailBundle {
     required this.expectedValue,
     required this.probability,
     this.stage,
+    this.statusId,
+    this.statusName,
+    this.statusColorHex,
     this.isWon = false,
     this.isLost = false,
     this.nextFollowupAt,
@@ -286,6 +297,10 @@ class OpportunityDetailBundle {
       expectedValue: double.tryParse('${json['expected_value']}') ?? 0,
       probability: (json['probability'] as num?)?.toInt() ?? 0,
       stage: json['stage'] as String?,
+      statusId: (json['status_id'] as num?)?.toInt() ??
+          ((json['status'] as Map?)?['id'] as num?)?.toInt(),
+      statusName: (json['status'] as Map?)?['name'] as String?,
+      statusColorHex: (json['status'] as Map?)?['color_hex'] as String?,
       isWon: json['is_won'] == true,
       isLost: json['is_lost'] == true,
       nextFollowupAt:

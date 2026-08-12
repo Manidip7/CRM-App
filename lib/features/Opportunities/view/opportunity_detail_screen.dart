@@ -83,13 +83,25 @@ class _OpportunityDetailScreenState
 
   // Provider keyed by this opportunity's id, seeded with its own stage /
   // probability so the screen renders the correct values on first build.
+  // The header dropdown selects a `status_id`, so the controller is seeded with
+  // the record's status id (not the free-text `stage`, which is not one of the
+  // dropdown's option ids). `stageRaw` remains the fallback for models built
+  // before a status was known.
   OpportunityDetailControllerProvider get _detailProvider =>
       opportunityDetailControllerProvider(
         _opp.id,
         initialStage: _opp.stage,
-        initialStageId: _opp.stageRaw,
+        initialStageId: _opp.statusId?.toString() ?? _opp.stageRaw,
         initialProbability: _opp.probability,
       );
+
+  /// The status the API reports for this record: the detail bundle once it has
+  /// loaded, otherwise whatever the list screen handed over.
+  String? get _statusNameFromApi =>
+      _bundle.asData?.value.statusName ?? _opp.statusName;
+
+  String? get _statusColorHexFromApi =>
+      _bundle.asData?.value.statusColorHex ?? _opp.statusColorHex;
 
   @override
   void initState() {
@@ -140,6 +152,16 @@ class _OpportunityDetailScreenState
           leadId: leadId != null ? '$leadId' : _opp.leadId,
           opportunityId: _opp.id,
         );
+
+        // Seed the header dropdown from the server's `status_id` when the list
+        // model didn't carry one. Only while the controller is still unseeded —
+        // a refetch triggered by some other edit must not clobber a status the
+        // user just picked.
+        final statusId = next.asData?.value.statusId;
+        if (statusId != null &&
+            (ref.read(_detailProvider).stageId ?? '').isEmpty) {
+          ref.read(_detailProvider.notifier).setStageId('$statusId');
+        }
       },
     );
     return Scaffold(
@@ -213,37 +235,49 @@ class _OpportunityDetailScreenState
     );
   }
 
-  // Stage dropdown shown on the top bar (header) right side. Options come from
-  // `GET /opportunity-stages`; the current selection is matched by raw stage id,
-  // falling back to the (lossy) enum when no id has been seeded.
+  /// The option currently selected in the header, resolved against
+  /// `GET /opportunity-statuses`: first on `status_id`, then on the status name
+  /// (a model built before the status was known, or the local "Won" marker,
+  /// holds a name where the id would be). Matching on the [OpportunityStage]
+  /// enum is not an option — the ids are numeric, so every one of them maps to
+  /// the same fallback enum value.
+  StageOption? get _currentStatusOption {
+    final options =
+        ref.watch(opportunityStagesProvider).asData?.value ?? const [];
+    if (options.isEmpty) return null;
+
+    final id = ref.watch(_detailProvider.select((s) => s.stageId))?.trim();
+    if (id != null && id.isNotEmpty) {
+      for (final o in options) {
+        if (o.id.trim() == id) return o;
+      }
+      for (final o in options) {
+        if (o.name.toLowerCase().trim() == id.toLowerCase()) return o;
+      }
+    }
+
+    final name = _statusNameFromApi?.toLowerCase().trim();
+    if (name != null && name.isNotEmpty) {
+      for (final o in options) {
+        if (o.name.toLowerCase().trim() == name) return o;
+      }
+    }
+    return null;
+  }
+
+  // Status dropdown shown on the top bar (header) right side. Options come from
+  // `GET /opportunity-statuses`; picking one posts its `status_id`.
   Widget _buildStageDropdown() {
     final stagesAsync = ref.watch(opportunityStagesProvider);
-    final stageId = ref.watch(_detailProvider.select((s) => s.stageId));
     final enumStage = ref.watch(_detailProvider.select((s) => s.stage));
 
     final options = stagesAsync.asData?.value ?? const <StageOption>[];
+    final current = _currentStatusOption;
 
-    // Resolve the currently-selected option: prefer an exact id match, else
-    // the first option whose enum mapping matches the current enum stage.
-    StageOption? current;
-    final wantId = stageId?.toLowerCase().trim();
-    if (wantId != null && wantId.isNotEmpty) {
-      for (final o in options) {
-        if (o.id.toLowerCase().trim() == wantId) {
-          current = o;
-          break;
-        }
-      }
-    }
-    current ??= () {
-      for (final o in options) {
-        if (opportunityStageFromId(o.id) == enumStage) return o;
-      }
-      return null;
-    }();
-
-    final color = current?.color ?? enumStage.color;
-    final label = current?.name ?? _stageLabel(enumStage);
+    final color = current?.color ??
+        opportunityHexColor(_statusColorHexFromApi) ??
+        enumStage.color;
+    final label = current?.name ?? _statusNameFromApi ?? _stageLabel(enumStage);
 
     return PopupMenuButton<StageOption>(
       tooltip: 'Change stage',
@@ -316,29 +350,41 @@ class _OpportunityDetailScreenState
     );
   }
 
-  /// Persists a stage change via `POST /opportunities/{id}/stage`. Updates local
-  /// state optimistically (header, badges, pipeline list), reverting with a
-  /// message if the request fails. [previous] is the stage before the change.
+  /// Persists a status change via `POST /opportunities/{id}/stage`, which takes
+  /// the picked option's `status_id`. Updates local state optimistically
+  /// (header, badges, pipeline list), reverting with a message if the request
+  /// fails. [previous] is the status before the change.
   Future<void> _onStageSelected(StageOption o, StageOption? previous) async {
     if (o.id == previous?.id) return;
 
-    void apply(String id) {
-      ref.read(_detailProvider.notifier).setStageId(id);
-      ref
-          .read(opportunitiesProvider.notifier)
-          .updateOpportunity(_opp.id, stage: opportunityStageFromId(id));
+    void apply(StageOption s) {
+      // The name drives the enum mapping; the numeric id would collapse every
+      // status to the same value.
+      ref.read(_detailProvider.notifier).setStageId(s.id, name: s.name);
+      ref.read(opportunitiesProvider.notifier).updateOpportunity(
+            _opp.id,
+            stage: opportunityStageFromId(s.name),
+            statusId: int.tryParse(s.id),
+            statusName: s.name,
+            statusColorHex: s.colorHex,
+          );
     }
 
-    apply(o.id); // optimistic
+    apply(o); // optimistic
 
     final result = await ref
         .read(opportunitiesRepositoryProvider)
         .updateStage(_opp.id, o.id);
     if (!mounted) return;
     result.when(
-      success: (_) => _showSnack('Stage updated to ${o.name}'),
+      success: (_) {
+        _showSnack('Status updated to ${o.name}');
+        // Pull the record back so the tabs (and the status the header falls back
+        // to) reflect what the server actually stored.
+        ref.invalidate(opportunityDetailBundleProvider(_opp.id));
+      },
       failure: (e) {
-        if (previous != null) apply(previous.id); // revert
+        if (previous != null) apply(previous); // revert
         _showSnack(e.message);
       },
     );
@@ -1074,10 +1120,31 @@ class _OpportunityDetailScreenState
   }
 
   // ── Tab Bar ───────────────────────────────────────────────────────────────────
+  /// The name of the status currently selected in the header. Resolved through
+  /// the option list, so it reads "Proposal" even though the selection itself is
+  /// a numeric `status_id`; falls back to the status the API sent with the
+  /// record while the options are still loading.
+  String? get _currentStageName {
+    final option = _currentStatusOption;
+    if (option != null) return option.name;
+
+    // Options not loaded yet: a non-numeric `stageId` is already a name.
+    final id = ref.watch(_detailProvider.select((s) => s.stageId))?.trim();
+    if (id != null && id.isNotEmpty && int.tryParse(id) == null) return id;
+    return _statusNameFromApi;
+  }
+
   /// Quotes are only available once the opportunity reaches the Proposal stage.
-  bool get _quotesUnlocked =>
-      ref.watch(_detailProvider.select((s) => s.stage)) ==
-      OpportunityStage.proposal;
+  /// Matched on the stage *name* rather than the [OpportunityStage] enum: the
+  /// enum funnels every id it doesn't recognise into `qualified`, so a numeric
+  /// stage id — or a name like "Proposal Sent" — would keep Quotes locked even
+  /// after the user moved the opportunity to Proposal.
+  bool get _quotesUnlocked {
+    final name = _currentStageName?.toLowerCase().trim();
+    if (name != null && name.isNotEmpty) return name.contains('proposal');
+    return ref.watch(_detailProvider.select((s) => s.stage)) ==
+        OpportunityStage.proposal;
+  }
 
   Widget _buildTabBar() {
     // A single remaining tab is just a label — the bar adds nothing.

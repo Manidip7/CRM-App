@@ -316,13 +316,25 @@ class Opportunities extends _$Opportunities {
 
   /// Applies stage / probability edits made on the detail screen back onto the
   /// matching opportunity (in whichever list it lives).
+  /// [statusName] / [statusColorHex] keep the card's status chip in step with
+  /// the stage picked on the detail screen; passing a name without a color lets
+  /// the chip fall back to the stage palette rather than showing the old color.
   void updateOpportunity(
     String id, {
     OpportunityStage? stage,
     int? probability,
+    int? statusId,
+    String? statusName,
+    String? statusColorHex,
   }) {
     OpportunityModel patch(OpportunityModel o) => o.id == id
-        ? o.copyWith(stage: stage, probability: probability)
+        ? o.copyWith(
+            stage: stage,
+            probability: probability,
+            statusId: statusId,
+            statusName: statusName,
+            statusColorHex: statusColorHex,
+          )
         : o;
     state = state.copyWith(
       items: [for (final o in state.items) patch(o)],
