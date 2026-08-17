@@ -89,12 +89,12 @@ class DashboardSection {
       icon: Icons.people_alt_rounded,
       permissions: [AppPermissions.customersView],
     ),
-    // DashboardSection(
-    //   index: 7,
-    //   label: 'Invoices',
-    //   icon: Icons.receipt_long_rounded,
-    //   permissions: [AppPermissions.invoicesView],
-    // ),
+    DashboardSection(
+      index: 7,
+      label: 'Invoices',
+      icon: Icons.receipt_long_rounded,
+      permissions: [AppPermissions.invoicesView],
+    ),
     // DashboardSection(
     //   index: 8,
     //   label: 'Projects',

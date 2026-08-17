@@ -6,6 +6,8 @@ import 'core/network/network_providers.dart';
 import 'core/network/persistent_token_storage.dart';
 import 'core/network/server_config.dart';
 import 'core/permissions/permissions.dart';
+import 'core/update/app_update_provider.dart';
+import 'core/update/update_gate.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/auth/data/session_store.dart';
 import 'features/calls/provider/call_providers.dart';
@@ -58,6 +60,13 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Ask Play whether a newer build is live. Deferred by a frame so the first
+    // frame isn't held up by a platform call; on a Play-installed device with
+    // an update waiting, Play's update sheet comes up right after it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(appUpdateProvider.notifier).check();
+    });
   }
 
   @override
@@ -69,10 +78,15 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   /// Whenever the app comes back to the foreground (e.g. after the user
   /// returns from the phone dialer), scan the device call log and upload any
   /// new calls. No-ops on iOS / when the permission isn't granted.
+  ///
+  /// The update check runs here too: it catches a version published while the
+  /// app sat in the background, and Play requires an interrupted immediate
+  /// update to be resumed on the next foreground.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.read(callSyncControllerProvider.notifier).syncNow();
+      ref.read(appUpdateProvider.notifier).check();
     }
   }
 
@@ -85,6 +99,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
+      // Above every route, so the update screen covers whatever the user was
+      // on and no navigation can slip behind it.
+      builder: (context, child) =>
+          UpdateGate(child: child ?? const SizedBox.shrink()),
       routerConfig: ref.watch(routerProvider),
     );
   }
