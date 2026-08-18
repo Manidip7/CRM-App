@@ -276,7 +276,7 @@ void main() {
 
     test('builds a download URL from the storage path', () {
       expect(
-        _bundle.files.single.downloadUrl,
+        _bundle.files.single.downloadUrl('https://crm.mindverge.in'),
         'https://crm.mindverge.in/storage/'
         'project_files/rwlOGfswqhAk6Gd3McwgJiTH1M7wDvW2YCf1ZPyw.pdf',
       );

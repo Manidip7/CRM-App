@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/network/api_constants.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/network_providers.dart';
 import '../../../core/utils/AppColors.dart';
 import '../model/project_detail_models.dart';
 import '../model/project_model.dart';
@@ -776,10 +778,15 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen>
     );
   }
 
+  /// Origin of the server this device was set up against — stored files live
+  /// there, not on the compiled-in fallback host.
+  String get _serverOrigin =>
+      ref.read(serverConfigProvider)?.origin ?? ApiConstants.baseUrl;
+
   /// An image renders its stored thumbnail; anything else gets an extension
   /// badge.
   Widget _fileThumbnail(ProjectFile file) {
-    final url = file.downloadUrl;
+    final url = file.downloadUrl(_serverOrigin);
     if (!file.isImage || url == null) return _fileBadge(file);
     return Image.network(
       url,
@@ -806,7 +813,7 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen>
   /// Opens a stored file by URL. The browser handles the download and the
   /// PDF/doc viewer, so the app doesn't need a viewer of its own.
   Future<void> _openFile(ProjectFile file) async {
-    final url = file.downloadUrl;
+    final url = file.downloadUrl(_serverOrigin);
     if (url == null) return _toast('This file has no location.');
     try {
       final ok = await launchUrl(Uri.parse(url),

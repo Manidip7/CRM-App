@@ -44,13 +44,37 @@ class ApiConstants {
   static const String refreshToken = '/refresh';
   static const String myProfile = '/my-profile';
 
+  /// Strips the `/api/v1` suffix (and any trailing slash) off a Dio base URL,
+  /// leaving the bare origin of whichever server the device is pointed at.
+  ///
+  /// Pass `dio.options.baseUrl` — that is the *runtime* address chosen on the
+  /// setup screen, so anything built from it follows the tenant instead of the
+  /// compiled-in [baseUrl] fallback.
+  static String originOf(String apiBaseUrl) {
+    var origin = apiBaseUrl.trim();
+    while (origin.endsWith('/')) {
+      origin = origin.substring(0, origin.length - 1);
+    }
+    if (origin.endsWith(apiPrefix)) {
+      origin = origin.substring(0, origin.length - apiPrefix.length);
+    }
+    while (origin.endsWith('/')) {
+      origin = origin.substring(0, origin.length - 1);
+    }
+    return origin.isEmpty ? baseUrl : origin;
+  }
+
   // Roles & permissions.
   //
-  // This one lives at `{baseUrl}/api/roles` — *outside* the `/api/v1` prefix
+  // This one lives at `{origin}/api/roles` — *outside* the `/api/v1` prefix
   // every other endpoint uses — so it has to be an absolute URL, which Dio
-  // takes as-is instead of appending to `baseUrl`. If the backend ever moves
-  // it under the versioned prefix, delete [rolesUrl] and use `'/roles'`.
-  static String get rolesUrl => '$baseUrl/api/roles';
+  // takes as-is instead of appending to its base URL. It must be built from
+  // the *active* server (`dio.options.baseUrl`), never from the [baseUrl]
+  // fallback, or a tenant device ends up calling the demo server. If the
+  // backend ever moves it under the versioned prefix, delete this and use
+  // `'/roles'`.
+  static String rolesUrlFor(String apiBaseUrl) =>
+      '${originOf(apiBaseUrl)}/api/roles';
 
   // Leads
   static const String leads = '/leads';

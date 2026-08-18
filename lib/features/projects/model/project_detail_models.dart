@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/network/api_constants.dart';
 import '../../../core/utils/AppColors.dart';
 import 'project_model.dart';
 
@@ -213,14 +212,16 @@ class ProjectFile {
       (mimeType?.startsWith('image/') ?? false) ||
       const {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic'}.contains(extension);
 
-  /// Public URL of a server-stored file.
+  /// Public URL of a server-stored file, on the server [origin] the device is
+  /// pointed at (`https://acme.peplocrm.in`) — pass the active one rather than
+  /// the compiled-in fallback, or a tenant's files are fetched from the demo
+  /// host.
   ///
   /// The API returns a storage-relative `file_path`, so this assumes Laravel's
   /// conventional `public/storage` symlink. If the deployment serves uploads
   /// from somewhere else, this is the one place to change.
-  String? get downloadUrl => storagePath == null
-      ? null
-      : '${ApiConstants.baseUrl}/storage/$storagePath';
+  String? downloadUrl(String origin) =>
+      storagePath == null ? null : '$origin/storage/$storagePath';
 
   /// Human-readable size, e.g. `1.4 MB`.
   String get readableSize {

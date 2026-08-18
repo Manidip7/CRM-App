@@ -20,11 +20,13 @@ class RolesRepository {
   /// `permissions_map`.
   ///
   /// The endpoint sits outside the `/api/v1` prefix the rest of the app uses,
-  /// so [ApiConstants.rolesUrl] is an absolute URL — Dio uses it as-is instead
-  /// of appending it to `baseUrl`.
+  /// so it has to be an absolute URL — Dio uses it as-is instead of appending
+  /// it to its base URL. Building it from `dio.options.baseUrl` keeps it on the
+  /// server the user set up; using the compiled-in fallback instead would send
+  /// every tenant's roles lookup to the demo host.
   Future<ApiResult<List<RoleModel>>> getRoles() {
     return _api.get<List<RoleModel>>(
-      ApiConstants.rolesUrl,
+      ApiConstants.rolesUrlFor(_api.dio.options.baseUrl),
       decoder: _decodeRoles,
     );
   }
