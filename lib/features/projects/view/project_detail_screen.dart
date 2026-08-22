@@ -1276,23 +1276,8 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen>
                       ],
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  _fieldLabel('Status'),
-                  Row(
-                    children: [
-                      // Only the statuses the backend accepts — `backlog` is
-                      // display-only for rows that already carry it.
-                      for (final s in TaskState.selectable) ...[
-                        _selectableChip(
-                          label: s.label,
-                          color: s.color,
-                          selected: draft.state == s,
-                          onTap: () => notifier.setTaskState(s),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                    ],
-                  ),
+                  // No Status picker: `POST /projects/{id}/tasks` doesn't take
+                  // one, so a new task lands on the backend's default state.
                   const SizedBox(height: 18),
                   _primaryButton(
                     'Add Task',

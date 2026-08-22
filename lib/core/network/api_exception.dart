@@ -137,7 +137,13 @@ class ApiException implements Exception {
         fallback = 'The requested resource was not found.';
         break;
       default:
-        if (status != null && status >= 500) {
+        if (status != null && status >= 300 && status < 400) {
+          // A redirect off an API route is the backend bouncing an
+          // unauthenticated call to its web login page — the HTML body carries
+          // no message, so never surface it as a generic failure.
+          type = ApiErrorType.unauthorized;
+          fallback = 'Your session has expired. Please sign in again.';
+        } else if (status != null && status >= 500) {
           type = ApiErrorType.server;
           fallback = 'Server error. Please try again later.';
         } else {

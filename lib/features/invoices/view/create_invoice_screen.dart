@@ -3,15 +3,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/AppColors.dart';
 import '../../customers/model/customer_list_item.dart';
 import '../../customers/provider/customers_api_provider.dart';
+import '../model/catalog_item.dart';
 import '../model/invoice_model.dart';
 import '../provider/invoices_provider.dart';
 
 
 class CreateInvoiceScreen extends ConsumerStatefulWidget {
-  const CreateInvoiceScreen({super.key});
+  const CreateInvoiceScreen({super.key, this.invoice});
+
+  /// The invoice being edited (`PUT /invoices/{id}`), or null for a new one.
+  final InvoiceModel? invoice;
 
   @override
   ConsumerState<CreateInvoiceScreen> createState() =>
@@ -23,18 +28,36 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
   final _overallDiscount = TextEditingController();
   final _notes = TextEditingController();
 
+  bool get _isEditing => widget.invoice != null;
+
   @override
   void initState() {
     super.initState();
-    // Seed a fresh draft (suggested number + one empty line) once the list is
-    // available.
+    // Either prefill from the invoice being edited, or seed a fresh draft
+    // (suggested number + one empty line) once the list is available.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final suggested =
-          suggestInvoiceNumber(ref.read(invoicesProvider));
+      final existing = widget.invoice;
+      final notifier = ref.read(invoiceDraftProvider.notifier);
+
+      if (existing != null) {
+        notifier.loadFrom(existing);
+        final draft = ref.read(invoiceDraftProvider);
+        _invoiceNo.text = existing.id;
+        _notes.text = draft.notes;
+        _overallDiscount.text = draft.overallDiscount > 0
+            ? _plainNumber(draft.overallDiscount)
+            : '';
+        return;
+      }
+
+      final suggested = suggestInvoiceNumber(ref.read(invoicesProvider).items);
       _invoiceNo.text = suggested;
-      ref.read(invoiceDraftProvider.notifier).reset(suggested);
+      notifier.reset(suggested);
     });
   }
+
+  String _plainNumber(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
   @override
   void dispose() {
@@ -110,7 +133,7 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
             ),
           ),
           Text(
-            'New Invoice',
+            _isEditing ? 'Update Invoice' : 'New Invoice',
             style: GoogleFonts.poppins(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -154,13 +177,15 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
   Widget _customerField() {
     final customersAsync = ref.watch(customerOptionsProvider);
     final customers = customersAsync.asData?.value ?? const <CustomerListItem>[];
-    final selected =
-        ref.watch(invoiceDraftProvider.select((d) => d.customer));
-    final value = customers.any((c) => c.name == selected) ? selected : null;
+    final selectedId =
+        ref.watch(invoiceDraftProvider.select((d) => d.customerId));
+    // Key the dropdown on the customer id, not the name: `customer_id` is what
+    // the API wants, and two customers may share a name.
+    final value = customers.any((c) => c.id == selectedId) ? selectedId : null;
     return _labeledField(
       'Bill To (Customer)',
       _dropdownShell(
-        DropdownButton<String>(
+        DropdownButton<int>(
           value: value,
           isExpanded: true,
           hint: Text(
@@ -175,13 +200,18 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
               color: AppColors.textSecondary),
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
           items: customers
-              .map((c) => DropdownMenuItem<String>(
-                    value: c.name,
+              .map((c) => DropdownMenuItem<int>(
+                    value: c.id,
                     child: Text(c.name, overflow: TextOverflow.ellipsis),
                   ))
               .toList(),
-          onChanged: (v) =>
-              ref.read(invoiceDraftProvider.notifier).setCustomer(v),
+          onChanged: (id) {
+            if (id == null) return;
+            final picked = customers.firstWhere((c) => c.id == id);
+            ref
+                .read(invoiceDraftProvider.notifier)
+                .setCustomer(id: picked.id, name: picked.name);
+          },
         ),
       ),
     );
@@ -198,7 +228,7 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
           icon: const Icon(Icons.keyboard_arrow_down_rounded,
               color: AppColors.textSecondary),
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
-          items: InvoiceStatus.values
+          items: InvoiceStatus.formOptions
               .map((s) => DropdownMenuItem<InvoiceStatus>(
                     value: s,
                     child: Row(
@@ -462,13 +492,14 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
 
   // ── Cancel / Save ──
   Widget _actionButtons() {
+    final isSaving = ref.watch(invoiceDraftProvider.select((d) => d.isSaving));
     return Row(
       children: [
         Expanded(
           child: SizedBox(
             height: 50,
             child: OutlinedButton(
-              onPressed: () => Navigator.maybePop(context),
+              onPressed: isSaving ? null : () => Navigator.maybePop(context),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: AppColors.divider),
                 shape: RoundedRectangleBorder(
@@ -491,21 +522,29 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
           child: SizedBox(
             height: 50,
             child: ElevatedButton(
-              onPressed: _save,
+              onPressed: isSaving ? null : _save,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
+                disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
               ),
-              child: Text(
-                'Save Invoice',
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
+              child: isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.2, color: Colors.white),
+                    )
+                  : Text(
+                      _isEditing ? 'Update Invoice' : 'Save Invoice',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
             ),
           ),
         ),
@@ -513,39 +552,18 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
     );
   }
 
-  void _save() {
-    final draft = ref.read(invoiceDraftProvider);
-    final invoiceNo = draft.invoiceNo.trim();
-
-    if (invoiceNo.isEmpty) {
-      _toast('Invoice number is required');
+  /// POSTs the draft to `/invoices`. Validation lives in the notifier so the
+  /// same rules apply wherever submit is called from; it returns null on
+  /// success or the message to show.
+  Future<void> _save() async {
+    final error = await ref.read(invoiceDraftProvider.notifier).submit();
+    if (!mounted) return;
+    if (error != null) {
+      _toast(error, isError: true);
       return;
     }
-    if (draft.customer == null || draft.customer!.trim().isEmpty) {
-      _toast('Please select a customer');
-      return;
-    }
-    final hasLine = draft.items.any((it) => it.item.trim().isNotEmpty);
-    if (!hasLine) {
-      _toast('Add at least one line item');
-      return;
-    }
-
-    final now = DateTime.now();
-    final invoice = InvoiceModel(
-      id: invoiceNo,
-      customer: draft.customer!.trim(),
-      dueDate: draft.dueDate ?? now.add(const Duration(days: 30)),
-      createdDate: now,
-      status: draft.status,
-      amount: draft.grandTotal,
-      paidAmount: 0,
-      createdBy: 'Admin Owner',
-    );
-
-    ref.read(invoicesProvider.notifier).upsert(invoice);
     Navigator.maybePop(context);
-    _toast('$invoiceNo created');
+    _toast(_isEditing ? 'Invoice updated' : 'Invoice created');
   }
 
   // ── Shared field helpers ──
@@ -603,16 +621,16 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
         borderSide: BorderSide(color: color),
       );
 
-  void _toast(String message) {
+  void _toast(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message,
             style: const TextStyle(fontSize: 13, color: Colors.white)),
-        backgroundColor: AppColors.primary,
+        backgroundColor: isError ? AppColors.red : AppColors.primary,
         behavior: SnackBarBehavior.floating,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: const Duration(seconds: 2),
+        duration: Duration(seconds: isError ? 4 : 2),
       ),
     );
   }
@@ -690,7 +708,7 @@ class _LineItemCardState extends ConsumerState<_LineItemCard> {
     }));
     if (item == null) return const SizedBox.shrink();
     final amount = item.amount;
-    final catalog = ref.watch(productCatalogProvider);
+    final catalog = ref.watch(catalogItemsProvider);
     final notifier = ref.read(invoiceDraftProvider.notifier);
 
     return Container(
@@ -707,48 +725,7 @@ class _LineItemCardState extends ConsumerState<_LineItemCard> {
           // Item dropdown + delete
           Row(
             children: [
-              Expanded(
-                child: Container(
-                  height: 44,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.divider),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: item.item.isEmpty ? null : item.item,
-                      isExpanded: true,
-                      hint: Text('Select item',
-                          style: GoogleFonts.poppins(
-                              fontSize: 13.5, color: AppColors.textLight)),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                          color: AppColors.textSecondary),
-                      style: const TextStyle(
-                          fontSize: 14, color: AppColors.textPrimary),
-                      items: catalog
-                          .map((c) => DropdownMenuItem<String>(
-                                value: c.name,
-                                child: Text(c.name,
-                                    overflow: TextOverflow.ellipsis),
-                              ))
-                          .toList(),
-                      onChanged: (name) {
-                        if (name == null) return;
-                        final match = catalog.firstWhere((c) => c.name == name);
-                        notifier.updateItem(
-                          widget.itemId,
-                          (it) => it.copyWith(
-                              item: name, unitPrice: match.defaultPrice),
-                        );
-                        // Keep the unit-price field in sync with the pick.
-                        _unitPrice.text = _numText(match.defaultPrice);
-                      },
-                    ),
-                  ),
-                ),
-              ),
+              Expanded(child: _itemDropdown(item, catalog)),
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: () => notifier.removeItem(widget.itemId),
@@ -804,6 +781,8 @@ class _LineItemCardState extends ConsumerState<_LineItemCard> {
                 child: _numCell(
                   label: 'DISC %',
                   controller: _disc,
+                  // Locked when the catalogue says the item takes no discount.
+                  enabled: item.discountAllowed,
                   onChanged: (v) => notifier.updateItem(widget.itemId,
                       (it) => it.copyWith(discPercent: double.tryParse(v) ?? 0)),
                 ),
@@ -838,10 +817,159 @@ class _LineItemCardState extends ConsumerState<_LineItemCard> {
     );
   }
 
+  /// The item picker, driven by `GET /items` via [catalogItemsProvider]. Shows
+  /// a spinner while the catalogue loads and a tappable retry when it fails, so
+  /// a network hiccup never leaves an empty, silent dropdown.
+  Widget _itemDropdown(InvoiceLineItem line, AsyncValue<List<CatalogItem>> catalog) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: catalog.when(
+        loading: () => Row(
+          children: [
+            const SizedBox(
+              width: 15,
+              height: 15,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppColors.primary),
+            ),
+            const SizedBox(width: 10),
+            Text('Loading items...',
+                style: GoogleFonts.poppins(
+                    fontSize: 13.5, color: AppColors.textLight)),
+          ],
+        ),
+        error: (e, _) => InkWell(
+          onTap: () => ref.invalidate(catalogItemsProvider),
+          child: Row(
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  size: 16, color: AppColors.red),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  e is ApiException ? e.message : 'Could not load items',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                      fontSize: 12.5, color: AppColors.red),
+                ),
+              ),
+              Text('Retry',
+                  style: GoogleFonts.poppins(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary)),
+            ],
+          ),
+        ),
+        data: (items) {
+          if (items.isEmpty) {
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: Text('No items available',
+                  style: GoogleFonts.poppins(
+                      fontSize: 13.5, color: AppColors.textLight)),
+            );
+          }
+          // Guard the dropdown's value: a row whose item is no longer in the
+          // catalogue must fall back to null, or DropdownButton asserts.
+          final selectedId =
+              items.any((c) => c.id == line.itemId) ? line.itemId : null;
+
+          return DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: selectedId,
+              isExpanded: true,
+              hint: Text('Select item',
+                  style: GoogleFonts.poppins(
+                      fontSize: 13.5, color: AppColors.textLight)),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                  color: AppColors.textSecondary),
+              style:
+                  const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+              // The collapsed field shows just the name; the open menu adds the
+              // SKU/unit and price lines.
+              selectedItemBuilder: (ctx) => items
+                  .map((c) => Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(c.name,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ))
+                  .toList(),
+              items: items
+                  .map((c) => DropdownMenuItem<int>(
+                        value: c.id,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(c.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style:
+                                          GoogleFonts.poppins(fontSize: 13.5)),
+                                  if (c.subtitle != null)
+                                    Text(c.subtitle!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.poppins(
+                                            fontSize: 11,
+                                            color: AppColors.textSecondary)),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              formatMoney(c.sellingPrice),
+                              style: GoogleFonts.poppins(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ))
+                  .toList(),
+              onChanged: (id) {
+                if (id == null) return;
+                _onItemPicked(items.firstWhere((c) => c.id == id));
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Applies a catalogue pick to the row and syncs the text controllers, so the
+  /// UNIT PRICE / TAX% / DISC% fields show the item's own figures.
+  void _onItemPicked(CatalogItem picked) {
+    ref
+        .read(invoiceDraftProvider.notifier)
+        .updateItem(widget.itemId, (it) => it.fromCatalog(picked));
+
+    final line = _current();
+    _unitPrice.text = _numText(picked.sellingPrice);
+    _tax.text = _numText(picked.taxPercent);
+    _qty.text = _numText(line?.qty ?? 1);
+    if (!picked.discountAllowed) _disc.text = '0';
+  }
+
   Widget _numCell({
     required String label,
     required TextEditingController controller,
     required ValueChanged<String> onChanged,
+    bool enabled = true,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -860,11 +988,14 @@ class _LineItemCardState extends ConsumerState<_LineItemCard> {
         ),
         TextField(
           controller: controller,
+          enabled: enabled,
           keyboardType:
               const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [_decimalFormatter],
           onChanged: onChanged,
-          style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+          style: TextStyle(
+              fontSize: 14,
+              color: enabled ? AppColors.textPrimary : AppColors.textLight),
           decoration: _cellDecoration('0'),
         ),
       ],

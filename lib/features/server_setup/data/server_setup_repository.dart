@@ -39,6 +39,7 @@ class ServerSetupRepository {
         receiveTimeout: _timeout,
         sendTimeout: _timeout,
         contentType: Headers.jsonContentType,
+        headers: Map<String, String>.from(ApiConstants.jsonHeaders),
         responseType: ResponseType.json,
         followRedirects: false,
         maxRedirects: 0,

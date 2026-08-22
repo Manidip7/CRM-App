@@ -226,8 +226,9 @@ class ProjectsRepository {
   /// [assignedTo] is a user id from the project's `members`. Optional fields
   /// are omitted rather than sent null.
   ///
-  /// `status` is not part of the documented body — it is sent so the sheet's
-  /// Status choice sticks, on the assumption the backend accepts or ignores it.
+  /// The body is exactly `{ title, description, due_at, assigned_to, priority }`
+  /// — `status` is deliberately not sent, as this endpoint doesn't take one; a
+  /// new task lands on the backend's default state.
   Future<ApiResult<void>> addProjectTask(
     String id, {
     required String title,
@@ -235,7 +236,6 @@ class ProjectsRepository {
     String? dueAt,
     int? assignedTo,
     required String priority,
-    required String status,
   }) {
     return _api.post<void>(
       ApiConstants.projectTasks(id),
@@ -247,7 +247,6 @@ class ProjectsRepository {
         if (dueAt != null && dueAt.isNotEmpty) 'due_at': dueAt,
         if (assignedTo != null) 'assigned_to': assignedTo,
         'priority': priority,
-        'status': status,
       },
       decoder: (json) {
         if (json is Map && json['success'] == false) {
@@ -293,7 +292,7 @@ class ProjectsRepository {
   }
 
   /// Unwraps `{ success, data: { current_page, data: [...], last_page, total },
-  /// meta: { total_projects, ... } }`.
+  /// summary: { total_projects, ... } }`.
   static ProjectsPage _decodePage(dynamic json) {
     final map = (json as Map).cast<String, dynamic>();
 
@@ -314,7 +313,10 @@ class ProjectsRepository {
         .map((e) => ProjectModel.fromJson((e as Map).cast<String, dynamic>()))
         .toList(growable: false);
 
-    final meta = (map['meta'] as Map?)?.cast<String, dynamic>();
+    // The totals arrive in a top-level `summary` block; `meta` is kept as a
+    // fallback in case an older build of the endpoint is in front of the app.
+    final meta =
+        ((map['summary'] ?? map['meta']) as Map?)?.cast<String, dynamic>();
 
     return ProjectsPage(
       projects: items,

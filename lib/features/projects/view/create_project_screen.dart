@@ -171,6 +171,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
   Widget _nameField() {
     return _labeledField(
       'Project Name',
+      required: true,
       TextField(
         controller: _name,
         onChanged: (v) => ref.read(projectDraftProvider.notifier).setName(v),
@@ -190,6 +191,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
     final value = customers.any((c) => c.id == selectedId) ? selectedId : null;
     return _labeledField(
       'Customer',
+      required: true,
       _dropdownShell(
         DropdownButton<int>(
           value: value,
@@ -233,10 +235,15 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
         ref.watch(projectDraftProvider.select((d) => d.billingType));
     return _labeledField(
       'Billing Type',
+      required: true,
       _dropdownShell(
         DropdownButton<BillingType>(
           value: billing,
           isExpanded: true,
+          hint: Text(
+            'Select billing type',
+            style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textLight),
+          ),
           icon: const Icon(Icons.keyboard_arrow_down_rounded,
               color: AppColors.textSecondary),
           style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
@@ -332,6 +339,7 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
     final date = ref.watch(projectDraftProvider.select((d) => d.startDate));
     return _labeledField(
       'Start Date',
+      required: true,
       _dateShell(
         date,
         'Select date',
@@ -845,12 +853,11 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
     final draft = ref.read(projectDraftProvider);
     final name = draft.name.trim();
 
-    if (name.isEmpty) {
-      _toast('Project name is required');
-      return;
-    }
-    if (draft.customerId == null) {
-      _toast('Please select a customer');
+    // Name, customer, billing type and start date are all mandatory; the first
+    // missing one is reported.
+    final invalid = draft.validationError;
+    if (invalid != null) {
+      _toast(invalid);
       return;
     }
 
@@ -872,7 +879,16 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
   }
 
   // ── Shared field helpers ──
-  Widget _labeledField(String label, Widget child) {
+  /// [required] appends a red asterisk to the label. The four mandatory fields
+  /// (name, customer, billing type, start date) are the ones marked; the actual
+  /// check lives in [ProjectDraft.validationError] so the form and the toast
+  /// can't drift apart.
+  Widget _labeledField(String label, Widget child, {bool required = false}) {
+    final labelStyle = GoogleFonts.poppins(
+      fontSize: 12.5,
+      fontWeight: FontWeight.w600,
+      color: AppColors.textSecondary,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(
@@ -880,12 +896,18 @@ class _CreateProjectScreenState extends ConsumerState<CreateProjectScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+            child: Text.rich(
+              TextSpan(
+                text: label,
+                style: labelStyle,
+                children: required
+                    ? [
+                        TextSpan(
+                          text: ' *',
+                          style: labelStyle.copyWith(color: AppColors.red),
+                        ),
+                      ]
+                    : null,
               ),
             ),
           ),

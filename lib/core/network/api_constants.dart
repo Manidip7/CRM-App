@@ -36,6 +36,17 @@ class ApiConstants {
   static const String authHeader = 'Authorization';
   static const String contentType = 'application/json';
 
+  /// Sent on every request. Without `Accept: application/json`, Laravel's auth
+  /// middleware treats the call as a browser hit and answers an expired or
+  /// missing session with a **302 redirect to the web login page** (an HTML
+  /// body) instead of `401 {"message": "Unauthenticated."}` — which reads as a
+  /// mystery redirect in the logs. `X-Requested-With` is the same signal for
+  /// older Laravel versions.
+  static const Map<String, String> jsonHeaders = {
+    'Accept': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+  };
+
   // --- Endpoints ------------------------------------------------------------
   // Auth
   static const String login = '/login';
@@ -140,6 +151,18 @@ class ApiConstants {
   /// Quotations are deleted through their opportunity, not the flat route.
   static String opportunityQuotation(String opportunityId, String id) =>
       '/opportunities/$opportunityId/quotations/$id';
+
+  // Items — the sellable product/service catalogue behind invoice line items.
+  static const String items = '/items';
+
+  // Invoices
+  static const String invoices = '/invoices';
+  static String invoice(String id) => '/invoices/$id';
+  static String invoiceDownload(String id) => '/invoices/$id/download';
+
+  /// Recording a payment against an invoice. If the backend exposes this on a
+  /// different route, this is the only line that needs to change.
+  static String invoicePayments(String id) => '/invoices/$id/payments';
 
   // Projects
   static const String projects = '/projects';

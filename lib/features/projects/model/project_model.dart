@@ -302,7 +302,7 @@ class ProjectSummary {
     uncompletedProjects: 0,
   );
 
-  /// Reads the `meta` block of `GET /projects`. These are server-side totals
+  /// Reads the `summary` block of `GET /projects`. These are server-side totals
   /// across every project, not just the page in hand, so they can't be derived
   /// from the loaded list.
   factory ProjectSummary.fromJson(Map<String, dynamic> json) {

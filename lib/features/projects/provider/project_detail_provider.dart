@@ -92,7 +92,6 @@ class ProjectTaskDraft {
   final int? assignedToId;
   final DateTime? dueDate;
   final TaskPriority priority;
-  final TaskState state;
 
   /// True while `POST /projects/{id}/tasks` is in flight.
   final bool saving;
@@ -101,7 +100,6 @@ class ProjectTaskDraft {
     this.assignedToId,
     this.dueDate,
     this.priority = TaskPriority.medium,
-    this.state = TaskState.open,
     this.saving = false,
   });
 
@@ -109,14 +107,12 @@ class ProjectTaskDraft {
     int? assignedToId,
     DateTime? dueDate,
     TaskPriority? priority,
-    TaskState? state,
     bool? saving,
   }) {
     return ProjectTaskDraft(
       assignedToId: assignedToId ?? this.assignedToId,
       dueDate: dueDate ?? this.dueDate,
       priority: priority ?? this.priority,
-      state: state ?? this.state,
       saving: saving ?? this.saving,
     );
   }
@@ -135,13 +131,11 @@ class ProjectTaskDraftNotifier extends Notifier<ProjectTaskDraft> {
         assignedToId: v,
         dueDate: state.dueDate,
         priority: state.priority,
-        state: state.state,
         saving: state.saving,
       );
 
   void setDueDate(DateTime v) => state = state.copyWith(dueDate: v);
   void setPriority(TaskPriority v) => state = state.copyWith(priority: v);
-  void setTaskState(TaskState v) => state = state.copyWith(state: v);
 
   /// `due_at` in this endpoint's plain `yyyy-MM-dd` form.
   static String fmtDue(DateTime d) {
@@ -170,7 +164,6 @@ class ProjectTaskDraftNotifier extends Notifier<ProjectTaskDraft> {
           dueAt: due == null ? null : fmtDue(due),
           assignedTo: state.assignedToId,
           priority: state.priority.apiValue,
-          status: state.state.apiValue,
         );
     state = state.copyWith(saving: false);
 

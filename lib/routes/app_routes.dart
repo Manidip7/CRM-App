@@ -17,6 +17,7 @@ import '../features/Opportunities/view/opportunity_detail_screen.dart';
 import '../features/customers/model/customer_model.dart';
 import '../features/customers/view/create_customer_screen.dart';
 import '../features/customers/view/customer_detail_screen.dart';
+import '../features/invoices/model/invoice_model.dart';
 import '../features/invoices/view/create_invoice_screen.dart';
 import '../features/projects/model/project_model.dart';
 import '../features/projects/view/create_project_screen.dart';
@@ -187,7 +188,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     GoRoute(
       path: AppRoutes.createInvoice,
       name: 'createInvoice',
-      builder: (context, state) => const CreateInvoiceScreen(),
+      // `extra` carries the invoice to edit; null for a brand-new invoice.
+      builder: (context, state) =>
+          CreateInvoiceScreen(invoice: state.extra as InvoiceModel?),
     ),
     GoRoute(
       path: AppRoutes.createProject,

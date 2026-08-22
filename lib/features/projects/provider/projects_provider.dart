@@ -104,7 +104,7 @@ final projectsPaginationProvider =
     NotifierProvider<ProjectsPaginationNotifier, ProjectsPagination>(
         ProjectsPaginationNotifier.new);
 
-/// Totals for the summary row, taken from the response's `meta` block. They
+/// Totals for the summary row, taken from the response's `summary` block. They
 /// cover every project, so they are set by the fetch rather than derived from
 /// the loaded page.
 class ProjectSummaryNotifier extends Notifier<ProjectSummary> {
@@ -222,7 +222,7 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectModel>> {
     final result = await ref.read(projectsRepositoryProvider).createProject(
           name: draft.name.trim(),
           customerId: draft.customerId!,
-          billingType: draft.billingType.apiValue,
+          billingType: draft.billingType!.apiValue,
           status: draft.status.apiValue,
           totalRate: draft.totalRate,
           estimatedHours: draft.estimatedHours,
@@ -247,7 +247,7 @@ class ProjectsNotifier extends AsyncNotifier<List<ProjectModel>> {
           id,
           name: draft.name.trim(),
           customerId: draft.customerId!,
-          billingType: draft.billingType.apiValue,
+          billingType: draft.billingType!.apiValue,
           status: draft.status.apiValue,
           totalRate: draft.totalRate,
           estimatedHours: draft.estimatedHours,
@@ -298,7 +298,10 @@ class ProjectDraft {
   final int? customerId;
   final String? customerName;
 
-  final BillingType billingType;
+  /// Null until the user picks one — billing type is mandatory, so the form
+  /// starts empty rather than silently defaulting to "Fixed Rate".
+  final BillingType? billingType;
+
   final ProjectStatus status;
 
   /// Integers, matching the API's `total_rate` / `estimated_hours`.
@@ -321,7 +324,7 @@ class ProjectDraft {
     this.name = '',
     this.customerId,
     this.customerName,
-    this.billingType = BillingType.fixedRate,
+    this.billingType,
     this.status = ProjectStatus.inProgress,
     this.totalRate = 0,
     this.estimatedHours = 0,
@@ -332,6 +335,19 @@ class ProjectDraft {
     this.description = '',
     this.saving = false,
   });
+
+  /// The mandatory fields — project name, customer, billing type and start
+  /// date. Returns the message for the first one that is missing, in the order
+  /// they appear on the form, or null when the draft is ready to send.
+  String? get validationError {
+    if (name.trim().isEmpty) return 'Project name is required';
+    if (customerId == null) return 'Please select a customer';
+    if (billingType == null) return 'Please select a billing type';
+    if (startDate == null) return 'Please select a start date';
+    return null;
+  }
+
+  bool get isValid => validationError == null;
 
   ProjectDraft copyWith({
     String? name,

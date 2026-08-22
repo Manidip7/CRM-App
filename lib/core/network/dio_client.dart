@@ -26,6 +26,9 @@ class DioClient {
         receiveTimeout: ApiConstants.receiveTimeout,
         sendTimeout: ApiConstants.sendTimeout,
         contentType: ApiConstants.contentType,
+        // Makes the backend answer with JSON errors (401/422) rather than a
+        // 302 redirect to its web login page. See [ApiConstants.jsonHeaders].
+        headers: Map<String, String>.from(ApiConstants.jsonHeaders),
         responseType: ResponseType.json,
         // Encode list query params as repeated keys without `[]` brackets,
         // e.g. `quick_filter=today&quick_filter=upcoming`.
